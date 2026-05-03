@@ -143,7 +143,7 @@ class _FilterModalState extends State<FilterModal> {
 
               // Floating Apply Button
               Padding(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 20),
                 child: GestureDetector(
                   onTap: () {
                     widget.onApply(_filters);
@@ -265,6 +265,7 @@ class _FilterModalState extends State<FilterModal> {
             return TextField(
               controller: textController,
               focusNode: focusNode,
+              textCapitalization: TextCapitalization.sentences,
               style: const TextStyle(color: Colors.white, fontSize: 14),
               decoration: InputDecoration(
                 hintText: hint,

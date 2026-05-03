@@ -92,8 +92,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (didPop) return;
             _resetAllFilters();
           },
-          child: Container(
-            decoration: const BoxDecoration(
+          child: GestureDetector(
+            onTap: () => ResourceService().setActiveResource(null),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -102,6 +105,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             child: SafeArea(
               child: CustomScrollView(
+                key: const PageStorageKey('dashboard_scroll'),
                 slivers: [
                   SliverToBoxAdapter(
                     child: Padding(
@@ -178,6 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Expanded(
                               child: TextField(
                                 controller: _searchController,
+                                textCapitalization: TextCapitalization.sentences,
                                 onChanged: (value) => setState(() {}),
                                 style: const TextStyle(color: Colors.white),
                                 decoration: InputDecoration(
@@ -260,8 +265,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           return ResourceCard(
                             title: res.title,
                             type: res.type,
-                            thumbnailUrl: res.thumbnailUrl,
-                            unitName: res.unitName,
+                            materialFormat: res.materialFormat,
+                            thumbnailUrl: res.thumbnailUrl,                            unitName: res.unitName,
                             unitCode: res.unitCode,
                             year: res.year,
                             uploadYear: res.uploadYear,

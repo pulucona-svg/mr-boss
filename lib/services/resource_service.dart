@@ -15,6 +15,7 @@ class Resource {
   final String uploadedBy;
   final String uploaderRole;
   final String courseProgram;
+  final String materialFormat;
   final String? status; // 'approved', 'waiting', 'declined'
   final String? declineReason;
   int views;
@@ -37,6 +38,7 @@ class Resource {
     required this.uploadedBy,
     required this.uploaderRole,
     this.courseProgram = 'Computer Science',
+    this.materialFormat = 'PDF',
     this.status,
     this.declineReason,
     this.views = 0,
@@ -52,6 +54,7 @@ class Resource {
       'thumbnail': thumbnailUrl,
       'unitName': unitName,
       'unitCode': unitCode,
+      'materialFormat': materialFormat,
       'year': year,
       'uploadYear': uploadYear,
       'publicationYear': publicationYear,
@@ -74,6 +77,16 @@ class ResourceService extends ChangeNotifier {
   static final ResourceService _instance = ResourceService._internal();
   factory ResourceService() => _instance;
   ResourceService._internal();
+
+  String? _activeResourceId;
+  String? get activeResourceId => _activeResourceId;
+
+  void setActiveResource(String? id) {
+    if (_activeResourceId != id) {
+      _activeResourceId = id;
+      notifyListeners();
+    }
+  }
 
   final List<Resource> _allResources = [
     Resource(

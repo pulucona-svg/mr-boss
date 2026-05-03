@@ -5,6 +5,7 @@ class ResourceDetailsModal extends StatelessWidget {
   final String title;
   final String unitName;
   final String unitCode;
+  final String materialFormat;
   final String uploadYear;
   final String publicationYear;
   final String yearOfStudy;
@@ -19,6 +20,7 @@ class ResourceDetailsModal extends StatelessWidget {
     required this.title,
     required this.unitName,
     required this.unitCode,
+    required this.materialFormat,
     required this.uploadYear,
     required this.publicationYear,
     required this.yearOfStudy,
@@ -34,6 +36,7 @@ class ResourceDetailsModal extends StatelessWidget {
       'title': title,
       'unitName': unitName,
       'unitCode': unitCode,
+      'materialFormat': materialFormat,
       'uploadYear': uploadYear,
       'publicationYear': publicationYear,
       'yearOfStudy': yearOfStudy,
@@ -47,7 +50,7 @@ class ResourceDetailsModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
       decoration: const BoxDecoration(
         color: Color(0xFF141232),
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
@@ -114,6 +117,7 @@ class ResourceDetailsModal extends StatelessWidget {
                 children: [
                   _buildDetailRow(Icons.book_outlined, 'Unit Name', unitName),
                   _buildDetailRow(Icons.code_rounded, 'Unit Code', unitCode),
+                  _buildDetailRow(Icons.file_present_outlined, 'Material Format', materialFormat),
                   _buildDetailRow(Icons.calendar_month_outlined, 'Year of Upload', uploadYear),
                   _buildDetailRow(Icons.history_edu_outlined, 'Year of Publication', publicationYear),
                   _buildDetailRow(Icons.school_outlined, 'Year of Study', yearOfStudy),

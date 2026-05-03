@@ -111,8 +111,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
             if (didPop) return;
             _resetAllFilters();
           },
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
+          child: GestureDetector(
+            onTap: () => ResourceService().setActiveResource(null),
+            behavior: HitTestBehavior.opaque,
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
             floatingActionButton: !_isDownloadsSelected ? FloatingActionButton(
               onPressed: _showUploadDialog,
               backgroundColor: const Color(0xFF00A85A),
@@ -128,9 +131,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
               child: SafeArea(
                 child: CustomScrollView(
+                  key: const PageStorageKey('library_scroll'),
                   slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
+                    SliverToBoxAdapter(                      child: Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,6 +237,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               Expanded(
                                 child: TextField(
                                   controller: _searchController,
+                                  textCapitalization: TextCapitalization.sentences,
                                   onChanged: (value) => setState(() {}),
                                   style: const TextStyle(color: Colors.white),
                                   decoration: InputDecoration(
@@ -413,8 +417,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             return ResourceCard(
                               title: res.title,
                               type: res.type,
-                              thumbnailUrl: res.thumbnailUrl,
-                              unitName: res.unitName,
+                              materialFormat: res.materialFormat,
+                              thumbnailUrl: res.thumbnailUrl,                              unitName: res.unitName,
                               unitCode: res.unitCode,
                               year: res.year,
                               uploadYear: res.uploadYear,

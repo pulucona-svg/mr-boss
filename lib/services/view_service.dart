@@ -61,4 +61,8 @@ class ViewService extends ChangeNotifier {
   int getDailyViews(String resourceId) {
     return _statsMap[resourceId]?.dailyCount ?? 0;
   }
+
+  bool hasViewed(String resourceId) {
+    return _statsMap[resourceId]?.lastViewTime != null;
+  }
 }

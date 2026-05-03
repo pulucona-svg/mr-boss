@@ -10,6 +10,7 @@ class UploadMaterialModel {
   final String uploadedBy;
   final int yearOfUpload;
   final String materialType;
+  final String? fileFormat;
   final File? file;
   final File? thumbnail;
 
@@ -23,6 +24,7 @@ class UploadMaterialModel {
     required this.uploadedBy,
     required this.yearOfUpload,
     required this.materialType,
+    this.fileFormat,
     this.file,
     this.thumbnail,
   });
@@ -38,6 +40,7 @@ class UploadMaterialModel {
       'uploadedBy': uploadedBy,
       'yearOfUpload': yearOfUpload,
       'materialType': materialType,
+      'fileFormat': fileFormat,
       'fileName': file?.path.split('/').last,
       'thumbnailName': thumbnail?.path.split('/').last,
     };
@@ -53,6 +56,7 @@ class UploadMaterialModel {
     String? uploadedBy,
     int? yearOfUpload,
     String? materialType,
+    String? fileFormat,
     File? file,
     File? thumbnail,
   }) {
@@ -66,6 +70,7 @@ class UploadMaterialModel {
       uploadedBy: uploadedBy ?? this.uploadedBy,
       yearOfUpload: yearOfUpload ?? this.yearOfUpload,
       materialType: materialType ?? this.materialType,
+      fileFormat: fileFormat ?? this.fileFormat,
       file: file ?? this.file,
       thumbnail: thumbnail ?? this.thumbnail,
     );

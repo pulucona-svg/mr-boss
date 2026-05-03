@@ -86,7 +86,7 @@ class _CommentModalState extends State<CommentModal> {
               // Input Field
               Container(
                 padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 16,
                   left: 16,
                   right: 16,
                   top: 12,
@@ -121,6 +121,7 @@ class _CommentModalState extends State<CommentModal> {
                           child: TextField(
                             controller: _commentController,
                             focusNode: _focusNode,
+                            textCapitalization: TextCapitalization.sentences,
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               hintText: _replyingTo != null ? 'Add a reply...' : 'Add a comment...',

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dotted_border/dotted_border.dart';
 import '../providers/upload_provider.dart';
@@ -41,6 +42,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
       decoration: const BoxDecoration(
         color: Color(0xFF070716),
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -97,6 +99,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         label: 'Unit Name',
                         hint: 'e.g. Digital Electronics',
                         controller: _unitNameController,
+                        textCapitalization: TextCapitalization.sentences,
                         icon: Icons.book_outlined,
                         onChanged: notifier.updateUnitName,
                         suggestions: ref.watch(unitNameSuggestionsProvider(_unitNameController.text)),
@@ -109,6 +112,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         label: 'Unit Code',
                         hint: 'e.g. COMP 212',
                         controller: _unitCodeController,
+                        textCapitalization: TextCapitalization.sentences,
                         icon: Icons.qr_code_outlined,
                         onChanged: notifier.updateUnitCode,
                         suggestions: ref.watch(unitCodeSuggestionsProvider(_unitCodeController.text)),
@@ -245,6 +249,8 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     TextEditingController? controller,
     IconData? icon,
     TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    List<TextInputFormatter>? inputFormatters,
     required Function(String) onChanged,
     List<String>? suggestions,
   }) {
@@ -273,6 +279,8 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
               controller: textController,
               focusNode: focusNode,
               keyboardType: keyboardType,
+              textCapitalization: textCapitalization,
+              inputFormatters: inputFormatters,
               style: const TextStyle(color: Colors.white),
               onChanged: (val) {
                 onChanged(val);
@@ -389,6 +397,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             return TextField(
               controller: textController,
               focusNode: focusNode,
+              textCapitalization: TextCapitalization.sentences,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Search programs...',
@@ -497,12 +506,17 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                     )
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icon, color: Colors.white24, size: 32),
-                        const SizedBox(height: 8),
-                        const Text('Tap to select', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                      ],
-                    ),
+                    children: [
+                      Icon(icon, color: Colors.white24, size: 32),
+                      const SizedBox(height: 8),
+                      const Text('Tap to select', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Text(
+                        isImage ? '(Images only)' : '(PDF, Image, HTML)',
+                        style: const TextStyle(color: Colors.white10, fontSize: 10),
+                      ),
+                    ],
+                  ),
             ),
           ),
         ),

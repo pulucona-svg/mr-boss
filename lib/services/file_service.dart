@@ -5,11 +5,11 @@ import 'package:image_picker/image_picker.dart';
 class FileService {
   final ImagePicker _imagePicker = ImagePicker();
 
-  Future<File?> pickDocument() async {
+  Future<File?> pickDocument({List<String>? allowedExtensions}) async {
     try {
       FilePickerResult? result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt'],
+        type: allowedExtensions != null ? FileType.custom : FileType.any,
+        allowedExtensions: allowedExtensions,
       );
 
       if (result != null && result.files.single.path != null) {

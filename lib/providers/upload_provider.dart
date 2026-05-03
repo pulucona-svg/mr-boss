@@ -124,9 +124,27 @@ class UploadNotifier extends StateNotifier<UploadState> {
   }
 
   Future<void> pickDocument() async {
-    final file = await _fileService.pickDocument();
+    final file = await _fileService.pickDocument(
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'html', 'htm'],
+    );
     if (file != null) {
-      state = state.copyWith(material: state.material.copyWith(file: file));
+      final extension = file.path.split('.').last.toLowerCase();
+      String format = 'Unknown';
+      
+      if (['jpg', 'jpeg', 'png'].contains(extension)) {
+        format = 'Image';
+      } else if (extension == 'pdf') {
+        format = 'PDF';
+      } else if (['html', 'htm'].contains(extension)) {
+        format = 'HTML';
+      }
+      
+      state = state.copyWith(
+        material: state.material.copyWith(
+          file: file,
+          fileFormat: format,
+        ),
+      );
     }
   }
 
