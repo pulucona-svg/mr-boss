@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'notification_service.dart';
+import '../models/notification.dart';
 
 class Resource {
   final String title;
@@ -14,13 +16,16 @@ class Resource {
   final String lecturer;
   final String uploadedBy;
   final String uploaderRole;
+  final String uploaderId;
   final String courseProgram;
   final String materialFormat;
-  final String? status; // 'approved', 'waiting', 'declined'
+  final DateTime uploadDate;
+  String? status; // 'approved', 'waiting', 'declined'
   final String? declineReason;
-  int views;
-  int likes;
-  int comments;
+  final DateTime? declineDate;
+  int _views;
+  int _likes;
+  int _comments;
   bool isLiked;
 
   Resource({
@@ -37,15 +42,30 @@ class Resource {
     required this.lecturer,
     required this.uploadedBy,
     required this.uploaderRole,
+    required this.uploaderId,
+    required this.uploadDate,
     this.courseProgram = 'Computer Science',
     this.materialFormat = 'PDF',
     this.status,
     this.declineReason,
-    this.views = 0,
-    this.likes = 0,
-    this.comments = 0,
+    this.declineDate,
+    int views = 0,
+    int likes = 0,
+    int comments = 0,
     this.isLiked = false,
-  });
+  })  : _views = views,
+        _likes = likes,
+        _comments = comments;
+
+  // Social metrics are always zero if not approved
+  int get views => status == 'approved' ? _views : 0;
+  int get likes => status == 'approved' ? _likes : 0;
+  int get comments => status == 'approved' ? _comments : 0;
+
+  // Setters to update underlying values
+  set views(int val) => _views = val;
+  set likes(int val) => _likes = val;
+  set comments(int val) => _comments = val;
 
   Map<String, String> toMap() {
     return {
@@ -81,6 +101,9 @@ class ResourceService extends ChangeNotifier {
   String? _activeResourceId;
   String? get activeResourceId => _activeResourceId;
 
+  static const String currentUserId = 'user_123';
+  static const String currentUserName = 'Me';
+
   void setActiveResource(String? id) {
     if (_activeResourceId != id) {
       _activeResourceId = id;
@@ -103,7 +126,10 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Dr. Sarah Wambui',
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
+      uploaderId: 'admin_001',
+      uploadDate: DateTime.now().subtract(const Duration(days: 10)),
       courseProgram: 'BSc. Computer Science',
+      status: 'approved',
       views: 245,
       likes: 32,
       comments: 8,
@@ -122,7 +148,10 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Prof. James Kimani',
       uploadedBy: 'Jane Doe',
       uploaderRole: 'Class Rep',
+      uploaderId: 'user_456',
+      uploadDate: DateTime.now().subtract(const Duration(days: 5)),
       courseProgram: 'BSc. Mathematics',
+      status: 'approved',
       views: 189,
       likes: 27,
       comments: 5,
@@ -141,7 +170,10 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Dr. Peter Omondi',
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
+      uploaderId: 'admin_001',
+      uploadDate: DateTime.now().subtract(const Duration(days: 2)),
       courseProgram: 'BSc. Computer Science',
+      status: 'approved',
       views: 512,
       likes: 89,
       comments: 12,
@@ -160,7 +192,10 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Ms. Lucy Njeri',
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
+      uploaderId: 'admin_001',
+      uploadDate: DateTime.now().subtract(const Duration(days: 8)),
       courseProgram: 'BSc. Physics',
+      status: 'approved',
       views: 98,
       likes: 15,
       comments: 3,
@@ -179,7 +214,10 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Dr. Andrew Otieno',
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
+      uploaderId: 'admin_001',
+      uploadDate: DateTime.now().subtract(const Duration(days: 3)),
       courseProgram: 'BSc. Statistics',
+      status: 'approved',
       views: 321,
       likes: 45,
       comments: 7,
@@ -198,14 +236,15 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Dr. Mary Atieno',
       uploadedBy: 'Brian Chege',
       uploaderRole: 'Student',
+      uploaderId: 'user_789',
+      uploadDate: DateTime.now().subtract(const Duration(days: 1)),
       courseProgram: 'BSc. Software Engineering',
+      status: 'approved',
       views: 412,
       likes: 67,
       comments: 10,
     ),
   ];
-
-  List<Resource> get allResources => _allResources;
 
   final List<Resource> _userUploads = [
     Resource(
@@ -222,6 +261,8 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Eng. David Ngugi',
       uploadedBy: 'Me',
       uploaderRole: 'Student',
+      uploaderId: currentUserId,
+      uploadDate: DateTime.now().subtract(const Duration(days: 1)),
       status: 'approved',
     ),
     Resource(
@@ -238,6 +279,8 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Dr. John Kamau',
       uploadedBy: 'Me',
       uploaderRole: 'Student',
+      uploaderId: currentUserId,
+      uploadDate: DateTime.now(),
       status: 'waiting',
     ),
     Resource(
@@ -254,40 +297,108 @@ class ResourceService extends ChangeNotifier {
       lecturer: 'Prof. Alice Wanjiku',
       uploadedBy: 'Me',
       uploaderRole: 'Student',
+      uploaderId: currentUserId,
+      uploadDate: DateTime.now().subtract(const Duration(days: 8)),
       status: 'declined',
       declineReason: 'Blurry photos, please re-upload clear ones.',
+      declineDate: DateTime.now().subtract(const Duration(days: 8)),
     ),
   ];
 
-  List<Resource> get userUploads => _userUploads;
+  List<Resource> get allResources {
+    final approvedFromUploads = _userUploads.where((r) => r.status == 'approved');
+    final combined = [..._allResources, ...approvedFromUploads];
+    combined.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
+    return combined;
+  }
+
+  List<Resource> get userUploads {
+    _cleanRejectedUploads();
+    final sorted = List<Resource>.from(_userUploads);
+    sorted.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
+    return sorted;
+  }
+
+  void _cleanRejectedUploads() {
+    final now = DateTime.now();
+    _userUploads.removeWhere((r) {
+      if (r.status == 'declined' && r.declineDate != null) {
+        return now.difference(r.declineDate!).inDays >= 7;
+      }
+      return false;
+    });
+  }
 
   void addUpload(Resource resource) {
     _userUploads.add(resource);
     notifyListeners();
   }
 
-  List<String> getUniqueLecturers() {
-    return _allResources.map((r) => r.lecturer).toSet().toList();
+  void deleteUpload(String title) {
+    _userUploads.removeWhere((r) => r.title == title);
+    notifyListeners();
   }
 
-  List<String> getUniquePrograms() {
-    return _allResources.map((r) => r.courseProgram).toSet().toList();
+  Resource? findResourceByTitle(String title) {
+    try {
+      return _userUploads.firstWhere((r) => r.title == title);
+    } catch (_) {
+      try {
+        return _allResources.firstWhere((r) => r.title == title);
+      } catch (_) {
+        return null;
+      }
+    }
   }
 
-  void toggleLike(String title) {
-    final resource = _allResources.firstWhere((r) => r.title == title);
+  void toggleLike(String title, {String likerName = currentUserName}) {
+    final resource = findResourceByTitle(title);
+    if (resource == null) return;
+
     resource.isLiked = !resource.isLiked;
+    
     if (resource.isLiked) {
       resource.likes++;
+      _notifyOwner(resource, NotificationType.like, likerName);
     } else {
       resource.likes--;
     }
     notifyListeners();
   }
 
+  void incrementComments(String title, {String commenterName = currentUserName}) {
+    final resource = findResourceByTitle(title);
+    if (resource == null) return;
+
+    resource.comments++;
+    _notifyOwner(resource, NotificationType.reply, commenterName);
+    notifyListeners();
+  }
+
+  void _notifyOwner(Resource resource, NotificationType type, String senderName) {
+    if (resource.uploaderId == currentUserId) return;
+
+    // Check if uploader still has this in their menu
+    final isStillInMenu = _userUploads.any((r) => r.title == resource.title && r.uploaderId == resource.uploaderId) || 
+                          resource.uploaderId.startsWith('admin_');
+    
+    if (isStillInMenu) {
+      NotificationService().addNotification(
+        type: type,
+        senderName: senderName,
+        resourceTitle: resource.title,
+      );
+    }
+  }
+
   void incrementViews(String title) {
-    final resource = _allResources.firstWhere((r) => r.title == title);
+    final resource = findResourceByTitle(title);
+    if (resource == null) return;
+
     resource.views++;
     notifyListeners();
   }
+
+  List<String> getUniqueLecturers() => allResources.map((r) => r.lecturer).toSet().toList();
+  List<String> getUniquePrograms() => allResources.map((r) => r.courseProgram).toSet().toList();
 }

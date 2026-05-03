@@ -3,6 +3,7 @@ import '../models/material_model.dart';
 import '../services/course_service.dart';
 import '../services/file_service.dart';
 import '../services/upload_service.dart';
+import '../services/resource_service.dart';
 
 // Service Providers
 final courseServiceProvider = Provider((ref) => CourseService());
@@ -69,7 +70,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
             yearOfStudy: '1st Year',
             semester: 'Semester 1',
             yearOfPublication: DateTime.now().year,
-            uploadedBy: 'John Doe (Me)', // Mocked current user
+            uploadedBy: ResourceService.currentUserName,
+            uploaderId: ResourceService.currentUserId,
             yearOfUpload: DateTime.now().year,
             materialType: 'Notes',
           ),
@@ -167,6 +169,30 @@ class UploadNotifier extends StateNotifier<UploadState> {
           state = state.copyWith(uploadProgress: progress);
         },
       );
+
+      // Create a Resource object and add to ResourceService
+      final resource = Resource(
+        title: state.material.unitName, // Using unit name as title for now
+        type: state.material.materialType,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400', // Mock URL
+        unitName: state.material.unitName,
+        unitCode: state.material.unitCode,
+        year: state.material.yearOfUpload.toString(),
+        uploadYear: state.material.yearOfUpload.toString(),
+        publicationYear: state.material.yearOfPublication.toString(),
+        yearOfStudy: state.material.yearOfStudy,
+        semester: state.material.semester,
+        lecturer: 'TBD',
+        uploadedBy: state.material.uploadedBy,
+        uploaderRole: 'Student',
+        uploaderId: state.material.uploaderId,
+        uploadDate: DateTime.now(),
+        status: 'waiting',
+        courseProgram: state.material.programs.join(', '),
+      );
+
+      ResourceService().addUpload(resource);
+
       state = state.copyWith(isUploading: false, isSuccess: true, uploadProgress: 1.0);
     } catch (e) {
       state = state.copyWith(isUploading: false, error: e.toString());
@@ -182,7 +208,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
         yearOfStudy: '1st Year',
         semester: 'Semester 1',
         yearOfPublication: DateTime.now().year,
-        uploadedBy: 'John Doe (Me)',
+        uploadedBy: ResourceService.currentUserName,
+        uploaderId: ResourceService.currentUserId,
         yearOfUpload: DateTime.now().year,
         materialType: 'Notes',
       ),

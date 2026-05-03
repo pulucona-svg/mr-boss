@@ -5,6 +5,8 @@ import 'screens/profile_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'screens/library_screen.dart';
 
+import 'services/connectivity_service.dart';
+
 void main() {
   runApp(const ProviderScope(child: MirrorApp()));
 }
@@ -17,6 +19,7 @@ class MirrorApp extends StatelessWidget {
     return MaterialApp(
       title: 'Mirror Laikipia',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: ConnectivityService().messengerKey,
       theme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF20C8FF),
@@ -28,14 +31,14 @@ class MirrorApp extends StatelessWidget {
   }
 }
 
-class MainNavigation extends StatefulWidget {
+class MainNavigation extends ConsumerStatefulWidget {
   const MainNavigation({super.key});
 
   @override
-  State<MainNavigation> createState() => _MainNavigationState();
+  ConsumerState<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class _MainNavigationState extends ConsumerState<MainNavigation> {
   int _selectedIndex = 0;
   late final PageController _pageController;
 
@@ -43,11 +46,13 @@ class _MainNavigationState extends State<MainNavigation> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _selectedIndex);
+    ConnectivityService().initialize();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    ConnectivityService().dispose();
     super.dispose();
   }
 

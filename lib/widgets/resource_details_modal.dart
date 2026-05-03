@@ -3,6 +3,7 @@ import '../services/download_service.dart';
 
 class ResourceDetailsModal extends StatelessWidget {
   final String title;
+  final String thumbnailUrl;
   final String unitName;
   final String unitCode;
   final String materialFormat;
@@ -18,6 +19,7 @@ class ResourceDetailsModal extends StatelessWidget {
   const ResourceDetailsModal({
     super.key,
     required this.title,
+    required this.thumbnailUrl,
     required this.unitName,
     required this.unitCode,
     required this.materialFormat,
@@ -34,6 +36,7 @@ class ResourceDetailsModal extends StatelessWidget {
   Map<String, String> _getResourceData() {
     return {
       'title': title,
+      'thumbnail': thumbnailUrl,
       'unitName': unitName,
       'unitCode': unitCode,
       'materialFormat': materialFormat,

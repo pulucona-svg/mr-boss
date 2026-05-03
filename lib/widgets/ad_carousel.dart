@@ -70,38 +70,34 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
     _ads = widget.ads ?? [
       {
         'type': 'image',
-        'title': 'Trending Now 🚀',
-        'subtitle': 'End of Semester CATs are here! 📚 Get your revision materials now.',
-        'url': 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=800',
-        'color': const Color(0xFF7B5CFF),
-      },
-      {
-        'type': 'video',
-        'title': 'Flash Sale ⚡',
-        'subtitle': 'Premium past paper bundles are 50% off! 💸',
-        'url': 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-        'color': const Color(0xFFFF4667),
-      },
-      {
-        'type': 'image',
-        'title': 'New Arrivals ✨',
-        'subtitle': 'Freshly uploaded Engineering Practical Manuals for 2024. 🛠️',
-        'url': 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800',
+        'isAsset': true,
+        'title': 'Davy Cybers 💻',
+        'subtitle': 'In need of professional cyber services? Worry no more, Davy Cybers we have got you.',
+        'url': 'assets/ad_cyber.jpeg',
         'color': const Color(0xFF20C8FF),
       },
       {
-        'type': 'video',
-        'title': 'Exam Prep 🎯',
-        'subtitle': 'Supplementary Exams schedule is out. Check the library! 📋',
-        'url': 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        'type': 'image',
+        'isAsset': true,
+        'title': 'Manu Data 🌐',
+        'subtitle': 'Tired of expensive data plans? Worry no more, Manu Data Solutions we have got you.',
+        'url': 'assets/ad_data.jpeg',
+        'color': const Color(0xFF00A85A),
+      },
+      {
+        'type': 'image',
+        'isAsset': true,
+        'title': 'Snake Light 💡',
+        'subtitle': 'In need of snake light? Say less, we got you with a discount.',
+        'url': 'assets/ad_snake.jpeg',
         'color': const Color(0xFFFF8A00),
       },
       {
         'type': 'image',
-        'title': 'Top Rated ⭐',
-        'subtitle': 'Computer Science notes for CSC 311 are currently trending. 💻',
-        'url': 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=800',
-        'color': const Color(0xFF00A85A),
+        'title': 'Trending Now 🚀',
+        'subtitle': 'End of Semester CATs are here! 📚 Get your revision materials now.',
+        'url': 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800',
+        'color': const Color(0xFF7B5CFF),
       },
     ];
   }
@@ -109,7 +105,11 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
   void _preCacheAll() async {
     for (var ad in _ads) {
       if (ad['type'] == 'image') {
-        precacheImage(CachedNetworkImageProvider(ad['url']), context);
+        if (ad['isAsset'] == true) {
+          precacheImage(AssetImage(ad['url']), context);
+        } else {
+          precacheImage(CachedNetworkImageProvider(ad['url']), context);
+        }
       } else if (ad['type'] == 'video') {
         DefaultCacheManager().downloadFile(ad['url'], key: ad['url']);
       }
@@ -208,18 +208,20 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
                   )
                 else if (ad['type'] == 'image')
                   SizedBox.expand(
-                    child: CachedNetworkImage(
-                      imageUrl: ad['url'],
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: Colors.white10,
-                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: ad['isAsset'] == true 
+                      ? Image.asset(ad['url'], fit: BoxFit.cover)
+                      : CachedNetworkImage(
+                        imageUrl: ad['url'],
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.white10,
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.black26,
+                          child: const Icon(Icons.broken_image, color: Colors.white24, size: 50),
+                        ),
                       ),
-                      errorWidget: (context, url, error) => Container(
-                        color: Colors.black26,
-                        child: const Icon(Icons.broken_image, color: Colors.white24, size: 50),
-                      ),
-                    ),
                   )
                 else
                   Container(

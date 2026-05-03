@@ -96,9 +96,7 @@ class _ResourceCardState extends State<ResourceCard> {
     };
   }
 
-  void _handleTap() {
-    ResourceService().setActiveResource(widget.title);
-    widget.onTap();
+  void _incrementView() {
     _viewTimer?.cancel();
     _viewTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) {
@@ -110,11 +108,20 @@ class _ResourceCardState extends State<ResourceCard> {
     });
   }
 
+  void _handleTap() {
+    ResourceService().setActiveResource(widget.title);
+    widget.onTap();
+    _incrementView();
+  }
+
   void _toggleLike() {
+    _incrementView();
     widget.onLikeToggle?.call();
   }
 
   void _showComments() {
+    _incrementView();
+    ResourceService().setActiveResource(widget.title);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -124,12 +131,15 @@ class _ResourceCardState extends State<ResourceCard> {
   }
 
   void _showDetails() {
+    _incrementView();
+    ResourceService().setActiveResource(widget.title);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ResourceDetailsModal(
         title: widget.title,
+        thumbnailUrl: widget.thumbnailUrl,
         unitName: widget.unitName,
         unitCode: widget.unitCode,
         materialFormat: widget.materialFormat,
@@ -250,7 +260,13 @@ class _ResourceCardState extends State<ResourceCard> {
     return ListenableBuilder(
       listenable: ResourceService(),
       builder: (context, child) {
+        final resource = ResourceService().findResourceByTitle(widget.title);
         final isActive = ResourceService().activeResourceId == widget.title;
+        
+        // Use live data from service if available, otherwise fallback to widget properties
+        final viewsCount = resource?.views.toString() ?? widget.views;
+        final likesCount = resource?.likes.toString() ?? widget.likes;
+        final isLiked = resource?.isLiked ?? widget.isLiked;
         
         return AnimatedScale(
           scale: isActive ? 1.05 : 1.0,
@@ -338,7 +354,11 @@ class _ResourceCardState extends State<ResourceCard> {
                                 final progress = DownloadService().getProgress(widget.title);
                                 
                                 return GestureDetector(
-                                  onTap: () => DownloadService().startDownload(_getResourceData()),
+                                  onTap: () {
+                                    _incrementView();
+                                    DownloadService().startDownload(_getResourceData());
+                                  },
+                                  behavior: HitTestBehavior.translucent,
                                   child: Stack(
                                     alignment: Alignment.center,
                                     children: [
@@ -415,6 +435,7 @@ class _ResourceCardState extends State<ResourceCard> {
                             const Spacer(),
                             GestureDetector(
                               onTap: _showDetails,
+                              behavior: HitTestBehavior.translucent,
                               child: Container(
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
@@ -442,26 +463,29 @@ class _ResourceCardState extends State<ResourceCard> {
                             final hasViewed = ViewService().hasViewed(widget.title);
                             return _statItem(
                               Icons.visibility_outlined, 
-                              widget.views,
+                              viewsCount,
                               iconColor: hasViewed ? const Color(0xFF00A85A) : Colors.white54,
                             );
                           },
                         ),
                         GestureDetector(
                           onTap: _toggleLike,
+                          behavior: HitTestBehavior.translucent,
                           child: _statItem(
-                            widget.isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined, 
-                            widget.likes, 
-                            iconColor: widget.isLiked ? const Color(0xFF20C8FF) : Colors.white54,
+                            isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined, 
+                            likesCount, 
+                            iconColor: isLiked ? const Color(0xFF20C8FF) : Colors.white54,
                           ),
                         ),
                         GestureDetector(
                           onTap: _showComments,
+                          behavior: HitTestBehavior.translucent,
                           child: ListenableBuilder(
                             listenable: CommentService(),
                             builder: (context, child) {
                               final count = CommentService().getCommentCount(widget.title);
-                              return _statItem(Icons.mode_comment_outlined, count.toString());
+                              final displayCount = (resource?.status == 'approved') ? count.toString() : '0';
+                              return _statItem(Icons.mode_comment_outlined, displayCount);
                             },
                           ),
                         ),

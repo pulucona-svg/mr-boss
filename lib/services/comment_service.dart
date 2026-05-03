@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/comment.dart';
-import '../models/notification.dart';
-import 'notification_service.dart';
+import 'resource_service.dart';
 
 class CommentService extends ChangeNotifier {
   static final CommentService _instance = CommentService._internal();
@@ -31,21 +30,19 @@ class CommentService extends ChangeNotifier {
     final comments = getComments(resourceTitle);
     final newComment = Comment(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      author: 'Me',
+      author: ResourceService.currentUserName,
       text: text,
       timestamp: DateTime.now(),
     );
 
     if (replyingTo != null) {
       replyingTo.replies.add(newComment);
-      NotificationService().addNotification(
-        type: NotificationType.reply,
-        senderName: 'Me',
-        resourceTitle: resourceTitle,
-      );
     } else {
       comments.insert(0, newComment);
     }
+    
+    // Increment count and handle notifications via ResourceService
+    ResourceService().incrementComments(resourceTitle);
     notifyListeners();
   }
 
@@ -53,11 +50,7 @@ class CommentService extends ChangeNotifier {
     comment.isLiked = !comment.isLiked;
     if (comment.isLiked) {
       comment.likes++;
-      NotificationService().addNotification(
-        type: NotificationType.like,
-        senderName: 'Me',
-        resourceTitle: resourceTitle,
-      );
+      // We could add notification for comment likes too if needed
     } else {
       comment.likes--;
     }

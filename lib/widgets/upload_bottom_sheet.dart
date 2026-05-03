@@ -484,7 +484,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Text(
-                                    file.path.split('/').last,
+                                    file.path.split(RegExp(r'[/\\]')).last,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(color: Colors.white, fontSize: 10),

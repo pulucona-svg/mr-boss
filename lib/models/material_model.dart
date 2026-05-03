@@ -8,6 +8,7 @@ class UploadMaterialModel {
   final String semester;
   final int yearOfPublication;
   final String uploadedBy;
+  final String uploaderId;
   final int yearOfUpload;
   final String materialType;
   final String? fileFormat;
@@ -22,6 +23,7 @@ class UploadMaterialModel {
     required this.semester,
     required this.yearOfPublication,
     required this.uploadedBy,
+    required this.uploaderId,
     required this.yearOfUpload,
     required this.materialType,
     this.fileFormat,
@@ -38,11 +40,12 @@ class UploadMaterialModel {
       'semester': semester,
       'yearOfPublication': yearOfPublication,
       'uploadedBy': uploadedBy,
+      'uploaderId': uploaderId,
       'yearOfUpload': yearOfUpload,
       'materialType': materialType,
       'fileFormat': fileFormat,
-      'fileName': file?.path.split('/').last,
-      'thumbnailName': thumbnail?.path.split('/').last,
+      'fileName': file?.path.split(RegExp(r'[/\\]')).last,
+      'thumbnailName': thumbnail?.path.split(RegExp(r'[/\\]')).last,
     };
   }
 
@@ -54,6 +57,7 @@ class UploadMaterialModel {
     String? semester,
     int? yearOfPublication,
     String? uploadedBy,
+    String? uploaderId,
     int? yearOfUpload,
     String? materialType,
     String? fileFormat,
@@ -68,6 +72,7 @@ class UploadMaterialModel {
       semester: semester ?? this.semester,
       yearOfPublication: yearOfPublication ?? this.yearOfPublication,
       uploadedBy: uploadedBy ?? this.uploadedBy,
+      uploaderId: uploaderId ?? this.uploaderId,
       yearOfUpload: yearOfUpload ?? this.yearOfUpload,
       materialType: materialType ?? this.materialType,
       fileFormat: fileFormat ?? this.fileFormat,

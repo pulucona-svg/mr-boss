@@ -180,10 +180,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             ads: [
                               {
                                 'type': 'image',
-                                'title': 'Future Tech 💻',
-                                'subtitle': 'Explore the next generation of AI and Quantum Computing. ⚡',
-                                'url': 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800',
+                                'isAsset': true,
+                                'title': 'Davy Cybers 💻',
+                                'subtitle': 'In need of professional cyber services? Worry no more, Davy Cybers we have got you.',
+                                'url': 'assets/ad_cyber.jpeg',
                                 'color': const Color(0xFF20C8FF),
+                              },
+                              {
+                                'type': 'image',
+                                'isAsset': true,
+                                'title': 'Manu Data 🌐',
+                                'subtitle': 'Tired of expensive data plans? Worry no more, Manu Data Solutions we have got you.',
+                                'url': 'assets/ad_data.jpeg',
+                                'color': const Color(0xFF00A85A),
+                              },
+                              {
+                                'type': 'image',
+                                'isAsset': true,
+                                'title': 'Snake Light 💡',
+                                'subtitle': 'In need of snake light? Say less, we got you with a discount.',
+                                'url': 'assets/ad_snake.jpeg',
+                                'color': const Color(0xFFFF8A00),
                               },
                               {
                                 'type': 'video',
@@ -193,39 +210,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 'color': const Color(0xFF7D46FF),
                               },
                               {
-                                'type': 'image',
-                                'title': 'Modern Transit 🚆',
-                                'subtitle': 'High-speed rail systems redefining cross-country travel.',
-                                'url': 'https://images.unsplash.com/photo-1535490753925-9f76dca21ed1?w=800',
-                                'color': const Color(0xFF00A85A),
-                              },
-                              {
                                 'type': 'video',
                                 'title': 'Electric Motion 🏎️',
                                 'subtitle': 'The electric revolution in high-performance vehicles.',
                                 'url': 'https://assets.mixkit.co/videos/preview/mixkit-blue-sports-car-racing-on-a-track-40243-large.mp4',
                                 'color': const Color(0xFFFF4667),
-                              },
-                              {
-                                'type': 'image',
-                                'title': 'Smart Logistics 🚛',
-                                'subtitle': 'Optimizing global supply chains with autonomous trucking.',
-                                'url': 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800',
-                                'color': const Color(0xFFFF8A00),
-                              },
-                              {
-                                'type': 'image',
-                                'title': 'Deep Space Tech 🌌',
-                                'subtitle': 'Engineering the tools for interplanetary exploration.',
-                                'url': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800',
-                                'color': const Color(0xFF287BFF),
-                              },
-                              {
-                                'type': 'image',
-                                'title': 'Renewable Energy 🔋',
-                                'subtitle': 'The tech behind a sustainable industrial future.',
-                                'url': 'https://images.unsplash.com/photo-1466611653911-95281ecb396d?w=800',
-                                'color': const Color(0xFF00D1FF),
                               },
                             ],
                           ),
@@ -450,8 +439,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           ),
         ),
-      );
-    },
-  );
+      ),
+    );
+  },
+);
 }
 }
