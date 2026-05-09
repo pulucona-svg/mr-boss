@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../services/download_service.dart';
 
 class ResourceDetailsModal extends StatelessWidget {
   final String title;
+  final String type;
   final String thumbnailUrl;
   final String unitName;
   final String unitCode;
+  final String courseProgram;
+  final List<String> programCodes;
   final String materialFormat;
   final String uploadYear;
   final String publicationYear;
@@ -19,9 +23,12 @@ class ResourceDetailsModal extends StatelessWidget {
   const ResourceDetailsModal({
     super.key,
     required this.title,
+    required this.type,
     required this.thumbnailUrl,
     required this.unitName,
     required this.unitCode,
+    this.courseProgram = '',
+    this.programCodes = const [],
     required this.materialFormat,
     required this.uploadYear,
     required this.publicationYear,
@@ -36,9 +43,12 @@ class ResourceDetailsModal extends StatelessWidget {
   Map<String, String> _getResourceData() {
     return {
       'title': title,
+      'type': type,
       'thumbnail': thumbnailUrl,
       'unitName': unitName,
       'unitCode': unitCode,
+      'courseProgram': courseProgram,
+      'programCodes': programCodes.join(','),
       'materialFormat': materialFormat,
       'uploadYear': uploadYear,
       'publicationYear': publicationYear,
@@ -52,6 +62,8 @@ class ResourceDetailsModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTimetable = type == 'Time tables' || type.contains('Timetable');
+
     return Container(
       padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
       decoration: const BoxDecoration(
@@ -75,22 +87,27 @@ class ResourceDetailsModal extends StatelessWidget {
           // Header
           Row(
             children: [
+              // Thumbnail Preview in Details
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF20C8FF).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
                 ),
-                child: const Icon(Icons.info_outline, color: Color(0xFF20C8FF)),
+                clipBehavior: Clip.antiAlias,
+                child: thumbnailUrl.startsWith('http')
+                  ? Image.network(thumbnailUrl, fit: BoxFit.cover)
+                  : Image.file(File(thumbnailUrl), fit: BoxFit.cover),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Material Details',
-                      style: TextStyle(
+                    Text(
+                      isTimetable ? 'Timetable Details' : 'Material Details',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -117,7 +134,20 @@ class ResourceDetailsModal extends StatelessWidget {
           Flexible(
             child: SingleChildScrollView(
               child: Column(
-                children: [
+                children: isTimetable ? [
+                  _buildDetailRow(Icons.school_outlined, 'Program Name', courseProgram),
+                  _buildDetailRow(Icons.code_rounded, 'Program Code', programCodes.join(', ')),
+                  _buildDetailRow(Icons.info_outline, 'Type of Timetable', type.contains('EXAM') ? 'Exam Timetable' : 'Class Timetable'),
+                  _buildDetailRow(Icons.history_edu_outlined, 'Year of Publication', publicationYear),
+                  _buildDetailRow(Icons.school_outlined, 'Year of Study', yearOfStudy),
+                  _buildDetailRow(Icons.layers_outlined, 'Semester', semester),
+                  _buildDetailRow(
+                    Icons.cloud_upload_outlined, 
+                    'Uploaded By', 
+                    '$uploadedBy ($uploaderRole)',
+                    isLast: true,
+                  ),
+                ] : [
                   _buildDetailRow(Icons.book_outlined, 'Unit Name', unitName),
                   _buildDetailRow(Icons.code_rounded, 'Unit Code', unitCode),
                   _buildDetailRow(Icons.file_present_outlined, 'Material Format', materialFormat),

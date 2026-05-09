@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dotted_border/dotted_border.dart';
 import '../providers/upload_provider.dart';
+import '../services/resource_service.dart';
 
 class UploadBottomSheet extends ConsumerStatefulWidget {
   const UploadBottomSheet({super.key});
@@ -16,6 +17,8 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
   final _unitNameController = TextEditingController();
   final _unitCodeController = TextEditingController();
   final _programController = TextEditingController();
+  final _programCodeController = TextEditingController();
+  final _lecturerController = TextEditingController();
   final _yearOfPubController = TextEditingController();
 
   @override
@@ -23,6 +26,8 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     _unitNameController.dispose();
     _unitCodeController.dispose();
     _programController.dispose();
+    _programCodeController.dispose();
+    _lecturerController.dispose();
     _yearOfPubController.dispose();
     super.dispose();
   }
@@ -32,12 +37,29 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     final uploadState = ref.watch(uploadProvider);
     final notifier = ref.read(uploadProvider.notifier);
 
-    // Synchronize controllers with state (for auto-fill)
+    // Synchronize controllers with state (for auto-fill and reset)
     if (_unitNameController.text != uploadState.material.unitName) {
       _unitNameController.text = uploadState.material.unitName;
     }
     if (_unitCodeController.text != uploadState.material.unitCode) {
       _unitCodeController.text = uploadState.material.unitCode;
+    }
+    
+    // Synchronize programs and codes
+    if (uploadState.material.programs.isNotEmpty && _programController.text != uploadState.material.programs.first) {
+      _programController.text = uploadState.material.programs.first;
+    } else if (uploadState.material.programs.isEmpty && _programController.text.isNotEmpty) {
+      _programController.clear();
+    }
+    
+    if (uploadState.material.programCodes.isNotEmpty && _programCodeController.text != uploadState.material.programCodes.first) {
+      _programCodeController.text = uploadState.material.programCodes.first;
+    } else if (uploadState.material.programCodes.isEmpty && _programCodeController.text.isNotEmpty) {
+      _programCodeController.clear();
+    }
+
+    if (uploadState.material.lecturers.isEmpty && _lecturerController.text.isNotEmpty) {
+      _lecturerController.clear();
     }
 
     return Container(
@@ -66,21 +88,27 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
               
               Padding(
                 padding: const EdgeInsets.all(24),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   children: [
-                    const Text(
-                      'Upload Material',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Upload Menu',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, color: Colors.white70),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, color: Colors.white70),
-                    ),
+                    const SizedBox(height: 20),
+                    _buildModeToggle(uploadState, notifier),
                   ],
                 ),
               ),
@@ -91,77 +119,159 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionTitle('Course Details'),
-                      const SizedBox(height: 16),
-                      
-                      // Unit Name
-                      _buildTextField(
-                        label: 'Unit Name',
-                        hint: 'e.g. Digital Electronics',
-                        controller: _unitNameController,
-                        textCapitalization: TextCapitalization.sentences,
-                        icon: Icons.book_outlined,
-                        onChanged: notifier.updateUnitName,
-                        suggestions: ref.watch(unitNameSuggestionsProvider(_unitNameController.text)),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      // Unit Code
-                      _buildTextField(
-                        label: 'Unit Code',
-                        hint: 'e.g. COMP 212',
-                        controller: _unitCodeController,
-                        textCapitalization: TextCapitalization.sentences,
-                        icon: Icons.qr_code_outlined,
-                        onChanged: notifier.updateUnitCode,
-                        suggestions: ref.watch(unitCodeSuggestionsProvider(_unitCodeController.text)),
-                      ),
+                      if (uploadState.uploadMode == 'material') ...[
+                        _sectionTitle('Course Details'),
+                        const SizedBox(height: 16),
+                        
+                        // Unit Name
+                        _buildTextField(
+                          label: 'Unit Name',
+                          hint: 'e.g. Digital Electronics',
+                          controller: _unitNameController,
+                          textCapitalization: TextCapitalization.sentences,
+                          icon: Icons.book_outlined,
+                          onChanged: notifier.updateUnitName,
+                          suggestions: ref.watch(unitNameSuggestionsProvider(_unitNameController.text)),
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Unit Code
+                        _buildTextField(
+                          label: 'Unit Code',
+                          hint: 'e.g. COMP 212',
+                          controller: _unitCodeController,
+                          textCapitalization: TextCapitalization.sentences,
+                          icon: Icons.qr_code_outlined,
+                          onChanged: notifier.updateUnitCode,
+                          suggestions: ref.watch(unitCodeSuggestionsProvider(_unitCodeController.text)),
+                        ),
 
-                      const SizedBox(height: 24),
-                      _sectionTitle('Target Audience'),
-                      const SizedBox(height: 16),
-                      
-                      // Programs Multi-select
-                      _buildProgramSelector(notifier, uploadState),
+                        const SizedBox(height: 24),
+                        _sectionTitle('Target Audience'),
+                        const SizedBox(height: 16),
+                        
+                        // Program Single-select
+                        _buildTextField(
+                          label: 'Target Program',
+                          hint: 'Search or type program...',
+                          controller: _programController,
+                          icon: Icons.school_outlined,
+                          suggestions: ref.read(courseServiceProvider).programsList,
+                          onChanged: notifier.updateProgram,
+                        ),
 
-                      const SizedBox(height: 16),
-                      
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildDropdown(
-                              label: 'Year of Study',
-                              value: uploadState.material.yearOfStudy,
-                              items: ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'],
-                              onChanged: (val) => notifier.updateYearOfStudy(val!),
+                        const SizedBox(height: 16),
+
+                        // Lecturers Multi-select
+                        _buildMultiSelectField(
+                          label: 'Lecturer(s)',
+                          hint: 'Search or type lecturer name...',
+                          controller: _lecturerController,
+                          icon: Icons.person_search_outlined,
+                          suggestions: ref.watch(lecturerSuggestionsProvider('')),
+                          selectedItems: uploadState.material.lecturers,
+                          onToggle: notifier.toggleLecturer,
+                          chipColor: const Color(0xFF00A85A),
+                        ),
+
+                        const SizedBox(height: 16),
+                      ] else ...[
+                        // Timetable Fields
+                        _sectionTitle('Schedule Details'),
+                        const SizedBox(height: 16),
+                        
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDropdown(
+                                label: 'Year of Study',
+                                value: uploadState.material.yearOfStudy,
+                                items: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
+                                onChanged: (val) => notifier.updateYearOfStudy(val!),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildDropdown(
-                              label: 'Semester',
-                              value: uploadState.material.semester,
-                              items: ['Semester 1', 'Semester 2', 'Supplementary'],
-                              onChanged: (val) => notifier.updateSemester(val!),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildDropdown(
+                                label: 'Semester',
+                                value: uploadState.material.semester,
+                                items: ['Semester 1', 'Semester 2'],
+                                onChanged: (val) => notifier.updateSemester(val!),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
 
-                      const SizedBox(height: 24),
+                        const SizedBox(height: 24),
+                        _sectionTitle('Target Audience'),
+                        const SizedBox(height: 16),
+
+                        // Program Single-select
+                        _buildTextField(
+                          label: 'Target Program',
+                          hint: 'Search or type program...',
+                          controller: _programController,
+                          icon: Icons.school_outlined,
+                          suggestions: ref.read(courseServiceProvider).programsList,
+                          onChanged: notifier.updateProgram,
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Program Code Auto-filled
+                        _buildTextField(
+                          label: 'Program Code',
+                          hint: 'e.g. COMP, ENSC, BIT...',
+                          controller: _programCodeController,
+                          icon: Icons.code_rounded,
+                          suggestions: ref.read(courseServiceProvider).programCodes,
+                          onChanged: notifier.updateProgramCode,
+                        ),
+
+                        const SizedBox(height: 16),
+                      ],
+                      
+                      if (uploadState.uploadMode == 'material') ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDropdown(
+                                label: 'Year of Study',
+                                value: uploadState.material.yearOfStudy,
+                                items: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
+                                onChanged: (val) => notifier.updateYearOfStudy(val!),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildDropdown(
+                                label: 'Semester',
+                                value: uploadState.material.semester,
+                                items: ['Semester 1', 'Semester 2'],
+                                onChanged: (val) => notifier.updateSemester(val!),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+                      ],
+
                       _sectionTitle('Material Info'),
                       const SizedBox(height: 16),
                       
                       Row(
                         children: [
                           Expanded(
-                            child: _buildTextField(
+                            child: _buildDropdown(
                               label: 'Pub. Year',
-                              hint: '2023',
-                              keyboardType: TextInputType.number,
-                              icon: Icons.calendar_today_outlined,
-                              onChanged: (val) => notifier.updateYearOfPublication(int.tryParse(val) ?? 0),
+                              value: uploadState.material.yearOfPublication.toString(),
+                              items: List.generate(
+                                DateTime.now().year - 2020 + 1, 
+                                (index) => (DateTime.now().year - index).toString()
+                              ),
+                              onChanged: (val) => notifier.updateYearOfPublication(int.parse(val!)),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -169,7 +279,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                             child: _buildDropdown(
                               label: 'Type',
                               value: uploadState.material.materialType,
-                              items: ['Notes', 'CAT', 'Exam', 'Practical'],
+                              items: uploadState.uploadMode == 'timetable'
+                                  ? ['Class Timetable', 'EXAM Timetable']
+                                  : ['Notes', 'CATs', 'Exams', 'Time tables', 'Prac Manual', 'Supplementary Exams'],
                               onChanged: (val) => notifier.updateMaterialType(val!),
                             ),
                           ),
@@ -180,33 +292,42 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                       _sectionTitle('Files'),
                       const SizedBox(height: 16),
                       
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildFilePicker(
-                              label: 'Material File',
-                              file: uploadState.material.file,
-                              icon: Icons.picture_as_pdf_outlined,
-                              onTap: notifier.pickDocument,
+                      if (uploadState.uploadMode == 'timetable')
+                        _buildFilePicker(
+                          label: 'Timetable Image',
+                          file: uploadState.material.file,
+                          isImage: true,
+                          icon: Icons.calendar_month_outlined,
+                          onTap: notifier.pickTimetableImage,
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildFilePicker(
+                                label: 'Material File',
+                                file: uploadState.material.file,
+                                icon: Icons.picture_as_pdf_outlined,
+                                onTap: notifier.pickDocument,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildFilePicker(
-                              label: 'Thumbnail',
-                              file: uploadState.material.thumbnail,
-                              isImage: true,
-                              icon: Icons.image_outlined,
-                              onTap: notifier.pickThumbnail,
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildFilePicker(
+                                label: 'Thumbnail',
+                                file: uploadState.material.thumbnail,
+                                isImage: true,
+                                icon: Icons.image_outlined,
+                                onTap: notifier.pickThumbnail,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
 
                       const SizedBox(height: 32),
                       
                       // Auto-filled info
-                      _buildInfoRow('Uploaded By', uploadState.material.uploadedBy),
+                      _buildInfoRow('Uploaded By', uploadState.material.uploadedBy == ResourceService.currentUserName ? 'Me' : uploadState.material.uploadedBy),
                       const SizedBox(height: 8),
                       _buildInfoRow('Upload Year', uploadState.material.yearOfUpload.toString()),
                       
@@ -223,10 +344,150 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             ],
           ),
           
+          // Duplicate Replacement Prompt
+          if (uploadState.showReplacePrompt)
+            _buildDialogOverlay(
+              title: 'Duplicate Upload',
+              message: 'You have already uploaded such a material. Would you like to replace the first one?',
+              onConfirm: notifier.confirmReplace,
+              onCancel: notifier.cancelReplace,
+              confirmLabel: 'YES',
+              cancelLabel: 'NO',
+            ),
+
+          // Approved Material Message
+          if (uploadState.showApprovedMessage)
+            _buildDialogOverlay(
+              title: 'Already Approved',
+              message: "The previous material has already been approved by admin and can't be replaced because it's already uploaded to the platform. Contact admin if you want it removed.",
+              onConfirm: notifier.dismissApprovedMessage,
+              confirmLabel: 'OKAY',
+            ),
+          
           // Progress Overlay
           if (uploadState.isUploading)
             _buildLoadingOverlay(uploadState.uploadProgress),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeToggle(UploadState state, UploadNotifier notifier) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => notifier.updateUploadMode('material'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: state.uploadMode == 'material' ? const Color(0xFF00A85A) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Center(
+                  child: Text(
+                    'materials',
+                    style: TextStyle(
+                      color: state.uploadMode == 'material' ? Colors.white : Colors.white60,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => notifier.updateUploadMode('timetable'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: state.uploadMode == 'timetable' ? const Color(0xFF00A85A) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Center(
+                  child: Text(
+                    'Time tables',
+                    style: TextStyle(
+                      color: state.uploadMode == 'timetable' ? Colors.white : Colors.white60,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDialogOverlay({
+    required String title,
+    required String message,
+    required VoidCallback onConfirm,
+    VoidCallback? onCancel,
+    required String confirmLabel,
+    String? cancelLabel,
+  }) {
+    return Container(
+      color: Colors.black87,
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A2E),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (onCancel != null) ...[
+                    TextButton(
+                      onPressed: onCancel,
+                      child: Text(cancelLabel ?? 'CANCEL', style: const TextStyle(color: Colors.white38)),
+                    ),
+                    const SizedBox(width: 16),
+                  ],
+                  ElevatedButton(
+                    onPressed: onConfirm,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF20C8FF),
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(confirmLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -371,13 +632,22 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     );
   }
 
-  Widget _buildProgramSelector(UploadNotifier notifier, UploadState state) {
+  Widget _buildMultiSelectField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required IconData icon,
+    required List<String> suggestions,
+    required List<String> selectedItems,
+    required Function(String) onToggle,
+    required Color chipColor,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Target Program(s)',
-          style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Autocomplete<String>(
@@ -385,24 +655,29 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             if (textEditingValue.text.isEmpty) {
               return const Iterable<String>.empty();
             }
-            return ref.read(courseServiceProvider).programsList
-                .where((p) => p.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+            return suggestions.where((option) {
+              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+            });
           },
           onSelected: (String selection) {
-            notifier.toggleProgram(selection);
-            _programController.clear();
+            onToggle(selection);
+            // We don't clear or unfocus here to keep the menu potentially visible
           },
           fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
-            _programController.text = textController.text;
             return TextField(
               controller: textController,
               focusNode: focusNode,
-              textCapitalization: TextCapitalization.sentences,
               style: const TextStyle(color: Colors.white),
+              onChanged: (val) => setState(() {}),
+              onSubmitted: (val) {
+                // Just clear and unfocus; don't add what's typed to the selection
+                textController.clear();
+                focusNode.unfocus(); 
+              },
               decoration: InputDecoration(
-                hintText: 'Search programs...',
+                hintText: hint,
                 hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                prefixIcon: const Icon(Icons.school_outlined, color: Color(0xFF20C8FF), size: 20),
+                prefixIcon: Icon(icon, color: const Color(0xFF20C8FF), size: 20),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
@@ -413,19 +688,62 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
               ),
             );
           },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: const Color(0xFF1A1A2E),
+                elevation: 4,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: MediaQuery.of(context).size.width - 48,
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final option = options.elementAt(index);
+                      final isSelected = selectedItems.contains(option);
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isSelected ? Icons.check_circle : Icons.add_circle_outline,
+                          color: isSelected ? const Color(0xFF20C8FF) : Colors.white24,
+                          size: 18,
+                        ),
+                        title: Text(
+                          option,
+                          style: TextStyle(
+                            color: isSelected ? const Color(0xFF20C8FF) : Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                        onTap: () {
+                          onToggle(option);
+                          // Do NOT call onSelected(option) because it closes the menu
+                          setState(() {}); 
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
         ),
-        if (state.material.programs.isNotEmpty) ...[
+        if (selectedItems.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: state.material.programs.map((p) {
+            children: selectedItems.map((item) {
               return Chip(
-                label: Text(p, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                backgroundColor: const Color(0xFF7B5CFF).withValues(alpha: 0.2),
-                side: const BorderSide(color: Color(0xFF7B5CFF), width: 0.5),
+                label: Text(item, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                backgroundColor: chipColor.withValues(alpha: 0.2),
+                side: BorderSide(color: chipColor, width: 0.5),
                 deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white),
-                onDeleted: () => notifier.toggleProgram(p),
+                onDeleted: () => onToggle(item),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               );
             }).toList(),

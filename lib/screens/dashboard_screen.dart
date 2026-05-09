@@ -268,6 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             materialFormat: res.materialFormat,
                             thumbnailUrl: res.thumbnailUrl,                            unitName: res.unitName,
                             unitCode: res.unitCode,
+                            programCodes: res.programCodes,
                             year: res.year,
                             uploadYear: res.uploadYear,
                             publicationYear: res.publicationYear,

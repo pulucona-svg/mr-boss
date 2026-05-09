@@ -4,6 +4,8 @@ class UploadMaterialModel {
   final String unitName;
   final String unitCode;
   final List<String> programs;
+  final List<String> programCodes;
+  final List<String> lecturers;
   final String yearOfStudy;
   final String semester;
   final int yearOfPublication;
@@ -19,6 +21,8 @@ class UploadMaterialModel {
     required this.unitName,
     required this.unitCode,
     required this.programs,
+    this.programCodes = const [],
+    this.lecturers = const [],
     required this.yearOfStudy,
     required this.semester,
     required this.yearOfPublication,
@@ -36,6 +40,8 @@ class UploadMaterialModel {
       'unitName': unitName,
       'unitCode': unitCode,
       'programs': programs,
+      'programCodes': programCodes,
+      'lecturers': lecturers,
       'yearOfStudy': yearOfStudy,
       'semester': semester,
       'yearOfPublication': yearOfPublication,
@@ -53,6 +59,8 @@ class UploadMaterialModel {
     String? unitName,
     String? unitCode,
     List<String>? programs,
+    List<String>? programCodes,
+    List<String>? lecturers,
     String? yearOfStudy,
     String? semester,
     int? yearOfPublication,
@@ -68,6 +76,8 @@ class UploadMaterialModel {
       unitName: unitName ?? this.unitName,
       unitCode: unitCode ?? this.unitCode,
       programs: programs ?? this.programs,
+      programCodes: programCodes ?? this.programCodes,
+      lecturers: lecturers ?? this.lecturers,
       yearOfStudy: yearOfStudy ?? this.yearOfStudy,
       semester: semester ?? this.semester,
       yearOfPublication: yearOfPublication ?? this.yearOfPublication,

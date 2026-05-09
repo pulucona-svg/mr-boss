@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'comment_modal.dart';
 import 'resource_details_modal.dart';
@@ -31,6 +32,7 @@ class ResourceCard extends StatefulWidget {
     this.isLiked = false,
     this.showDownload = true,
     this.materialFormat = 'PDF',
+    this.programCodes = const [],
     this.status,
     this.declineReason,
     this.onLikeToggle,
@@ -44,6 +46,7 @@ class ResourceCard extends StatefulWidget {
   final VoidCallback onTap;
   final String unitName;
   final String unitCode;
+  final List<String> programCodes;
   final String year;
   final String uploadYear;
   final String publicationYear;
@@ -133,15 +136,20 @@ class _ResourceCardState extends State<ResourceCard> {
   void _showDetails() {
     _incrementView();
     ResourceService().setActiveResource(widget.title);
+    final resource = ResourceService().findResourceByTitle(widget.title);
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ResourceDetailsModal(
         title: widget.title,
+        type: widget.type,
         thumbnailUrl: widget.thumbnailUrl,
         unitName: widget.unitName,
         unitCode: widget.unitCode,
+        courseProgram: resource?.courseProgram ?? '',
+        programCodes: resource?.programCodes ?? widget.programCodes,
         materialFormat: widget.materialFormat,
         uploadYear: widget.uploadYear,
         publicationYear: widget.publicationYear,
@@ -156,6 +164,7 @@ class _ResourceCardState extends State<ResourceCard> {
   }
 
   String _getTypeLabel(String type) {
+    if (type.contains('Timetable')) return 'TABLE';
     switch (type) {
       case 'Notes':
         return 'NOTES';
@@ -299,18 +308,27 @@ class _ResourceCardState extends State<ResourceCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        CachedNetworkImage(
-                          imageUrl: widget.thumbnailUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: Colors.white10,
-                            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            color: Colors.white10,
-                            child: const Icon(Icons.broken_image, color: Colors.white24),
-                          ),
-                        ),
+                        widget.thumbnailUrl.startsWith('http')
+                          ? CachedNetworkImage(
+                              imageUrl: widget.thumbnailUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(
+                                color: Colors.white10,
+                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: Colors.white10,
+                                child: const Icon(Icons.broken_image, color: Colors.white24),
+                              ),
+                            )
+                          : Image.file(
+                              File(widget.thumbnailUrl),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: Colors.white10,
+                                child: const Icon(Icons.broken_image, color: Colors.white24),
+                              ),
+                            ),
                         Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -342,6 +360,31 @@ class _ResourceCardState extends State<ResourceCard> {
                             ),
                           ),
                         ),
+
+                        if (widget.type == 'Time tables' || widget.type.contains('Timetable'))
+                          Positioned(
+                            top: 10,
+                            right: widget.showDownload ? 50 : 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: widget.type.contains('EXAM') 
+                                    ? const Color(0xFFFF4667).withValues(alpha: 0.8) 
+                                    : const Color(0xFF00A85A).withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.white24, width: 0.5),
+                              ),
+                              child: Text(
+                                widget.type.contains('EXAM') ? 'EXAM' : 'CLASS',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                            ),
+                          ),
                         
                         if (widget.showDownload)
                           Positioned(
@@ -429,7 +472,12 @@ class _ResourceCardState extends State<ResourceCard> {
                       children: [
                         Row(
                           children: [
-                            _pill(widget.unitCode, const Color(0xFFD92680)),
+                            _pill(
+                              (widget.type == 'Time tables' || widget.type.contains('Timetable')) && widget.programCodes.isNotEmpty
+                                  ? widget.programCodes.join(', ')
+                                  : widget.unitCode,
+                              const Color(0xFFD92680),
+                            ),
                             const SizedBox(width: 4),
                             _pill(widget.publicationYear, const Color(0xFFD9BD26)),
                             const Spacer(),

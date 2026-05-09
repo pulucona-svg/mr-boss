@@ -18,6 +18,7 @@ class Resource {
   final String uploaderRole;
   final String uploaderId;
   final String courseProgram;
+  final List<String> programCodes;
   final String materialFormat;
   final DateTime uploadDate;
   String? status; // 'approved', 'waiting', 'declined'
@@ -45,6 +46,7 @@ class Resource {
     required this.uploaderId,
     required this.uploadDate,
     this.courseProgram = 'Computer Science',
+    this.programCodes = const [],
     this.materialFormat = 'PDF',
     this.status,
     this.declineReason,
@@ -84,6 +86,7 @@ class Resource {
       'uploadedBy': uploadedBy,
       'uploaderRole': uploaderRole,
       'courseProgram': courseProgram,
+      'programCodes': programCodes.join(','),
       'status': status ?? '',
       'declineReason': declineReason ?? '',
       'views': views.toString(),
@@ -332,6 +335,32 @@ class ResourceService extends ChangeNotifier {
   void addUpload(Resource resource) {
     _userUploads.add(resource);
     notifyListeners();
+  }
+
+  Resource? findDuplicate(String unitCode, String type, String yearOfStudy, String semester, String publicationYear) {
+    try {
+      // Check in user uploads first
+      return _userUploads.firstWhere(
+        (r) => r.unitCode == unitCode && 
+               r.type == type && 
+               r.yearOfStudy == yearOfStudy && 
+               r.semester == semester &&
+               r.publicationYear == publicationYear
+      );
+    } catch (_) {
+      try {
+        // Then check in approved global resources
+        return _allResources.firstWhere(
+          (r) => r.unitCode == unitCode && 
+                 r.type == type && 
+                 r.yearOfStudy == yearOfStudy && 
+                 r.semester == semester &&
+                 r.publicationYear == publicationYear
+        );
+      } catch (_) {
+        return null;
+      }
+    }
   }
 
   void deleteUpload(String title) {
