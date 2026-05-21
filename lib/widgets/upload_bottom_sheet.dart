@@ -22,6 +22,15 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
   final _yearOfPubController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Ensure the provider is reset every time the bottom sheet is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(uploadProvider);
+    });
+  }
+
+  @override
   void dispose() {
     _unitNameController.dispose();
     _unitCodeController.dispose();
@@ -151,14 +160,16 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _sectionTitle('Target Audience'),
                         const SizedBox(height: 16),
                         
-                        // Program Single-select
-                        _buildTextField(
-                          label: 'Target Program',
+                        // Target Program Multi-select
+                        _buildMultiSelectField(
+                          label: 'Target Program(s)',
                           hint: 'Search or type program...',
                           controller: _programController,
                           icon: Icons.school_outlined,
-                          suggestions: ref.read(courseServiceProvider).programsList,
-                          onChanged: notifier.updateProgram,
+                          suggestions: ref.watch(programSuggestionsProvider(_programController.text)),
+                          selectedItems: uploadState.material.programs,
+                          onToggle: notifier.toggleProgram,
+                          chipColor: const Color(0xFF20C8FF),
                         ),
 
                         const SizedBox(height: 16),
@@ -169,7 +180,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                           hint: 'Search or type lecturer name...',
                           controller: _lecturerController,
                           icon: Icons.person_search_outlined,
-                          suggestions: ref.watch(lecturerSuggestionsProvider('')),
+                          suggestions: ref.watch(lecturerSuggestionsProvider(_lecturerController.text)),
                           selectedItems: uploadState.material.lecturers,
                           onToggle: notifier.toggleLecturer,
                           chipColor: const Color(0xFF00A85A),
@@ -281,12 +292,22 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                               value: uploadState.material.materialType,
                               items: uploadState.uploadMode == 'timetable'
                                   ? ['Class Timetable', 'EXAM Timetable']
-                                  : ['Notes', 'CATs', 'Exams', 'Time tables', 'Prac Manual', 'Supplementary Exams'],
+                                  : ['Notes', 'CATs', 'Exams', 'Prac Manual', 'Supplementary Exams'],
                               onChanged: (val) => notifier.updateMaterialType(val!),
                             ),
                           ),
                         ],
                       ),
+
+                      if (uploadState.material.materialType == 'CATs') ...[
+                        const SizedBox(height: 16),
+                        _buildDropdown(
+                          label: 'CAT Selection',
+                          value: uploadState.material.catType ?? 'CAT 1',
+                          items: ['CAT 1', 'CAT 2'],
+                          onChanged: (val) => notifier.updateCatType(val!),
+                        ),
+                      ],
 
                       const SizedBox(height: 24),
                       _sectionTitle('Files'),
@@ -301,27 +322,11 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                           onTap: notifier.pickTimetableImage,
                         )
                       else
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildFilePicker(
-                                label: 'Material File',
-                                file: uploadState.material.file,
-                                icon: Icons.picture_as_pdf_outlined,
-                                onTap: notifier.pickDocument,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildFilePicker(
-                                label: 'Thumbnail',
-                                file: uploadState.material.thumbnail,
-                                isImage: true,
-                                icon: Icons.image_outlined,
-                                onTap: notifier.pickThumbnail,
-                              ),
-                            ),
-                          ],
+                        _buildFilePicker(
+                          label: 'Material File',
+                          file: uploadState.material.file,
+                          icon: Icons.picture_as_pdf_outlined,
+                          onTap: notifier.pickDocument,
                         ),
 
                       const SizedBox(height: 32),
@@ -653,7 +658,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
         Autocomplete<String>(
           optionsBuilder: (TextEditingValue textEditingValue) {
             if (textEditingValue.text.isEmpty) {
-              return const Iterable<String>.empty();
+              return suggestions;
             }
             return suggestions.where((option) {
               return option.toLowerCase().contains(textEditingValue.text.toLowerCase());

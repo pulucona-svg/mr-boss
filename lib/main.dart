@@ -7,9 +7,23 @@ import 'screens/library_screen.dart';
 import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
+import 'services/course_service.dart';
+import 'providers/upload_provider.dart';
 
-void main() {
-  runApp(const ProviderScope(child: MirrorApp()));
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  final courseService = CourseService();
+  await courseService.init();
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        courseServiceProvider.overrideWithValue(courseService),
+      ],
+      child: const MirrorApp(),
+    ),
+  );
 }
 
 class MirrorApp extends StatelessWidget {

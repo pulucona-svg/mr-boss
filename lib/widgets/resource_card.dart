@@ -312,6 +312,8 @@ class _ResourceCardState extends State<ResourceCard> {
                           ? CachedNetworkImage(
                               imageUrl: widget.thumbnailUrl,
                               fit: BoxFit.cover,
+                              // Ensure images are cached for long-term offline access
+                              cacheKey: widget.thumbnailUrl,
                               placeholder: (context, url) => Container(
                                 color: Colors.white10,
                                 child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),

@@ -18,6 +18,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
   Map<String, String> _activeFilters = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _simulateLoading();
+  }
+
+  void _simulateLoading() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _showNotifications() {
     showModalBottomSheet(
@@ -64,13 +86,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF070716),
+        body: DashboardSkeleton(),
+      );
+    }
+
     return ListenableBuilder(
       listenable: ResourceService(),
       builder: (context, child) {
         final allResources = ResourceService().allResources;
         final filteredResources = allResources.where((res) {
           final matchesCategory = _selectedCategory == 'All' || res.type == _selectedCategory;
-          final matchesSearch = res.title.toLowerCase().contains(_searchController.text.toLowerCase());
+          final query = _searchController.text.toLowerCase();
+          final matchesSearch = res.title.toLowerCase().contains(query) ||
+                               res.courseProgram.toLowerCase().contains(query) ||
+                               res.unitCode.toLowerCase().contains(query);
           
           bool matchesFilters = true;
           _activeFilters.forEach((key, value) {

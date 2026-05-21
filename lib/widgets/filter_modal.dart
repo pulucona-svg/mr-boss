@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/resource_service.dart';
+import '../providers/upload_provider.dart';
 
-class FilterModal extends StatefulWidget {
+class FilterModal extends ConsumerStatefulWidget {
   final Map<String, String> initialFilters;
   final Function(Map<String, String>) onApply;
 
@@ -12,10 +14,10 @@ class FilterModal extends StatefulWidget {
   });
 
   @override
-  State<FilterModal> createState() => _FilterModalState();
+  ConsumerState<FilterModal> createState() => _FilterModalState();
 }
 
-class _FilterModalState extends State<FilterModal> {
+class _FilterModalState extends ConsumerState<FilterModal> {
   late Map<String, String> _filters;
   final TextEditingController _lecturerController = TextEditingController();
   final TextEditingController _programController = TextEditingController();
@@ -37,11 +39,37 @@ class _FilterModalState extends State<FilterModal> {
 
   List<String> _getYearOptions() {
     final currentYear = DateTime.now().year;
-    return List.generate(currentYear - 2020 + 1, (index) => (2020 + index).toString());
+    final allResources = ResourceService().allResources;
+    final years = allResources.map((r) => r.publicationYear).where((y) => y.isNotEmpty).toSet().toList();
+    
+    // Ensure current years are also available if no resources yet
+    for (var i = 0; i < 5; i++) {
+      years.add((currentYear - i).toString());
+    }
+    
+    final sortedYears = years.toList();
+    sortedYears.sort((a, b) => b.compareTo(a));
+    return sortedYears;
   }
 
   @override
   Widget build(BuildContext context) {
+    final courseService = ref.watch(courseServiceProvider);
+    
+    // Combine lecturers from course data and current resources
+    final allLecturers = {
+      ...courseService.lecturersList,
+      ...ResourceService().getUniqueLecturers(),
+    }.where((l) => l.isNotEmpty).toList();
+    allLecturers.sort();
+
+    // Combine programs from course data and current resources
+    final allPrograms = {
+      ...courseService.programsList,
+      ...ResourceService().getUniquePrograms(),
+    }.where((p) => p.isNotEmpty).toList();
+    allPrograms.sort();
+
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
       minChildSize: 0.5,
@@ -124,7 +152,7 @@ class _FilterModalState extends State<FilterModal> {
                       'Type lecturer name...', 
                       _lecturerController, 
                       'lecturer',
-                      ResourceService().getUniqueLecturers(),
+                      allLecturers,
                     ),
 
                     _buildSearchFilterSection(
@@ -132,7 +160,7 @@ class _FilterModalState extends State<FilterModal> {
                       'Type program name...', 
                       _programController, 
                       'courseProgram',
-                      ResourceService().getUniquePrograms(),
+                      allPrograms,
                     ),
 
                     _buildFilterSection('Year of Study', ['1st Year', '2nd Year', '3rd Year', '4th Year'], 'yearOfStudy'),

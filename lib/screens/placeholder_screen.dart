@@ -1,11 +1,34 @@
 import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
+import '../widgets/skeleton.dart';
 
-class PlaceholderScreen extends StatelessWidget {
+class PlaceholderScreen extends StatefulWidget {
   const PlaceholderScreen({super.key, required this.title});
 
   final String title;
+
+  @override
+  State<PlaceholderScreen> createState() => _PlaceholderScreenState();
+}
+
+class _PlaceholderScreenState extends State<PlaceholderScreen> {
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _simulateLoading();
+  }
+
+  void _simulateLoading() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   void _showNotifications(BuildContext context) {
     showModalBottomSheet(
@@ -18,6 +41,13 @@ class PlaceholderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF070716),
+        body: ExploreSkeleton(),
+      );
+    }
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -35,7 +65,7 @@ class PlaceholderScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    title,
+                    widget.title,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 32,
@@ -78,7 +108,7 @@ class PlaceholderScreen extends StatelessWidget {
             Expanded(
               child: Center(
                 child: Text(
-                  '$title Coming Soon',
+                  '${widget.title} Coming Soon',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,

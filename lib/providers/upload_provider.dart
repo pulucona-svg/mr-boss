@@ -44,8 +44,7 @@ class UploadState {
           material.semester.isNotEmpty &&
           material.yearOfPublication > 1900 &&
           material.materialType.isNotEmpty &&
-          material.file != null &&
-          material.thumbnail != null;
+          material.file != null;
     } else {
       // Timetable mode: requires programs, programCodes, yearOfStudy, semester, files
       return material.programs.isNotEmpty &&
@@ -53,8 +52,7 @@ class UploadState {
           material.yearOfStudy.isNotEmpty &&
           material.semester.isNotEmpty &&
           material.yearOfPublication > 1900 &&
-          material.file != null &&
-          material.thumbnail != null;
+          material.file != null;
     }
   }
 
@@ -117,20 +115,119 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
   void updateUnitName(String name) {
     final code = _courseService.getCodeByName(name);
+    final units = _courseService.getUnitsByCode(code ?? '');
+    
+    String yearOfStudy = state.material.yearOfStudy;
+    String semester = state.material.semester;
+    Set<String> programs = Set.from(state.material.programs);
+    Set<String> programCodes = Set.from(state.material.programCodes);
+    Set<String> lecturers = Set.from(state.material.lecturers);
+
+    if (units.isNotEmpty) {
+      // Aggregate all programs and lecturers for this unit
+      programs.clear();
+      programCodes.clear();
+      lecturers.clear();
+      
+      for (var u in units) {
+        if (u.programName.isNotEmpty) programs.add(u.programName);
+        if (u.programCode.isNotEmpty) programCodes.add(u.programCode);
+        if (u.lecturerName.isNotEmpty) lecturers.add(u.lecturerName);
+      }
+      
+      // Use the first unit match for year and semester
+      final firstMatch = units.first;
+      yearOfStudy = _normalizeYear(firstMatch.yearOfStudy);
+      semester = _normalizeSemester(firstMatch.semester);
+    }
+
     state = state.copyWith(
       material: state.material.copyWith(
         unitName: name,
         unitCode: code ?? state.material.unitCode,
+        yearOfStudy: yearOfStudy,
+        semester: semester,
+        programs: programs.toList(),
+        programCodes: programCodes.toList(),
+        lecturers: lecturers.toList(),
       ),
     );
   }
 
   void updateUnitCode(String code) {
     final name = _courseService.getNameByCode(code);
+    final units = _courseService.getUnitsByCode(code);
+    
+    String yearOfStudy = state.material.yearOfStudy;
+    String semester = state.material.semester;
+    Set<String> programs = Set.from(state.material.programs);
+    Set<String> programCodes = Set.from(state.material.programCodes);
+    Set<String> lecturers = Set.from(state.material.lecturers);
+
+    if (units.isNotEmpty) {
+      programs.clear();
+      programCodes.clear();
+      lecturers.clear();
+      
+      for (var u in units) {
+        if (u.programName.isNotEmpty) programs.add(u.programName);
+        if (u.programCode.isNotEmpty) programCodes.add(u.programCode);
+        if (u.lecturerName.isNotEmpty) lecturers.add(u.lecturerName);
+      }
+      
+      final firstMatch = units.first;
+      yearOfStudy = _normalizeYear(firstMatch.yearOfStudy);
+      semester = _normalizeSemester(firstMatch.semester);
+    }
+
     state = state.copyWith(
       material: state.material.copyWith(
         unitCode: code,
         unitName: name ?? state.material.unitName,
+        yearOfStudy: yearOfStudy,
+        semester: semester,
+        programs: programs.toList(),
+        programCodes: programCodes.toList(),
+        lecturers: lecturers.toList(),
+      ),
+    );
+  }
+
+  String _normalizeYear(String year) {
+    final y = year.trim();
+    if (y == '1' || y.toLowerCase().startsWith('1st')) return '1st Year';
+    if (y == '2' || y.toLowerCase().startsWith('2nd')) return '2nd Year';
+    if (y == '3' || y.toLowerCase().startsWith('3rd')) return '3rd Year';
+    if (y == '4' || y.toLowerCase().startsWith('4th')) return '4th Year';
+    return '1st Year'; // Default fallback
+  }
+
+  String _normalizeSemester(String sem) {
+    final s = sem.trim();
+    if (s == '1' || s.toLowerCase().contains('1')) return 'Semester 1';
+    if (s == '2' || s.toLowerCase().contains('2')) return 'Semester 2';
+    return 'Semester 1'; // Default fallback
+  }
+
+  void toggleProgram(String program) {
+    final programs = List<String>.from(state.material.programs);
+    final codes = List<String>.from(state.material.programCodes);
+    final code = _courseService.getProgramCode(program);
+
+    if (programs.contains(program)) {
+      programs.remove(program);
+      if (code != null) codes.remove(code);
+    } else {
+      programs.add(program);
+      if (code != null) {
+        if (!codes.contains(code)) codes.add(code);
+      }
+    }
+    
+    state = state.copyWith(
+      material: state.material.copyWith(
+        programs: programs,
+        programCodes: codes,
       ),
     );
   }
@@ -180,7 +277,18 @@ class UploadNotifier extends StateNotifier<UploadState> {
   }
 
   void updateMaterialType(String type) {
-    state = state.copyWith(material: state.material.copyWith(materialType: type));
+    state = state.copyWith(
+      material: state.material.copyWith(
+        materialType: type,
+        catType: type == 'CATs' ? 'CAT 1' : null,
+      ),
+    );
+  }
+
+  void updateCatType(String catType) {
+    state = state.copyWith(
+      material: state.material.copyWith(catType: catType),
+    );
   }
 
   Future<void> pickDocument() async {
@@ -260,6 +368,18 @@ class UploadNotifier extends StateNotifier<UploadState> {
     state = state.copyWith(isUploading: true, error: null, isSuccess: false);
 
     try {
+      String resourceTitle;
+      if (state.uploadMode == 'timetable') {
+        resourceTitle = '${state.material.programs.join(", ")} Timetable';
+      } else if (state.material.materialType == 'CATs' && state.material.catType != null) {
+        resourceTitle = '${state.material.unitName} ${state.material.catType}';
+      } else {
+        resourceTitle = state.material.unitName;
+      }
+
+      // Generate a thematic thumbnail URL based on the unit name
+      final thumbnailUrl = _getThematicThumbnail(state.material.unitName, state.material.unitCode);
+
       await _uploadService.uploadMaterial(
         state.material,
         (progress) {
@@ -273,11 +393,11 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
       // Create a Resource object and add to ResourceService
       final resource = Resource(
-        title: state.uploadMode == 'timetable' 
-            ? '${state.material.programs.join(", ")} Timetable' 
-            : state.material.unitName,
+        title: resourceTitle,
         type: state.material.materialType,
-        thumbnailUrl: state.material.thumbnail!.path, // Use the local file path
+        thumbnailUrl: state.uploadMode == 'timetable' && state.material.thumbnail != null 
+            ? state.material.thumbnail!.path 
+            : thumbnailUrl,
         unitName: state.material.unitName,
         unitCode: state.material.unitCode,
         year: state.material.yearOfUpload.toString(),
@@ -312,6 +432,33 @@ class UploadNotifier extends StateNotifier<UploadState> {
     } catch (e) {
       state = state.copyWith(isUploading: false, error: e.toString());
     }
+  }
+
+  String _getThematicThumbnail(String unitName, String unitCode) {
+    final name = unitName.toLowerCase();
+    final code = unitCode.toLowerCase();
+    
+    // Map keywords to Unsplash search terms for academic subjects
+    if (name.contains('comput') || name.contains('digital') || name.contains('software') || code.startsWith('comp')) {
+      return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&q=80'; // Tech/CPU
+    } else if (name.contains('math') || name.contains('calculus') || name.contains('stat') || code.startsWith('math')) {
+      return 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=400&q=80'; // Math/Blackboard
+    } else if (name.contains('physics') || name.contains('electron') || code.startsWith('phys')) {
+      return 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=400&q=80'; // Physics/Atom
+    } else if (name.contains('biolog') || name.contains('anatomy') || name.contains('health') || code.startsWith('biol')) {
+      return 'https://images.unsplash.com/photo-1530213786676-41ad9f7736f6?w=400&q=80'; // Biology/Cells
+    } else if (name.contains('chem') || code.startsWith('chem')) {
+      return 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=400&q=80'; // Chemistry/Lab
+    } else if (name.contains('business') || name.contains('econom') || name.contains('account') || code.startsWith('bcom') || code.startsWith('econ')) {
+      return 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80'; // Business/Charts
+    } else if (name.contains('law') || name.contains('huri') || code.startsWith('huri')) {
+      return 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=400&q=80'; // Law/Gavel
+    } else if (name.contains('literat') || name.contains('hist') || name.contains('psychol')) {
+      return 'https://images.unsplash.com/photo-1491841573634-28140fc7ced7?w=400&q=80'; // Arts/Books
+    }
+    
+    // Default academic thumbnail
+    return 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=400&q=80';
   }
 
   void confirmReplace() {
@@ -349,7 +496,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
 }
 
 // Provider for the UploadNotifier
-final uploadProvider = StateNotifierProvider<UploadNotifier, UploadState>((ref) {
+final uploadProvider = StateNotifierProvider.autoDispose<UploadNotifier, UploadState>((ref) {
   return UploadNotifier(
     ref.watch(courseServiceProvider),
     ref.watch(fileServiceProvider),
@@ -357,8 +504,19 @@ final uploadProvider = StateNotifierProvider<UploadNotifier, UploadState>((ref) 
   );
 });
 
-// Suggestions provider
-final programSuggestionsProvider = Provider.family<List<String>, String>((ref, query) {
+// Suggestions providers
+final programSuggestionsProvider = Provider.autoDispose.family<List<String>, String>((ref, query) {
+  final uploadState = ref.watch(uploadProvider);
+  final unitCode = uploadState.material.unitCode;
+  
+  if (unitCode.isNotEmpty) {
+    // If a unit is selected, suggest only programs associated with that unit
+    final units = ref.watch(courseServiceProvider).getUnitsByCode(unitCode);
+    final unitPrograms = units.map((u) => u.programName).where((p) => p.isNotEmpty).toSet().toList();
+    if (query.isEmpty) return unitPrograms;
+    return unitPrograms.where((p) => p.toLowerCase().contains(query.toLowerCase())).toList();
+  }
+
   final programs = ref.watch(courseServiceProvider).programsList;
   if (query.isEmpty) return [];
   return programs
@@ -366,7 +524,17 @@ final programSuggestionsProvider = Provider.family<List<String>, String>((ref, q
       .toList();
 });
 
-final lecturerSuggestionsProvider = Provider.family<List<String>, String>((ref, query) {
+final lecturerSuggestionsProvider = Provider.autoDispose.family<List<String>, String>((ref, query) {
+  final uploadState = ref.watch(uploadProvider);
+  final unitCode = uploadState.material.unitCode;
+
+  if (unitCode.isNotEmpty) {
+    final units = ref.watch(courseServiceProvider).getUnitsByCode(unitCode);
+    final unitLecturers = units.map((u) => u.lecturerName).where((l) => l.isNotEmpty).toSet().toList();
+    if (query.isEmpty) return unitLecturers;
+    return unitLecturers.where((l) => l.toLowerCase().contains(query.toLowerCase())).toList();
+  }
+
   final lecturers = ref.watch(resourceServiceProvider).getUniqueLecturers();
   if (query.isEmpty) return lecturers;
   return lecturers
@@ -374,7 +542,7 @@ final lecturerSuggestionsProvider = Provider.family<List<String>, String>((ref, 
       .toList();
 });
 
-final unitNameSuggestionsProvider = Provider.family<List<String>, String>((ref, query) {
+final unitNameSuggestionsProvider = Provider.autoDispose.family<List<String>, String>((ref, query) {
   final names = ref.watch(courseServiceProvider).courseNames;
   if (query.isEmpty) return names;
   return names
@@ -382,7 +550,7 @@ final unitNameSuggestionsProvider = Provider.family<List<String>, String>((ref, 
       .toList();
 });
 
-final unitCodeSuggestionsProvider = Provider.family<List<String>, String>((ref, query) {
+final unitCodeSuggestionsProvider = Provider.autoDispose.family<List<String>, String>((ref, query) {
   final codes = ref.watch(courseServiceProvider).courseCodes;
   if (query.isEmpty) return codes;
   return codes

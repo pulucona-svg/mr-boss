@@ -9,6 +9,7 @@ import '../widgets/notification_modal.dart';
 import '../widgets/ad_carousel.dart';
 import '../widgets/upload_bottom_sheet.dart';
 import '../widgets/draggable_fab.dart';
+import '../widgets/skeleton.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -23,6 +24,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Map<String, String> _activeFilters = {};
   bool _isDownloadsSelected = true;
   bool _isUploadSheetOpen = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _simulateLoading();
+  }
+
+  void _simulateLoading() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   void _showNotifications() {
     showModalBottomSheet(
@@ -82,6 +99,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF070716),
+        body: LibrarySkeleton(),
+      );
+    }
+
     return ListenableBuilder(
       listenable: Listenable.merge([DownloadService(), ResourceService()]),
       builder: (context, child) {
@@ -95,7 +119,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         
         final filteredResources = baseResources.where((res) {
           final matchesCategory = _selectedCategory == 'All' || res.type == _selectedCategory;
-          final matchesSearch = res.title.toLowerCase().contains(_searchController.text.toLowerCase());
+          final query = _searchController.text.toLowerCase();
+          final matchesSearch = res.title.toLowerCase().contains(query) ||
+                               res.courseProgram.toLowerCase().contains(query) ||
+                               res.unitCode.toLowerCase().contains(query);
           
           bool matchesFilters = true;
           _activeFilters.forEach((key, value) {

@@ -13,6 +13,7 @@ class UploadMaterialModel {
   final String uploaderId;
   final int yearOfUpload;
   final String materialType;
+  final String? catType; // 'CAT 1' or 'CAT 2'
   final String? fileFormat;
   final File? file;
   final File? thumbnail;
@@ -30,6 +31,7 @@ class UploadMaterialModel {
     required this.uploaderId,
     required this.yearOfUpload,
     required this.materialType,
+    this.catType,
     this.fileFormat,
     this.file,
     this.thumbnail,
@@ -49,6 +51,7 @@ class UploadMaterialModel {
       'uploaderId': uploaderId,
       'yearOfUpload': yearOfUpload,
       'materialType': materialType,
+      'catType': catType,
       'fileFormat': fileFormat,
       'fileName': file?.path.split(RegExp(r'[/\\]')).last,
       'thumbnailName': thumbnail?.path.split(RegExp(r'[/\\]')).last,
@@ -68,6 +71,7 @@ class UploadMaterialModel {
     String? uploaderId,
     int? yearOfUpload,
     String? materialType,
+    String? catType,
     String? fileFormat,
     File? file,
     File? thumbnail,
@@ -85,6 +89,7 @@ class UploadMaterialModel {
       uploaderId: uploaderId ?? this.uploaderId,
       yearOfUpload: yearOfUpload ?? this.yearOfUpload,
       materialType: materialType ?? this.materialType,
+      catType: catType ?? this.catType,
       fileFormat: fileFormat ?? this.fileFormat,
       file: file ?? this.file,
       thumbnail: thumbnail ?? this.thumbnail,

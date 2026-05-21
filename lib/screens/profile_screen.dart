@@ -1,10 +1,40 @@
 import 'package:flutter/material.dart';
+import '../widgets/skeleton.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _simulateLoading();
+  }
+
+  void _simulateLoading() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF070716),
+        body: ProfileSkeleton(),
+      );
+    }
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
