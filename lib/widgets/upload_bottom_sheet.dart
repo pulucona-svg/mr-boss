@@ -278,10 +278,14 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                             child: _buildDropdown(
                               label: 'Pub. Year',
                               value: uploadState.material.yearOfPublication.toString(),
-                              items: List.generate(
-                                DateTime.now().year - 2020 + 1, 
-                                (index) => (DateTime.now().year - index).toString()
-                              ),
+                              items: () {
+                                final currentYear = DateTime.now().year;
+                                final List<String> years = [];
+                                for (int year = currentYear; year >= 2020; year--) {
+                                  years.add(year.toString());
+                                }
+                                return years;
+                              }(),
                               onChanged: (val) => notifier.updateYearOfPublication(int.parse(val!)),
                             ),
                           ),

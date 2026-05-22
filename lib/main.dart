@@ -8,6 +8,7 @@ import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
+import 'services/resource_service.dart';
 import 'providers/upload_provider.dart';
 
 void main() async {
@@ -62,6 +63,12 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     super.initState();
     _pageController = PageController(initialPage: _selectedIndex);
     ConnectivityService().initialize();
+    
+    // Synchronize resources with the course pool for accurate details
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final courseService = ref.read(courseServiceProvider);
+      ResourceService().synchronizeWithPool(courseService);
+    });
   }
 
   @override

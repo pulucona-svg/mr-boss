@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'notification_service.dart';
+import 'course_service.dart';
 import '../models/notification.dart';
 
 class Resource {
@@ -13,11 +14,11 @@ class Resource {
   final String publicationYear;
   final String yearOfStudy;
   final String semester;
-  final String lecturer;
+  final List<String> lecturers;
   final String uploadedBy;
   final String uploaderRole;
   final String uploaderId;
-  final String courseProgram;
+  final List<String> targetPrograms;
   final List<String> programCodes;
   final String materialFormat;
   final DateTime uploadDate;
@@ -40,12 +41,12 @@ class Resource {
     required this.publicationYear,
     required this.yearOfStudy,
     required this.semester,
-    required this.lecturer,
+    required this.lecturers,
     required this.uploadedBy,
     required this.uploaderRole,
     required this.uploaderId,
     required this.uploadDate,
-    this.courseProgram = 'Computer Science',
+    this.targetPrograms = const ['Computer Science'],
     this.programCodes = const [],
     this.materialFormat = 'PDF',
     this.status,
@@ -82,10 +83,10 @@ class Resource {
       'publicationYear': publicationYear,
       'yearOfStudy': yearOfStudy,
       'semester': semester,
-      'lecturer': lecturer,
+      'lecturer': lecturers.join(', '),
       'uploadedBy': uploadedBy,
       'uploaderRole': uploaderRole,
-      'courseProgram': courseProgram,
+      'targetPrograms': targetPrograms.join(', '),
       'programCodes': programCodes.join(','),
       'status': status ?? '',
       'declineReason': declineReason ?? '',
@@ -94,6 +95,36 @@ class Resource {
       'comments': comments.toString(),
     };
   }
+
+  Resource copyWithPoolData(List<String> poolPrograms, List<String> poolLecturers) {
+    return Resource(
+      title: title,
+      type: type,
+      thumbnailUrl: thumbnailUrl,
+      unitName: unitName,
+      unitCode: unitCode,
+      year: year,
+      uploadYear: uploadYear,
+      publicationYear: publicationYear,
+      yearOfStudy: yearOfStudy,
+      semester: semester,
+      lecturers: poolLecturers.isNotEmpty ? poolLecturers : lecturers,
+      uploadedBy: uploadedBy,
+      uploaderRole: uploaderRole,
+      uploaderId: uploaderId,
+      uploadDate: uploadDate,
+      targetPrograms: poolPrograms.isNotEmpty ? poolPrograms : targetPrograms,
+      programCodes: programCodes,
+      materialFormat: materialFormat,
+      status: status,
+      declineReason: declineReason,
+      declineDate: declineDate,
+      views: _views,
+      likes: _likes,
+      comments: _comments,
+      isLiked: isLiked,
+    );
+  }
 }
 
 class ResourceService extends ChangeNotifier {
@@ -101,11 +132,37 @@ class ResourceService extends ChangeNotifier {
   factory ResourceService() => _instance;
   ResourceService._internal();
 
+  bool _isSynchronized = false;
   String? _activeResourceId;
   String? get activeResourceId => _activeResourceId;
 
   static const String currentUserId = 'user_123';
   static const String currentUserName = 'Me';
+
+  void synchronizeWithPool(CourseService courseService) {
+    if (_isSynchronized) return;
+    
+    for (int i = 0; i < _allResources.length; i++) {
+      final units = courseService.getUnitsByCode(_allResources[i].unitCode);
+      if (units.isNotEmpty) {
+        final poolPrograms = units.map((u) => u.programName).toSet().toList();
+        final poolLecturers = units.map((u) => u.lecturerName).toSet().toList();
+        _allResources[i] = _allResources[i].copyWithPoolData(poolPrograms, poolLecturers);
+      }
+    }
+    
+    for (int i = 0; i < _userUploads.length; i++) {
+      final units = courseService.getUnitsByCode(_userUploads[i].unitCode);
+      if (units.isNotEmpty) {
+        final poolPrograms = units.map((u) => u.programName).toSet().toList();
+        final poolLecturers = units.map((u) => u.lecturerName).toSet().toList();
+        _userUploads[i] = _userUploads[i].copyWithPoolData(poolPrograms, poolLecturers);
+      }
+    }
+    
+    _isSynchronized = true;
+    notifyListeners();
+  }
 
   void setActiveResource(String? id) {
     if (_activeResourceId != id) {
@@ -127,12 +184,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Oguta J.',
+      lecturers: ['Dr. Oguta J.'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 15)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 1540,
       likes: 245,
@@ -149,12 +206,16 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Francis Komen',
+      lecturers: ['Francis Komen'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 12)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: [
+        'Bachelor of Science Computer Science',
+        'Bachelor of Science Applied Computer Science',
+        'Bachelor of Science Information Technology'
+      ],
       status: 'approved',
       views: 890,
       likes: 112,
@@ -171,12 +232,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Francis Komen',
+      lecturers: ['Francis Komen'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 10)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 2100,
       likes: 432,
@@ -193,12 +254,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Prof. Cheruiyot',
+      lecturers: ['Prof. Cheruiyot'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 9)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 650,
       likes: 87,
@@ -215,12 +276,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'William K. Lacktano',
+      lecturers: ['William K. Lacktano'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 7)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 3400,
       likes: 721,
@@ -237,12 +298,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2023',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'William Too',
+      lecturers: ['William Too'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 6)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 1200,
       likes: 198,
@@ -259,12 +320,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Jairus E. Ounza',
+      lecturers: ['Jairus E. Ounza'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 4)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 2800,
       likes: 543,
@@ -281,12 +342,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2023',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. George Odongo',
+      lecturers: ['Dr. George Odongo'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 3)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
       views: 950,
       likes: 145,
@@ -305,12 +366,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. E. Ngetich',
+      lecturers: ['Dr. E. Ngetich'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 14)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1100,
       likes: 187,
@@ -327,12 +388,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Kinuthia E',
+      lecturers: ['Dr. Kinuthia E'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 13)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 740,
       likes: 95,
@@ -349,12 +410,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Prof. John Okoth',
+      lecturers: ['Prof. John Okoth'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 11)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1800,
       likes: 312,
@@ -371,12 +432,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2023',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Wilda Onyancha',
+      lecturers: ['Dr. Wilda Onyancha'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 10)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1350,
       likes: 221,
@@ -393,12 +454,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Sylvia Cherono',
+      lecturers: ['Dr. Sylvia Cherono'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 8)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 2400,
       likes: 512,
@@ -415,12 +476,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'Prof. Philip Owino',
+      lecturers: ['Prof. Philip Owino'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 7)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 580,
       likes: 76,
@@ -437,12 +498,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. J. Mugwe',
+      lecturers: ['Dr. J. Mugwe'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 5)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 2900,
       likes: 645,
@@ -459,12 +520,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2023',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Prof. John Okoth',
+      lecturers: ['Prof. John Okoth'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 3)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1050,
       likes: 167,
@@ -481,12 +542,17 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Limo',
+      lecturers: ['Dr. Limo'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 20)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: [
+        'Bachelor of Science Biomedical Science',
+        'Bachelor of Science Computer Science',
+        'Bachelor of Science Applied Computer Science',
+        'Bachelor of Science Information Technology'
+      ],
       status: 'approved',
       views: 1420,
       likes: 156,
@@ -503,12 +569,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Paul Wanjala',
+      lecturers: ['Dr. Paul Wanjala'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 18)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 890,
       likes: 112,
@@ -525,12 +591,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. E. Ngetich',
+      lecturers: ['Dr. E. Ngetich'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 17)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 670,
       likes: 84,
@@ -547,12 +613,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '2nd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. A. Mbeke',
+      lecturers: ['Dr. A. Mbeke'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 16)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1560,
       likes: 245,
@@ -569,12 +635,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2023',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Daniel Osieko',
+      lecturers: ['Dr. Daniel Osieko'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 15)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1100,
       likes: 178,
@@ -591,12 +657,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. W Mwangi',
+      lecturers: ['Dr. W Mwangi'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 14)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1250,
       likes: 194,
@@ -613,12 +679,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '3rd Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. W Mwangi',
+      lecturers: ['Dr. W Mwangi'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 13)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 940,
       likes: 132,
@@ -635,12 +701,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. A. Mbeke',
+      lecturers: ['Dr. A. Mbeke'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 12)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 720,
       likes: 98,
@@ -657,12 +723,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Wilda Onyancha',
+      lecturers: ['Dr. Wilda Onyancha'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 11)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1650,
       likes: 278,
@@ -679,12 +745,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Dr. Pande',
+      lecturers: ['Dr. Pande'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 10)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1100,
       likes: 145,
@@ -701,12 +767,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2023',
       yearOfStudy: '4th Year',
       semester: 'Semester 1',
-      lecturer: 'Oduor Peter',
+      lecturers: ['Oduor Peter'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 9)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 890,
       likes: 124,
@@ -723,12 +789,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'George G. Njema',
+      lecturers: ['George G. Njema'],
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
       uploadDate: DateTime.now().subtract(const Duration(days: 8)),
-      courseProgram: 'Bachelor of Science Biomedical Science',
+      targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
       views: 1120,
       likes: 142,
@@ -748,12 +814,18 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Lucy Wamuyu',
+      lecturers: ['Lucy Wamuyu'],
       uploadedBy: 'Me',
       uploaderRole: 'Student',
       uploaderId: currentUserId,
       uploadDate: DateTime.now().subtract(const Duration(days: 1)),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: [
+        'Bachelor of Science Computer Science',
+        'Bachelor of Science Biomedical Science',
+        'Bachelor of Science Applied Computer Science',
+        'Bachelor of Education Arts',
+        'Bachelor of Arts'
+      ],
       status: 'approved',
     ),
     Resource(
@@ -767,12 +839,12 @@ class ResourceService extends ChangeNotifier {
       publicationYear: '2024',
       yearOfStudy: '1st Year',
       semester: 'Semester 1',
-      lecturer: 'Francis Komen',
+      lecturers: ['Francis Komen'],
       uploadedBy: 'Me',
       uploaderRole: 'Student',
       uploaderId: currentUserId,
       uploadDate: DateTime.now(),
-      courseProgram: 'Bachelor of Science Computer Science',
+      targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'waiting',
     ),
   ];
@@ -801,8 +873,15 @@ class ResourceService extends ChangeNotifier {
     });
   }
 
-  void addUpload(Resource resource) {
-    _userUploads.add(resource);
+  void addUpload(Resource resource, CourseService courseService) {
+    final units = courseService.getUnitsByCode(resource.unitCode);
+    Resource finalResource = resource;
+    if (units.isNotEmpty) {
+      final poolPrograms = units.map((u) => u.programName).toSet().toList();
+      final poolLecturers = units.map((u) => u.lecturerName).toSet().toList();
+      finalResource = resource.copyWithPoolData(poolPrograms, poolLecturers);
+    }
+    _userUploads.add(finalResource);
     notifyListeners();
   }
 
@@ -897,6 +976,6 @@ class ResourceService extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<String> getUniqueLecturers() => allResources.map((r) => r.lecturer).toSet().toList();
-  List<String> getUniquePrograms() => allResources.map((r) => r.courseProgram).toSet().toList();
+  List<String> getUniqueLecturers() => allResources.expand((r) => r.lecturers).toSet().toList();
+  List<String> getUniquePrograms() => allResources.expand((r) => r.targetPrograms).toSet().toList();
 }

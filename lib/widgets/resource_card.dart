@@ -23,7 +23,7 @@ class ResourceCard extends StatefulWidget {
     this.publicationYear = '2023',
     this.yearOfStudy = '2nd Year',
     this.semester = 'Semester 1',
-    this.lecturer = 'Dr. James Kamau',
+    this.lecturers = const ['Dr. James Kamau'],
     this.uploadedBy = 'Admin',
     this.uploaderRole = 'Administrator',
     this.views = '189',
@@ -32,6 +32,7 @@ class ResourceCard extends StatefulWidget {
     this.isLiked = false,
     this.showDownload = true,
     this.materialFormat = 'PDF',
+    this.targetPrograms = const ['Bachelor of Science Computer Science'],
     this.programCodes = const [],
     this.status,
     this.declineReason,
@@ -46,13 +47,14 @@ class ResourceCard extends StatefulWidget {
   final VoidCallback onTap;
   final String unitName;
   final String unitCode;
+  final List<String> targetPrograms;
   final List<String> programCodes;
   final String year;
   final String uploadYear;
   final String publicationYear;
   final String yearOfStudy;
   final String semester;
-  final String lecturer;
+  final List<String> lecturers;
   final String uploadedBy;
   final String uploaderRole;
   final String views;
@@ -90,7 +92,7 @@ class _ResourceCardState extends State<ResourceCard> {
       'publicationYear': widget.publicationYear,
       'yearOfStudy': widget.yearOfStudy,
       'semester': widget.semester,
-      'lecturer': widget.lecturer,
+      'lecturer': widget.lecturers.join(', '),
       'uploadedBy': widget.uploadedBy,
       'uploaderRole': widget.uploaderRole,
       'views': widget.views,
@@ -145,14 +147,14 @@ class _ResourceCardState extends State<ResourceCard> {
         thumbnailUrl: widget.thumbnailUrl,
         unitName: widget.unitName,
         unitCode: widget.unitCode,
-        courseProgram: resource?.courseProgram ?? '',
+        targetPrograms: resource?.targetPrograms ?? widget.targetPrograms,
         programCodes: resource?.programCodes ?? widget.programCodes,
         materialFormat: widget.materialFormat,
         uploadYear: widget.uploadYear,
         publicationYear: widget.publicationYear,
         yearOfStudy: widget.yearOfStudy,
         semester: widget.semester,
-        lecturer: widget.lecturer,
+        lecturers: resource?.lecturers ?? widget.lecturers,
         uploadedBy: widget.uploadedBy,
         uploaderRole: widget.uploaderRole,
         showDownload: widget.showDownload,

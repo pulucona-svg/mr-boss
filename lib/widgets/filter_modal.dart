@@ -39,17 +39,13 @@ class _FilterModalState extends ConsumerState<FilterModal> {
 
   List<String> _getYearOptions() {
     final currentYear = DateTime.now().year;
-    final allResources = ResourceService().allResources;
-    final years = allResources.map((r) => r.publicationYear).where((y) => y.isNotEmpty).toSet().toList();
+    final List<String> years = [];
     
-    // Ensure current years are also available if no resources yet
-    for (var i = 0; i < 5; i++) {
-      years.add((currentYear - i).toString());
+    for (int year = currentYear; year >= 2020; year--) {
+      years.add(year.toString());
     }
     
-    final sortedYears = years.toList();
-    sortedYears.sort((a, b) => b.compareTo(a));
-    return sortedYears;
+    return years;
   }
 
   @override

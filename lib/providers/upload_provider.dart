@@ -405,19 +405,19 @@ class UploadNotifier extends StateNotifier<UploadState> {
         publicationYear: state.material.yearOfPublication.toString(),
         yearOfStudy: state.material.yearOfStudy,
         semester: state.material.semester,
-        lecturer: state.material.lecturers.isNotEmpty 
-            ? state.material.lecturers.join(', ') 
-            : 'TBD',
+        lecturers: state.material.lecturers.isNotEmpty 
+            ? state.material.lecturers 
+            : ['TBD'],
         uploadedBy: state.material.uploadedBy,
         uploaderRole: 'Student',
         uploaderId: state.material.uploaderId,
         uploadDate: DateTime.now(),
         status: 'waiting',
-        courseProgram: state.material.programs.join(', '),
+        targetPrograms: state.material.programs,
         programCodes: state.material.programCodes,
       );
 
-      ResourceService().addUpload(resource);
+      ResourceService().addUpload(resource, _courseService);
 
       // Reset fields after successful upload
       reset();

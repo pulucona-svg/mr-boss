@@ -10,6 +10,7 @@ import '../widgets/ad_carousel.dart';
 import '../widgets/upload_bottom_sheet.dart';
 import '../widgets/draggable_fab.dart';
 import '../widgets/skeleton.dart';
+import '../widgets/search_dropdown.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -22,6 +23,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   static bool _hasLoadedBefore = false;
   String _selectedCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
   Map<String, String> _activeFilters = {};
   bool _isDownloadsSelected = true;
   bool _isUploadSheetOpen = false;
@@ -34,6 +39,48 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_isLoading) {
       _simulateLoading();
     }
+    _searchFocusNode.addListener(_onSearchFocusChange);
+  }
+
+  void _handleBack() {
+    if (_searchController.text.isNotEmpty) {
+      setState(() {
+        _searchController.clear();
+      });
+      return;
+    }
+    if (_searchFocusNode.hasFocus) {
+      _searchFocusNode.unfocus();
+      return;
+    }
+    _resetAllFilters();
+  }
+
+  void _onSearchFocusChange() {
+    if (_searchFocusNode.hasFocus) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _scrollController.animateTo(
+            150, // Shift up to clear header/ads
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+      // We'll show the overlay in build or via context if needed, but for Library 
+      // we need the available resources which are in the ListenableBuilder.
+      // So we trigger a rebuild.
+      setState(() {});
+    } else {
+      _hideOverlay();
+      if (mounted) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
   }
 
   void _simulateLoading() async {
@@ -44,6 +91,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode.removeListener(_onSearchFocusChange);
+    _searchFocusNode.dispose();
+    _hideOverlay();
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _showNotifications() {
@@ -89,6 +146,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _activeFilters = {};
       _selectedCategory = 'All';
       _searchController.clear();
+      _hideOverlay();
     });
   }
 
@@ -101,6 +159,92 @@ class _LibraryScreenState extends State<LibraryScreen> {
     {'label': 'Prac Manual', 'color': const Color(0xFFFF4667), 'icon': Icons.biotech_rounded},
     {'label': 'Supplementary Exams', 'color': const Color(0xFF00B4D8), 'icon': Icons.auto_stories_rounded},
   ];
+
+  bool _fuzzyMatch(String query, String target) {
+    if (query.isEmpty) return true;
+    final queryTokens = query.toLowerCase().split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
+    final targetLower = target.toLowerCase();
+
+    for (final token in queryTokens) {
+      if (!targetLower.contains(token)) {
+        int matchCount = 0;
+        int targetIdx = 0;
+        for (int i = 0; i < token.length; i++) {
+          while (targetIdx < targetLower.length) {
+            if (token[i] == targetLower[targetIdx]) {
+              matchCount++;
+              targetIdx++;
+              break;
+            }
+            targetIdx++;
+          }
+        }
+        
+        bool tokenMatches = false;
+        if (token.length <= 3) {
+          if (matchCount == token.length) tokenMatches = true;
+        } else if (token.length <= 5) {
+          if (matchCount >= token.length - 1) tokenMatches = true;
+        } else {
+          if (matchCount >= (token.length * 0.75).floor()) tokenMatches = true;
+        }
+        
+        if (!tokenMatches) return false;
+      }
+    }
+    return true;
+  }
+
+  List<String> _getSuggestions(String query, List<Resource> availableResources) {
+    if (query.isEmpty) return [];
+    final suggestions = <String>{};
+
+    for (var res in availableResources) {
+      if (res.title.toLowerCase().contains(query.toLowerCase())) suggestions.add(res.title);
+      if (res.unitCode.toLowerCase().contains(query.toLowerCase())) suggestions.add(res.unitCode);
+      if (res.unitName.toLowerCase().contains(query.toLowerCase())) suggestions.add(res.unitName);
+    }
+
+    return suggestions.take(6).toList();
+  }
+
+  void _showOverlay(List<Resource> availableResources) {
+    _hideOverlay();
+    final suggestions = _getSuggestions(_searchController.text, availableResources);
+    if (suggestions.isEmpty) return;
+
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        width: size.width - 42,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, 60),
+          child: CustomSearchDropdown(
+            suggestions: suggestions,
+            width: size.width - 42,
+            onSelected: (selection) {
+              setState(() {
+                _searchController.text = selection;
+                _hideOverlay();
+                _searchFocusNode.unfocus();
+              });
+            },
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _hideOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,35 +268,48 @@ class _LibraryScreenState extends State<LibraryScreen> {
         
         final filteredResources = baseResources.where((res) {
           final matchesCategory = _selectedCategory == 'All' || res.type == _selectedCategory;
-          final query = _searchController.text.toLowerCase();
-          final matchesSearch = res.title.toLowerCase().contains(query) ||
-                               res.courseProgram.toLowerCase().contains(query) ||
-                               res.unitCode.toLowerCase().contains(query);
+          final query = _searchController.text.trim();
+          
+          final searchFields = [
+            res.title,
+            res.unitCode,
+            res.unitName,
+            res.type,
+            ...res.lecturers,
+            ...res.targetPrograms,
+          ].join(' ');
+
+          final matchesSearch = query.isEmpty || _fuzzyMatch(query, searchFields);
           
           bool matchesFilters = true;
           _activeFilters.forEach((key, value) {
             if (key == 'publicationYear' && res.publicationYear != value) matchesFilters = false;
             if (key == 'yearOfStudy' && res.yearOfStudy != value) matchesFilters = false;
             if (key == 'semester' && res.semester != value) matchesFilters = false;
-            if (key == 'lecturer' && res.lecturer != value) matchesFilters = false;
-            if (key == 'courseProgram' && res.courseProgram != value) matchesFilters = false;
+            if (key == 'lecturer' && !res.lecturers.contains(value)) matchesFilters = false;
+            if (key == 'courseProgram' && !res.targetPrograms.contains(value)) matchesFilters = false;
           });
 
           return matchesCategory && matchesSearch && matchesFilters;
         }).toList();
 
-        final hasActiveFilters = _activeFilters.isNotEmpty || _selectedCategory != 'All' || _searchController.text.isNotEmpty;
+        final isSearching = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
+        final hasOtherFilters = _activeFilters.isNotEmpty || _selectedCategory != 'All';
 
         return PopScope(
-          canPop: !hasActiveFilters,
+          canPop: !isSearching && !hasOtherFilters,
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) return;
-            _resetAllFilters();
+            _handleBack();
           },
           child: Stack(
             children: [
               GestureDetector(
-                onTap: () => ResourceService().setActiveResource(null),
+                onTap: () {
+                  ResourceService().setActiveResource(null);
+                  _hideOverlay();
+                  _searchFocusNode.unfocus();
+                },
                 behavior: HitTestBehavior.opaque,
                 child: Scaffold(
                   backgroundColor: Colors.transparent,
@@ -166,6 +323,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ),
                     child: SafeArea(
                       child: CustomScrollView(
+                        controller: _scrollController,
                         key: const PageStorageKey('library_scroll'),
                         slivers: [
                           SliverToBoxAdapter(
@@ -260,25 +418,37 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                   Row(
                                     children: [
                                       Expanded(
-                                        child: TextField(
-                                          controller: _searchController,
-                                          textCapitalization: TextCapitalization.sentences,
-                                          onChanged: (value) => setState(() {}),
-                                          style: const TextStyle(color: Colors.white),
-                                          decoration: InputDecoration(
-                                            hintText: _isDownloadsSelected ? 'Search downloaded units' : 'Search your uploads',
-                                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                                            prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
-                                            filled: true,
-                                            fillColor: const Color(0xFF181739).withValues(alpha: 0.72),
-                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF302B65))),
-                                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF302B65))),
+                                        child: CompositedTransformTarget(
+                                          link: _layerLink,
+                                          child: TextField(
+                                            controller: _searchController,
+                                            focusNode: _searchFocusNode,
+                                            textCapitalization: TextCapitalization.sentences,
+                                            onChanged: (value) {
+                                              setState(() {});
+                                              _showOverlay(baseResources);
+                                            },
+                                            onTap: () => _showOverlay(baseResources),
+                                            style: const TextStyle(color: Colors.white),
+                                            decoration: InputDecoration(
+                                              hintText: _isDownloadsSelected ? 'Search downloaded units' : 'Search your uploads',
+                                              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                              prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
+                                              filled: true,
+                                              fillColor: const Color(0xFF181739).withValues(alpha: 0.72),
+                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF302B65))),
+                                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF302B65))),
+                                            ),
                                           ),
                                         ),
                                       ),
                                       const SizedBox(width: 10),
                                       GestureDetector(
-                                        onTap: () => setState(() {}),
+                                        onTap: () {
+                                          setState(() {});
+                                          _hideOverlay();
+                                          _searchFocusNode.unfocus();
+                                        },
                                         child: Container(
                                           height: 56,
                                           width: 56,
@@ -337,7 +507,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                       children: [
                                         Expanded(
                                           child: GestureDetector(
-                                            onTap: () => setState(() => _isDownloadsSelected = true),
+                                            onTap: () {
+                                              setState(() => _isDownloadsSelected = true);
+                                              _hideOverlay();
+                                            },
                                             child: Container(
                                               decoration: BoxDecoration(
                                                 color: _isDownloadsSelected ? const Color(0xFF00A85A) : Colors.transparent,
@@ -357,7 +530,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                         ),
                                         Expanded(
                                           child: GestureDetector(
-                                            onTap: () => setState(() => _isDownloadsSelected = false),
+                                            onTap: () {
+                                              setState(() => _isDownloadsSelected = false);
+                                              _hideOverlay();
+                                            },
                                             child: Container(
                                               decoration: BoxDecoration(
                                                 color: !_isDownloadsSelected ? const Color(0xFF00A85A) : Colors.transparent,
@@ -446,13 +622,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                       thumbnailUrl: res.thumbnailUrl,
                                       unitName: res.unitName,
                                       unitCode: res.unitCode,
+                                      targetPrograms: res.targetPrograms,
                                       programCodes: res.programCodes,
                                       year: res.year,
                                       uploadYear: res.uploadYear,
                                       publicationYear: res.publicationYear,
                                       yearOfStudy: res.yearOfStudy,
                                       semester: res.semester,
-                                      lecturer: res.lecturer,
+                                      lecturers: res.lecturers,
                                       uploadedBy: res.uploadedBy,
                                       uploaderRole: res.uploaderRole,
                                       views: res.views.toString(),
