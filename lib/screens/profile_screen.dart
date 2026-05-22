@@ -9,16 +9,21 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _isLoading = true;
+  static bool _hasLoadedBefore = false;
+  late bool _isLoading;
 
   @override
   void initState() {
     super.initState();
-    _simulateLoading();
+    _isLoading = !_hasLoadedBefore;
+    if (_isLoading) {
+      _simulateLoading();
+    }
   }
 
   void _simulateLoading() async {
     await Future.delayed(const Duration(milliseconds: 1500));
+    _hasLoadedBefore = true;
     if (mounted) {
       setState(() {
         _isLoading = false;

@@ -19,21 +19,26 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
+  static bool _hasLoadedBefore = false;
   String _selectedCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
   Map<String, String> _activeFilters = {};
   bool _isDownloadsSelected = true;
   bool _isUploadSheetOpen = false;
-  bool _isLoading = true;
+  late bool _isLoading;
 
   @override
   void initState() {
     super.initState();
-    _simulateLoading();
+    _isLoading = !_hasLoadedBefore;
+    if (_isLoading) {
+      _simulateLoading();
+    }
   }
 
   void _simulateLoading() async {
     await Future.delayed(const Duration(milliseconds: 1500));
+    _hasLoadedBefore = true;
     if (mounted) {
       setState(() {
         _isLoading = false;

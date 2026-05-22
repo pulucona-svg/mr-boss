@@ -50,11 +50,14 @@ class DashboardSkeleton extends StatelessWidget {
           const SizedBox(height: 30),
           const Skeleton(height: 50, width: double.infinity, borderRadius: 15),
           const SizedBox(height: 30),
-          Row(
-            children: List.generate(4, (index) => const Padding(
-              padding: EdgeInsets.only(right: 10),
-              child: Skeleton(height: 35, width: 80, borderRadius: 20),
-            )),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(4, (index) => const Padding(
+                padding: EdgeInsets.only(right: 10),
+                child: Skeleton(height: 35, width: 80, borderRadius: 20),
+              )),
+            ),
           ),
           const SizedBox(height: 30),
           const Skeleton(height: 20, width: 100),

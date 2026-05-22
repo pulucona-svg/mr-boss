@@ -6,6 +6,7 @@ import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../services/resource_service.dart';
 import '../widgets/filter_modal.dart';
+import '../widgets/skeleton.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -15,19 +16,24 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  static bool _hasLoadedBefore = false;
   String _selectedCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
   Map<String, String> _activeFilters = {};
-  bool _isLoading = true;
+  late bool _isLoading;
 
   @override
   void initState() {
     super.initState();
-    _simulateLoading();
+    _isLoading = !_hasLoadedBefore;
+    if (_isLoading) {
+      _simulateLoading();
+    }
   }
 
   void _simulateLoading() async {
     await Future.delayed(const Duration(milliseconds: 1500));
+    _hasLoadedBefore = true;
     if (mounted) {
       setState(() {
         _isLoading = false;

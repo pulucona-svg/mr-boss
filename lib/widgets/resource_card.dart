@@ -118,13 +118,12 @@ class _ResourceCardState extends State<ResourceCard> {
   }
 
   void _toggleLike() {
-    _incrementView();
+    _handleTap();
     widget.onLikeToggle?.call();
   }
 
   void _showComments() {
-    _incrementView();
-    ResourceService().setActiveResource(widget.title);
+    _handleTap();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -134,10 +133,8 @@ class _ResourceCardState extends State<ResourceCard> {
   }
 
   void _showDetails() {
-    _incrementView();
-    ResourceService().setActiveResource(widget.title);
+    _handleTap();
     final resource = ResourceService().findResourceByTitle(widget.title);
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -400,7 +397,7 @@ class _ResourceCardState extends State<ResourceCard> {
                                 
                                 return GestureDetector(
                                   onTap: () {
-                                    _incrementView();
+                                    _handleTap();
                                     DownloadService().startDownload(_getResourceData());
                                   },
                                   behavior: HitTestBehavior.translucent,

@@ -13,16 +13,21 @@ class PlaceholderScreen extends StatefulWidget {
 }
 
 class _PlaceholderScreenState extends State<PlaceholderScreen> {
-  bool _isLoading = true;
+  static final Set<String> _loadedTitles = {};
+  late bool _isLoading;
 
   @override
   void initState() {
     super.initState();
-    _simulateLoading();
+    _isLoading = !_loadedTitles.contains(widget.title);
+    if (_isLoading) {
+      _simulateLoading();
+    }
   }
 
   void _simulateLoading() async {
     await Future.delayed(const Duration(milliseconds: 1500));
+    _loadedTitles.add(widget.title);
     if (mounted) {
       setState(() {
         _isLoading = false;
