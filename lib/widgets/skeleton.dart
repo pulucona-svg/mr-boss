@@ -14,14 +14,20 @@ class Skeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Shimmer.fromColors(
-      baseColor: Colors.white.withOpacity(0.05),
-      highlightColor: Colors.white.withOpacity(0.1),
+      baseColor: isDark 
+          ? Colors.white.withOpacity(0.05) 
+          : Colors.black.withOpacity(0.05),
+      highlightColor: isDark 
+          ? Colors.white.withOpacity(0.1) 
+          : Colors.black.withOpacity(0.1),
       child: Container(
         height: height,
         width: width,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? Colors.white : Colors.black12,
           borderRadius: BorderRadius.circular(borderRadius),
         ),
       ),

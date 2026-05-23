@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/resource_card.dart';
 import '../widgets/ad_carousel.dart';
@@ -8,15 +9,18 @@ import '../services/resource_service.dart';
 import '../widgets/filter_modal.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
+import '../providers/theme_provider.dart';
+import '../providers/chat_provider.dart';
+import 'help_support_screen.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   static bool _hasLoadedBefore = false;
   String _selectedCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
@@ -229,12 +233,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF070716),
-        body: DashboardSkeleton(),
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
+        body: const DashboardSkeleton(),
       );
     }
+
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? const Color(0xFFC9CBF2) : Colors.black54;
 
     return ListenableBuilder(
       listenable: ResourceService(),
@@ -285,12 +295,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
             behavior: HitTestBehavior.opaque,
             child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF140C37), Color(0xFF070716)],
-                ),
+              decoration: BoxDecoration(
+                gradient: isDark
+                    ? const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xFF140C37), Color(0xFF070716)],
+                      )
+                    : LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.blue.shade50, Colors.white],
+                      ),
               ),
               child: SafeArea(
                 child: CustomScrollView(
@@ -307,42 +323,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const SizedBox(),
-                                ListenableBuilder(
-                                  listenable: NotificationService(),
-                                  builder: (context, child) {
-                                    final unreadCount = NotificationService().unreadCount;
-                                    return Stack(
-                                      clipBehavior: Clip.none,
-                                      children: [
-                                        IconButton(
-                                          onPressed: _showNotifications,
-                                          icon: const Text('🔔', style: TextStyle(fontSize: 24)),
-                                        ),
-                                        if (unreadCount > 0)
-                                          Positioned(
-                                            top: 8,
-                                            right: 8,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                              child: Text(
-                                                unreadCount > 9 ? '9+' : unreadCount.toString(),
-                                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                                textAlign: TextAlign.center,
+                                Row(
+                                  children: [
+                                    ListenableBuilder(
+                                      listenable: ref.watch(chatServiceProvider),
+                                      builder: (context, child) {
+                                        final unreadMessages = ref.read(chatServiceProvider).unreadCount;
+                                        return Stack(
+                                          clipBehavior: Clip.none,
+                                          children: [
+                                            IconButton(
+                                              onPressed: () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
+                                                );
+                                              },
+                                              icon: Stack(
+                                                alignment: Alignment.center,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.chat_bubble_rounded,
+                                                    color: Color(0xFF00B2FF),
+                                                    size: 28,
+                                                  ),
+                                                  const Positioned(
+                                                    top: 5,
+                                                    child: Icon(
+                                                      Icons.bolt_rounded,
+                                                      color: Colors.white,
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ),
-                                      ],
-                                    );
-                                  },
+                                            if (unreadMessages > 0)
+                                              Positioned(
+                                                top: 8,
+                                                right: 8,
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(4),
+                                                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                                  child: Text(
+                                                    unreadMessages > 9 ? '9+' : unreadMessages.toString(),
+                                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                    ListenableBuilder(
+                                      listenable: NotificationService(),
+                                      builder: (context, child) {
+                                        final unreadCount = NotificationService().unreadCount;
+                                        return Stack(
+                                          clipBehavior: Clip.none,
+                                          children: [
+                                            IconButton(
+                                              onPressed: _showNotifications,
+                                              icon: const Text('🔔', style: TextStyle(fontSize: 24)),
+                                            ),
+                                            if (unreadCount > 0)
+                                              Positioned(
+                                                top: 8,
+                                                right: 8,
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(4),
+                                                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                                  child: Text(
+                                                    unreadCount > 9 ? '9+' : unreadCount.toString(),
+                                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                             const SizedBox(height: 8),
-                            const Text('Dashboard', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
+                            Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
-                            const Text('Find your academic edge.', style: TextStyle(color: Color(0xFFC9CBF2))),
+                            Text('Find your academic edge.', style: TextStyle(color: subTextColor)),
                             const SizedBox(height: 20),
                             AdCarousel(
                               interval: const Duration(seconds: 8),
@@ -424,15 +496,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         setState(() {});
                                         _showOverlay();
                                       },
-                                      style: const TextStyle(color: Colors.white),
+                                      style: TextStyle(color: textColor),
                                       decoration: InputDecoration(
                                         hintText: 'Search materials...',
                                         hintStyle: const TextStyle(color: Colors.grey),
                                         prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
                                         filled: true,
-                                        fillColor: const Color(0xFF181739).withValues(alpha: 0.72),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF302B65))),
-                                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF302B65))),
+                                        fillColor: isDark ? const Color(0xFF181739).withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.72),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
+                                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
                                       ),
                                     ),
                                   ),
@@ -461,7 +533,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 icon: Icon(Icons.tune, color: _activeFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
                                 label: Text(
                                   _activeFilters.isNotEmpty ? 'Filters Active (${_activeFilters.length})' : 'Filter',
-                                  style: const TextStyle(color: Colors.white70),
+                                  style: TextStyle(color: textColor.withValues(alpha: 0.7)),
                                 ),
                                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
                               ),
@@ -469,12 +541,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             const SizedBox(height: 24),
                             Row(
                               children: [
-                                const Expanded(child: Divider(color: Colors.white12, thickness: 1)),
+                                Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  child: Text('FOR YOU', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                                  child: Text('FOR YOU', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
                                 ),
-                                const Expanded(child: Divider(color: Colors.white12, thickness: 1)),
+                                Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
                               ],
                             ),
                             const SizedBox(height: 16),
@@ -483,16 +555,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     if (filteredResources.isEmpty)
-                      const SliverFillRemaining(
+                      SliverFillRemaining(
                         child: Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.search_off_rounded, color: Colors.white10, size: 64),
-                              SizedBox(height: 16),
-                              Text('No materials match your search', style: TextStyle(color: Colors.white24, fontSize: 16)),
-                              SizedBox(height: 8),
-                              TextButton(onPressed: null, child: Text('Try searching something else', style: TextStyle(color: Color(0xFF20C8FF)))),
+                              Icon(Icons.search_off_rounded, color: textColor.withValues(alpha: 0.1), size: 64),
+                              const SizedBox(height: 16),
+                              Text('No materials match your search', style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 16)),
+                              const SizedBox(height: 8),
+                              const TextButton(onPressed: null, child: Text('Try searching something else', style: TextStyle(color: Color(0xFF20C8FF)))),
                             ],
                           ),
                         ),

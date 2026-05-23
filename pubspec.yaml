@@ -45,6 +45,7 @@ dependencies:
   dotted_border: ^3.1.0
   connectivity_plus: ^7.1.1
   shimmer: ^3.0.0
+  audioplayers: ^6.6.0
 
 dev_dependencies:
   flutter_test:
@@ -93,6 +94,8 @@ flutter:
     - assets/ad_data.jpeg
     - assets/ad_snake.jpeg
     - assets/lessons.json
+    - assets/admin_pic.jpeg
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

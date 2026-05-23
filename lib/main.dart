@@ -10,6 +10,7 @@ import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
 import 'services/resource_service.dart';
 import 'providers/upload_provider.dart';
+import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,21 +28,34 @@ void main() async {
   );
 }
 
-class MirrorApp extends StatelessWidget {
+class MirrorApp extends ConsumerWidget {
   const MirrorApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+
     return MaterialApp(
       title: 'Mirror Laikipia',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: ConnectivityService().messengerKey,
       theme: ThemeData(
+        brightness: Brightness.light,
+        primaryColor: const Color(0xFF20C8FF),
+        scaffoldBackgroundColor: Colors.white,
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+        ),
+      ),
+      darkTheme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF20C8FF),
         scaffoldBackgroundColor: const Color(0xFF070716),
         useMaterial3: true,
       ),
+      themeMode: themeMode,
       home: const MainNavigation(),
     );
   }
@@ -98,7 +112,11 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
@@ -109,16 +127,16 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
         children: _screens,
       ),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: isDark ? Colors.white10 : Colors.black12, width: 0.5)),
         ),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
           onTap: _onItemTapped,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: const Color(0xFF070716),
+          backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
           selectedItemColor: const Color(0xFF20C8FF),
-          unselectedItemColor: Colors.white38,
+          unselectedItemColor: isDark ? Colors.white38 : Colors.black38,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
           items: const [
