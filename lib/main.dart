@@ -4,6 +4,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'screens/library_screen.dart';
+import 'screens/explore_screen.dart';
 import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
@@ -95,7 +96,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   final List<Widget> _screens = [
     const DashboardScreen(),
     const LibraryScreen(),
-    const PlaceholderScreen(title: 'Explore'),
+    const ExploreScreen(),
     const ProfileScreen(),
   ];
 
