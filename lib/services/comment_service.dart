@@ -26,11 +26,13 @@ class CommentService extends ChangeNotifier {
     return total;
   }
 
-  void addComment(String resourceTitle, String text, {Comment? replyingTo}) {
+  void addComment(String resourceTitle, String text, {Comment? replyingTo, required String authorName, String? authorProfileImage, String? authorId}) {
     final comments = getComments(resourceTitle);
     final newComment = Comment(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      author: ResourceService.currentUserName,
+      authorId: authorId,
+      author: authorName,
+      authorProfileImage: authorProfileImage,
       text: text,
       timestamp: DateTime.now(),
     );
@@ -44,6 +46,50 @@ class CommentService extends ChangeNotifier {
     // Increment count and handle notifications via ResourceService
     ResourceService().incrementComments(resourceTitle);
     notifyListeners();
+  }
+
+  void deleteComment(String resourceTitle, String commentId) {
+    final comments = getComments(resourceTitle);
+    bool removed = _removeFromList(comments, commentId);
+    if (removed) {
+      notifyListeners();
+    }
+  }
+
+  bool _removeFromList(List<Comment> list, String id) {
+    for (int i = 0; i < list.length; i++) {
+      if (list[i].id == id) {
+        list.removeAt(i);
+        return true;
+      }
+      if (_removeFromList(list[i].replies, id)) return true;
+    }
+    return false;
+  }
+
+  void editComment(String resourceTitle, String commentId, String newText) {
+    final comment = _findInList(getComments(resourceTitle), commentId);
+    if (comment != null) {
+      comment.text = newText;
+      notifyListeners();
+    }
+  }
+
+  Comment? _findInList(List<Comment> list, String id) {
+    for (var c in list) {
+      if (c.id == id) return c;
+      final found = _findInList(c.replies, id);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  void updateReaction(String resourceTitle, String commentId, String emoji) {
+    final comment = _findInList(getComments(resourceTitle), commentId);
+    if (comment != null) {
+      comment.reactions[emoji] = (comment.reactions[emoji] ?? 0) + 1;
+      notifyListeners();
+    }
   }
 
   void toggleCommentLike(String resourceTitle, Comment comment) {

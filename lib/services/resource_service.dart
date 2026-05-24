@@ -136,7 +136,7 @@ class ResourceService extends ChangeNotifier {
   String? _activeResourceId;
   String? get activeResourceId => _activeResourceId;
 
-  static const String currentUserId = 'user_123';
+  static const String currentUserId = 'user_12345';
   static const String currentUserName = 'Me';
 
   void synchronizeWithPool(CourseService courseService) {

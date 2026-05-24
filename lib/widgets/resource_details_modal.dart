@@ -6,6 +6,8 @@ import '../services/progress_service.dart';
 import '../providers/upload_provider.dart';
 import '../screens/material_viewer_screen.dart';
 
+import '../providers/user_provider.dart';
+
 class ResourceDetailsModal extends ConsumerWidget {
   final String title;
   final String type;
@@ -22,6 +24,7 @@ class ResourceDetailsModal extends ConsumerWidget {
   final List<String> lecturers;
   final String uploadedBy;
   final String uploaderRole;
+  final String uploaderId;
   final bool showDownload;
 
   const ResourceDetailsModal({
@@ -41,10 +44,15 @@ class ResourceDetailsModal extends ConsumerWidget {
     required this.lecturers,
     required this.uploadedBy,
     required this.uploaderRole,
+    this.uploaderId = 'admin',
     this.showDownload = true,
   });
 
-  Map<String, String> _getResourceData(List<String> displayPrograms, List<String> displayLecturers) {
+  Map<String, String> _getResourceData(List<String> displayPrograms, List<String> displayLecturers, WidgetRef ref) {
+    final userProfile = ref.read(userProfileProvider);
+    final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
+    final String displayUploadedBy = isMe ? userProfile.username : uploadedBy;
+
     return {
       'title': title,
       'type': type,
@@ -59,7 +67,7 @@ class ResourceDetailsModal extends ConsumerWidget {
       'yearOfStudy': yearOfStudy,
       'semester': semester,
       'lecturer': displayLecturers.join(', '),
-      'uploadedBy': uploadedBy,
+      'uploadedBy': displayUploadedBy,
       'uploaderRole': uploaderRole,
     };
   }
@@ -154,6 +162,10 @@ class ResourceDetailsModal extends ConsumerWidget {
 
     final displayPrograms = poolPrograms.isNotEmpty ? poolPrograms : targetPrograms;
     final displayLecturers = poolLecturers.isNotEmpty ? poolLecturers : lecturers;
+
+    final userProfile = ref.watch(userProfileProvider);
+    final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
+    final String displayUploadedBy = isMe ? userProfile.username : uploadedBy;
 
     return Container(
       padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
@@ -263,7 +275,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                   _buildDetailRow(
                     Icons.cloud_upload_outlined, 
                     'Uploaded By', 
-                    '$uploadedBy ($uploaderRole)',
+                    '$displayUploadedBy ($uploaderRole)',
                     isLast: true,
                   ),
                 ] : [
@@ -308,7 +320,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                   _buildDetailRow(
                     Icons.cloud_upload_outlined, 
                     'Uploaded By', 
-                    '$uploadedBy ($uploaderRole)',
+                    '$displayUploadedBy ($uploaderRole)',
                   ),
                   
                   ListenableBuilder(
@@ -419,7 +431,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                 }
 
                 return GestureDetector(
-                  onTap: () => DownloadService().startDownload(_getResourceData(displayPrograms, displayLecturers)),
+                  onTap: () => DownloadService().startDownload(_getResourceData(displayPrograms, displayLecturers, ref)),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 14),

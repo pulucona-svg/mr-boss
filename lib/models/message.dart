@@ -5,6 +5,7 @@ enum MessageStatus { sent, delivered, read }
 
 class Message {
   final String id;
+  final String? senderId;
   final String text;
   final String? imageUrl;
   final File? imageFile;
@@ -21,6 +22,7 @@ class Message {
 
   Message({
     required this.id,
+    this.senderId,
     required this.text,
     this.imageFile,
     this.imageUrl,
@@ -39,6 +41,7 @@ class Message {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'senderId': senderId,
       'text': text,
       'imageUrl': imageUrl,
       'timestamp': timestamp.toIso8601String(),
@@ -57,6 +60,7 @@ class Message {
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
       id: json['id'],
+      senderId: json['senderId'],
       text: json['text'],
       imageUrl: json['imageUrl'],
       timestamp: DateTime.parse(json['timestamp']),

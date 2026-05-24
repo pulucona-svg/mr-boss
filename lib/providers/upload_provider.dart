@@ -4,6 +4,7 @@ import '../services/course_service.dart';
 import '../services/file_service.dart';
 import '../services/upload_service.dart';
 import '../services/resource_service.dart';
+import 'user_provider.dart';
 
 // Service Providers
 final courseServiceProvider = Provider((ref) => CourseService());
@@ -86,8 +87,9 @@ class UploadNotifier extends StateNotifier<UploadState> {
   final CourseService _courseService;
   final FileService _fileService;
   final UploadService _uploadService;
+  final UserProfile _userProfile;
 
-  UploadNotifier(this._courseService, this._fileService, this._uploadService)
+  UploadNotifier(this._courseService, this._fileService, this._uploadService, this._userProfile)
       : super(UploadState(
           material: UploadMaterialModel(
             unitName: '',
@@ -97,7 +99,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
             yearOfStudy: '1st Year',
             semester: 'Semester 1',
             yearOfPublication: DateTime.now().year,
-            uploadedBy: ResourceService.currentUserName,
+            uploadedBy: _userProfile.username,
             uploaderId: ResourceService.currentUserId,
             yearOfUpload: DateTime.now().year,
             materialType: 'Notes',
@@ -485,7 +487,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
         yearOfStudy: '1st Year',
         semester: 'Semester 1',
         yearOfPublication: DateTime.now().year,
-        uploadedBy: ResourceService.currentUserName,
+        uploadedBy: _userProfile.username,
         uploaderId: ResourceService.currentUserId,
         yearOfUpload: DateTime.now().year,
         materialType: state.uploadMode == 'timetable' ? 'Class Timetable' : 'Notes',
@@ -497,10 +499,12 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
 // Provider for the UploadNotifier
 final uploadProvider = StateNotifierProvider.autoDispose<UploadNotifier, UploadState>((ref) {
+  final userProfile = ref.watch(userProfileProvider);
   return UploadNotifier(
     ref.watch(courseServiceProvider),
     ref.watch(fileServiceProvider),
     ref.watch(uploadServiceProvider),
+    userProfile,
   );
 });
 

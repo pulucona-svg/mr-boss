@@ -20,6 +20,7 @@ class ChatService extends ChangeNotifier {
         final oldMsg = _messages[i];
         _messages[i] = Message(
           id: oldMsg.id,
+          senderId: oldMsg.senderId,
           text: oldMsg.text,
           imageFile: oldMsg.imageFile,
           imageUrl: oldMsg.imageUrl,
@@ -54,11 +55,12 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  void sendMessage(String text, {File? imageFile, Message? replyTo}) {
+  void sendMessage(String text, {File? imageFile, Message? replyTo, String? senderId}) {
     _cleanupOldMessages();
     final messageId = DateTime.now().millisecondsSinceEpoch.toString();
     final message = Message(
       id: messageId,
+      senderId: senderId,
       text: text,
       imageFile: imageFile,
       timestamp: DateTime.now(),
@@ -96,6 +98,7 @@ class ChatService extends ChangeNotifier {
       final oldMsg = _messages[index];
       _messages[index] = Message(
         id: oldMsg.id,
+        senderId: oldMsg.senderId,
         text: oldMsg.text,
         imageFile: oldMsg.imageFile,
         imageUrl: oldMsg.imageUrl,
@@ -127,6 +130,7 @@ class ChatService extends ChangeNotifier {
   void _receiveAdminMessage(String text) {
     final message = Message(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
+      senderId: 'admin',
       text: text,
       timestamp: DateTime.now(),
       isMe: false,
@@ -149,6 +153,7 @@ class ChatService extends ChangeNotifier {
       if (oldMsg.isDeleted) return;
       _messages[index] = Message(
         id: oldMsg.id,
+        senderId: oldMsg.senderId,
         text: oldMsg.text,
         imageFile: oldMsg.imageFile,
         imageUrl: oldMsg.imageUrl,
@@ -172,6 +177,7 @@ class ChatService extends ChangeNotifier {
       final oldMsg = _messages[index];
       _messages[index] = Message(
         id: oldMsg.id,
+        senderId: oldMsg.senderId,
         text: "This message was deleted",
         timestamp: oldMsg.timestamp,
         isMe: oldMsg.isMe,
@@ -189,6 +195,7 @@ class ChatService extends ChangeNotifier {
       final oldMsg = _messages[index];
       _messages[index] = Message(
         id: oldMsg.id,
+        senderId: oldMsg.senderId,
         text: newText,
         imageFile: oldMsg.imageFile,
         imageUrl: oldMsg.imageUrl,

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dotted_border/dotted_border.dart';
 import '../providers/upload_provider.dart';
+import '../providers/user_provider.dart';
 import '../services/resource_service.dart';
 
 class UploadBottomSheet extends ConsumerStatefulWidget {
@@ -336,7 +337,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                       const SizedBox(height: 32),
                       
                       // Auto-filled info
-                      _buildInfoRow('Uploaded By', uploadState.material.uploadedBy == ResourceService.currentUserName ? 'Me' : uploadState.material.uploadedBy),
+                      _buildInfoRow('Uploaded By', ref.watch(userProfileProvider).username),
                       const SizedBox(height: 8),
                       _buildInfoRow('Upload Year', uploadState.material.yearOfUpload.toString()),
                       

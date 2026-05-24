@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/resource_card.dart';
 import '../services/download_service.dart';
@@ -370,23 +371,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                                         MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
                                                       );
                                                     },
-                                                    icon: Stack(
-                                                      alignment: Alignment.center,
-                                                      children: [
-                                                        const Icon(
-                                                          Icons.chat_bubble_rounded,
-                                                          color: Color(0xFF00B2FF),
-                                                          size: 28,
-                                                        ),
-                                                        const Positioned(
-                                                          top: 5,
-                                                          child: Icon(
-                                                            Icons.bolt_rounded,
-                                                            color: Colors.white,
-                                                            size: 16,
-                                                          ),
-                                                        ),
-                                                      ],
+                                                    icon: SvgPicture.asset(
+                                                      'assets/messenger.svg',
+                                                      height: 28,
+                                                      width: 28,
+                                                      colorFilter: const ColorFilter.mode(
+                                                        Color(0xFF00B2FF),
+                                                        BlendMode.srcIn,
+                                                      ),
                                                     ),
                                                   ),
                                                   if (unreadMessages > 0)
@@ -443,50 +435,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  AdCarousel(
-                                    interval: const Duration(seconds: 8),
-                                    ads: [
-                                      {
-                                        'type': 'image',
-                                        'isAsset': true,
-                                        'title': 'Davy Cybers 💻',
-                                        'subtitle': 'In need of professional cyber services? Worry no more, Davy Cybers we have got you.',
-                                        'url': 'assets/ad_cyber.jpeg',
-                                        'color': const Color(0xFF20C8FF),
-                                      },
-                                      {
-                                        'type': 'image',
-                                        'isAsset': true,
-                                        'title': 'Manu Data 🌐',
-                                        'subtitle': 'Tired of expensive data plans? Worry no more, Manu Data Solutions we have got you.',
-                                        'url': 'assets/ad_data.jpeg',
-                                        'color': const Color(0xFF00A85A),
-                                      },
-                                      {
-                                        'type': 'image',
-                                        'isAsset': true,
-                                        'title': 'Snake Light 💡',
-                                        'subtitle': 'In need of snake light? Say less, we got you with a discount.',
-                                        'url': 'assets/ad_snake.jpeg',
-                                        'color': const Color(0xFFFF8A00),
-                                      },
-                                      {
-                                        'type': 'video',
-                                        'title': 'Industrial Power 🏗️',
-                                        'subtitle': 'Smart factories and the future of automated manufacturing.',
-                                        'url': 'https://assets.mixkit.co/videos/preview/mixkit-industrial-robot-arms-moving-in-a-factory-42468-large.mp4',
-                                        'color': const Color(0xFF7D46FF),
-                                      },
-                                      {
-                                        'type': 'video',
-                                        'title': 'Electric Motion 🏎️',
-                                        'subtitle': 'The electric revolution in high-performance vehicles.',
-                                        'url': 'https://assets.mixkit.co/videos/preview/mixkit-blue-sports-car-racing-on-a-track-40243-large.mp4',
-                                        'color': const Color(0xFFFF4667),
-                                      },
-                                    ],
-                                  ),
-                                  const SizedBox(height: 18),
                                   Text('Your offline academic hub.', style: TextStyle(color: subTextColor, fontSize: 16)),
                                   const SizedBox(height: 20),
                                   Row(

@@ -46,6 +46,7 @@ dependencies:
   connectivity_plus: ^7.1.1
   shimmer: ^3.0.0
   audioplayers: ^6.6.0
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:
@@ -95,6 +96,7 @@ flutter:
     - assets/ad_snake.jpeg
     - assets/lessons.json
     - assets/admin_pic.jpeg
+    - assets/messenger.svg
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

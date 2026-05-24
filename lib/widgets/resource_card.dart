@@ -9,7 +9,10 @@ import '../services/download_service.dart';
 import '../services/comment_service.dart';
 import '../services/resource_service.dart';
 
-class ResourceCard extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/user_provider.dart';
+
+class ResourceCard extends ConsumerStatefulWidget {
   const ResourceCard({
     super.key,
     required this.title,
@@ -26,6 +29,7 @@ class ResourceCard extends StatefulWidget {
     this.lecturers = const ['Dr. James Kamau'],
     this.uploadedBy = 'Admin',
     this.uploaderRole = 'Administrator',
+    this.uploaderId = 'admin',
     this.views = '189',
     this.likes = '27',
     this.comments = '5',
@@ -57,6 +61,7 @@ class ResourceCard extends StatefulWidget {
   final List<String> lecturers;
   final String uploadedBy;
   final String uploaderRole;
+  final String uploaderId;
   final String views;
   final String likes;
   final String comments;
@@ -68,10 +73,10 @@ class ResourceCard extends StatefulWidget {
   final VoidCallback? onViewIncrement;
 
   @override
-  State<ResourceCard> createState() => _ResourceCardState();
+  ConsumerState<ResourceCard> createState() => _ResourceCardState();
 }
 
-class _ResourceCardState extends State<ResourceCard> {
+class _ResourceCardState extends ConsumerState<ResourceCard> {
   Timer? _viewTimer;
 
   @override
@@ -81,6 +86,10 @@ class _ResourceCardState extends State<ResourceCard> {
   }
 
   Map<String, String> _getResourceData() {
+    final userProfile = ref.read(userProfileProvider);
+    final bool isMe = widget.uploaderId == userProfile.uid || widget.uploadedBy == 'Me';
+    final String displayUploadedBy = isMe ? userProfile.username : widget.uploadedBy;
+
     return {
       'title': widget.title,
       'type': widget.type,
@@ -93,11 +102,14 @@ class _ResourceCardState extends State<ResourceCard> {
       'yearOfStudy': widget.yearOfStudy,
       'semester': widget.semester,
       'lecturer': widget.lecturers.join(', '),
-      'uploadedBy': widget.uploadedBy,
+      'uploadedBy': displayUploadedBy,
       'uploaderRole': widget.uploaderRole,
       'views': widget.views,
       'likes': widget.likes,
       'comments': widget.comments,
+      'format': widget.materialFormat,
+      'programs': widget.targetPrograms.join(', '),
+      'isLiked': widget.isLiked.toString(),
     };
   }
 
@@ -157,6 +169,7 @@ class _ResourceCardState extends State<ResourceCard> {
         lecturers: resource?.lecturers ?? widget.lecturers,
         uploadedBy: widget.uploadedBy,
         uploaderRole: widget.uploaderRole,
+        uploaderId: resource?.uploaderId ?? widget.uploaderId,
         showDownload: widget.showDownload,
       ),
     );

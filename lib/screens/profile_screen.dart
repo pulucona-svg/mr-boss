@@ -8,6 +8,7 @@ import '../widgets/skeleton.dart';
 import '../widgets/glass_card.dart';
 import '../providers/theme_provider.dart';
 import '../providers/upload_provider.dart';
+import '../providers/user_provider.dart';
 import 'help_support_screen.dart';
 import 'reset_password_screen.dart';
 import 'library_screen.dart';
@@ -22,17 +23,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   static bool _hasLoadedBefore = false;
   late bool _isLoading;
-  String? _profileImagePath;
-
-  // Academic & Contact Details State
-  String _name = 'Cona Pulu';
-  String _username = '@conakip';
-  String _institution = 'University of Nairobi';
-  String _program = 'Bachelor of Computer Science';
-  String _year = 'Year 1';
-  String _semester = 'Sem 1';
-  String _phone = '0714072724';
-  String _email = 'pulucona@gmail.com';
 
   @override
   void initState() {
@@ -57,6 +47,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
+    final userProfile = ref.watch(userProfileProvider);
 
     if (_isLoading) {
       return Scaffold(
@@ -151,10 +142,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               child: CircleAvatar(
                                 radius: 50,
                                 backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
-                                backgroundImage: _profileImagePath != null
-                                    ? FileImage(File(_profileImagePath!))
+                                backgroundImage: userProfile.profileImagePath != null
+                                    ? FileImage(File(userProfile.profileImagePath!))
                                     : null,
-                                child: _profileImagePath == null
+                                child: userProfile.profileImagePath == null
                                     ? Icon(Icons.person, size: 50, color: isDark ? Colors.white54 : Colors.grey)
                                     : null,
                               ),
@@ -192,7 +183,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const SizedBox(height: 12),
                     Center(
                       child: Text(
-                        _name,
+                        userProfile.username,
                         style: TextStyle(
                           color: textColor,
                           fontSize: 22,
@@ -202,7 +193,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     Center(
                       child: Text(
-                        _program,
+                        userProfile.program,
                         style: TextStyle(
                           color: subTextColor,
                           fontSize: 14,
@@ -262,9 +253,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          _buildDetailRow('Institution', _institution, textColor, subTextColor),
+                          _buildDetailRow('Institution', userProfile.institution, textColor, subTextColor),
                           const SizedBox(height: 8),
-                          _buildDetailRow('Program', _program, textColor, subTextColor),
+                          _buildDetailRow('Program', userProfile.program, textColor, subTextColor),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -273,9 +264,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    _buildDetailRow('Year', _year, textColor, subTextColor),
+                                    _buildDetailRow('Year', userProfile.year, textColor, subTextColor),
                                     const SizedBox(height: 8),
-                                    _buildDetailRow('Semester', _semester, textColor, subTextColor),
+                                    _buildDetailRow('Semester', userProfile.semester, textColor, subTextColor),
                                   ],
                                 ),
                               ),
@@ -310,9 +301,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           const SizedBox(height: 12),
                           const Divider(color: Colors.white10),
                           const SizedBox(height: 8),
-                          _buildDetailRow('Phone', _phone, textColor, subTextColor),
+                          _buildDetailRow('Phone', userProfile.phone, textColor, subTextColor),
                           const SizedBox(height: 8),
-                          _buildDetailRow('Email', _email, textColor, subTextColor),
+                          _buildDetailRow('Email', userProfile.email, textColor, subTextColor),
                         ],
                       ),
                     ),
@@ -593,14 +584,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showEditDetailsModal(BuildContext context, bool isDark) {
-    final nameController = TextEditingController(text: _name);
-    final userController = TextEditingController(text: _username);
-    final instController = TextEditingController(text: _institution);
-    final progController = TextEditingController(text: _program);
-    final yearController = TextEditingController(text: _year);
-    final semController = TextEditingController(text: _semester);
-    final phoneController = TextEditingController(text: _phone);
-    final emailController = TextEditingController(text: _email);
+    final userProfile = ref.read(userProfileProvider);
+    final nameController = TextEditingController(text: userProfile.username);
+    final instController = TextEditingController(text: userProfile.institution);
+    final progController = TextEditingController(text: userProfile.program);
+    final yearController = TextEditingController(text: userProfile.year);
+    final semController = TextEditingController(text: userProfile.semester);
+    final phoneController = TextEditingController(text: userProfile.phone);
+    final emailController = TextEditingController(text: userProfile.email);
 
     showModalBottomSheet(
       context: context,
@@ -641,8 +632,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             Expanded(
               child: ListView(
                 children: [
-                  _buildEditField('Full Name', nameController, isDark),
-                  _buildEditField('Username', userController, isDark),
+                  _buildEditField('Username', nameController, isDark),
                   _buildEditField('Institution', instController, isDark),
                   _buildEditField('Program', progController, isDark),
                   Row(
@@ -660,16 +650,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     height: 55,
                     child: ElevatedButton(
                       onPressed: () {
-                        setState(() {
-                          _name = nameController.text;
-                          _username = userController.text;
-                          _institution = instController.text;
-                          _program = progController.text;
-                          _year = yearController.text;
-                          _semester = semController.text;
-                          _phone = phoneController.text;
-                          _email = emailController.text;
-                        });
+                        ref.read(userProfileProvider.notifier).updateProfile(
+                          username: nameController.text,
+                          institution: instController.text,
+                          program: progController.text,
+                          year: yearController.text,
+                          semester: semController.text,
+                          phone: phoneController.text,
+                          email: emailController.text,
+                        );
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Details updated successfully')),
@@ -894,9 +883,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 IconButton(
                   icon: Icon(Icons.delete_outline, color: isDark ? Colors.white : Colors.black),
                   onPressed: () {
-                    setState(() {
-                      _profileImagePath = null;
-                    });
+                    ref.read(userProfileProvider.notifier).clearProfileImage();
                     Navigator.pop(context);
                   },
                 ),
@@ -924,9 +911,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final pickedFile = await picker.pickImage(source: source);
       if (pickedFile != null) {
-        setState(() {
-          _profileImagePath = pickedFile.path;
-        });
+        ref.read(userProfileProvider.notifier).setProfileImage(pickedFile.path);
         if (mounted) Navigator.pop(context);
       }
     } catch (e) {
@@ -935,6 +920,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _openFullScreenProfile(BuildContext context, bool isDark) {
+    final userProfile = ref.read(userProfileProvider);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -964,8 +950,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _profileImagePath != null
-                          ? Image.file(File(_profileImagePath!), fit: BoxFit.cover)
+                      userProfile.profileImagePath != null
+                          ? Image.file(File(userProfile.profileImagePath!), fit: BoxFit.cover)
                           : Container(
                               color: isDark ? const Color(0xFF1A1A3F) : Colors.grey.shade200,
                               child: Center(
@@ -997,7 +983,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _name,
+                              userProfile.username,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 32,
@@ -1033,10 +1019,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 25),
-                      _buildFullScreenDetailRow(Icons.school_outlined, 'Institution', _institution),
-                      _buildFullScreenDetailRow(Icons.book_outlined, 'Program', _program),
-                      _buildFullScreenDetailRow(Icons.calendar_today_outlined, 'Year', _year),
-                      _buildFullScreenDetailRow(Icons.history_edu_outlined, 'Semester', _semester),
+                      _buildFullScreenDetailRow(Icons.school_outlined, 'Institution', userProfile.institution),
+                      _buildFullScreenDetailRow(Icons.book_outlined, 'Program', userProfile.program),
+                      _buildFullScreenDetailRow(Icons.calendar_today_outlined, 'Year', userProfile.year),
+                      _buildFullScreenDetailRow(Icons.history_edu_outlined, 'Semester', userProfile.semester),
                       
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 20),
@@ -1052,9 +1038,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 25),
-                      _buildFullScreenDetailRow(Icons.phone_outlined, 'Phone', _phone),
-                      _buildFullScreenDetailRow(Icons.chat_outlined, 'WhatsApp', _phone),
-                      _buildFullScreenDetailRow(Icons.email_outlined, 'Email', _email),
+                      _buildFullScreenDetailRow(Icons.phone_outlined, 'Phone', userProfile.phone),
+                      _buildFullScreenDetailRow(Icons.chat_outlined, 'WhatsApp', userProfile.phone),
+                      _buildFullScreenDetailRow(Icons.email_outlined, 'Email', userProfile.email),
                       
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 20),

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../providers/chat_provider.dart';
 import '../models/message.dart';
 import '../providers/theme_provider.dart';
+import '../providers/user_provider.dart';
 import 'admin_profile_screen.dart';
 
 class HelpSupportScreen extends ConsumerStatefulWidget {
@@ -143,7 +144,8 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
-      ref.read(chatServiceProvider.notifier).sendMessage('', imageFile: File(image.path), replyTo: _replyingTo);
+      final userProfile = ref.read(userProfileProvider);
+      ref.read(chatServiceProvider.notifier).sendMessage('', imageFile: File(image.path), replyTo: _replyingTo, senderId: userProfile.uid);
       setState(() => _replyingTo = null);
       _scrollToBottom();
     }
@@ -156,7 +158,8 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
         ref.read(chatServiceProvider.notifier).editMessage(_editingMessage!.id, text);
         setState(() => _editingMessage = null);
       } else {
-        ref.read(chatServiceProvider.notifier).sendMessage(text, replyTo: _replyingTo);
+        final userProfile = ref.read(userProfileProvider);
+        ref.read(chatServiceProvider.notifier).sendMessage(text, replyTo: _replyingTo, senderId: userProfile.uid);
       }
       _messageController.clear();
       setState(() => _replyingTo = null);
@@ -613,9 +616,11 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
 
   Widget _buildMessageBubble(Message message, Color myColor, Color otherColor, Color textColor, bool isDark) {
     final isSelected = _selectedMessage?.id == message.id;
+    final userProfile = ref.watch(userProfileProvider);
+    final bool isMe = message.senderId == userProfile.uid || (message.isMe && message.senderId == null);
     
     return Align(
-      alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: () => _onMessageLongPress(message),
         onTap: () {
@@ -626,133 +631,172 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
         child: Container(
           width: double.infinity,
           color: isSelected ? Colors.blue.withOpacity(0.15) : Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Align(
-            alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12), // Extra space for reaction
-                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: message.isMe ? myColor : otherColor,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(12),
-                      topRight: const Radius.circular(12),
-                      bottomLeft: message.isMe ? const Radius.circular(12) : Radius.zero,
-                      bottomRight: message.isMe ? Radius.zero : const Radius.circular(12),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 2,
-                        offset: const Offset(0, 1),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                CircleAvatar(
+                  radius: 14,
+                  backgroundImage: AssetImage(_adminImageUrl),
+                ),
+              if (!isMe) const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  children: [
+                    if (isMe)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4, bottom: 2),
+                        child: Text(
+                          userProfile.username,
+                          style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (message.replyToId != null && !message.isDeleted)
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
                         Container(
-                          margin: const EdgeInsets.only(bottom: 4),
-                          padding: const EdgeInsets.all(6),
-                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12), // Extra space for reaction
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
+                          padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(4),
-                            border: const Border(left: BorderSide(color: Color(0xFF00A884), width: 4)),
+                            color: isMe ? myColor : otherColor,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(12),
+                              topRight: const Radius.circular(12),
+                              bottomLeft: isMe ? const Radius.circular(12) : Radius.zero,
+                              bottomRight: isMe ? Radius.zero : const Radius.circular(12),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                message.replyIsImage == true ? 'Photo' : (message.replyText ?? ''),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (message.type == MessageType.image && !message.isDeleted)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: message.imageFile != null
-                              ? Image.file(message.imageFile!, fit: BoxFit.cover)
-                              : const SizedBox(),
-                        ),
-                      if (message.text.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4, right: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (message.isDeleted)
-                                Icon(
-                                  Icons.block,
-                                  size: 14,
-                                  color: textColor.withOpacity(0.5),
-                                ),
-                              if (message.isDeleted) const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  message.text,
-                                  style: TextStyle(
-                                    color: message.isDeleted ? textColor.withOpacity(0.5) : textColor,
-                                    fontSize: 16,
-                                    fontStyle: message.isDeleted ? FontStyle.italic : FontStyle.normal,
+                              if (message.replyToId != null && !message.isDeleted)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  padding: const EdgeInsets.all(6),
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: const Border(left: BorderSide(color: Color(0xFF00A884), width: 4)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        message.replyIsImage == true ? 'Photo' : (message.replyText ?? ''),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12),
+                                      ),
+                                    ],
                                   ),
                                 ),
+                              if (message.type == MessageType.image && !message.isDeleted)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: message.imageFile != null
+                                      ? Image.file(message.imageFile!, fit: BoxFit.cover)
+                                      : const SizedBox(),
+                                ),
+                              if (message.text.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4, right: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (message.isDeleted)
+                                        Icon(
+                                          Icons.block,
+                                          size: 14,
+                                          color: textColor.withOpacity(0.5),
+                                        ),
+                                      if (message.isDeleted) const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          message.text,
+                                          style: TextStyle(
+                                            color: message.isDeleted ? textColor.withOpacity(0.5) : textColor,
+                                            fontSize: 16,
+                                            fontStyle: message.isDeleted ? FontStyle.italic : FontStyle.normal,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    DateFormat('HH:mm').format(message.timestamp),
+                                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                                  ),
+                                  if (isMe) ...[
+                                    const SizedBox(width: 4),
+                                    _buildStatusTicks(message.status),
+                                  ],
+                                ],
                               ),
                             ],
                           ),
                         ),
-                      const SizedBox(height: 2),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            DateFormat('HH:mm').format(message.timestamp),
-                            style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                        if (message.reaction != null && !message.isDeleted)
+                          Positioned(
+                            bottom: 2,
+                            right: isMe ? 0 : null,
+                            left: isMe ? null : 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF232D36) : Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    spreadRadius: 1,
+                                  )
+                                ],
+                              ),
+                              child: Text(
+                                message.reaction!,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
                           ),
-                          if (message.isMe) ...[
-                            const SizedBox(width: 4),
-                            _buildStatusTicks(message.status),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (message.reaction != null && !message.isDeleted)
-                  Positioned(
-                    bottom: 2,
-                    right: message.isMe ? 0 : null,
-                    left: message.isMe ? null : 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF232D36) : Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 4,
-                            spreadRadius: 1,
-                          )
-                        ],
-                      ),
-                      child: Text(
-                        message.reaction!,
-                        style: const TextStyle(fontSize: 12),
-                      ),
+                      ],
                     ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+              if (isMe) const SizedBox(width: 8),
+              if (isMe)
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: Colors.white24,
+                  backgroundImage: userProfile.profileImagePath != null
+                      ? FileImage(File(userProfile.profileImagePath!))
+                      : null,
+                  child: userProfile.profileImagePath == null
+                      ? Text(
+                          userProfile.username.isNotEmpty ? userProfile.username[0] : '?',
+                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                        )
+                      : null,
+                ),
+            ],
           ),
         ),
       ),

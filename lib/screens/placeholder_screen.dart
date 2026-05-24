@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../widgets/skeleton.dart';
@@ -109,23 +110,14 @@ class _PlaceholderScreenState extends ConsumerState<PlaceholderScreen> {
                                       MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
                                     );
                                   },
-                                  icon: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      const Icon(
-                                        Icons.chat_bubble_rounded,
-                                        color: Color(0xFF00B2FF),
-                                        size: 28,
-                                      ),
-                                      const Positioned(
-                                        top: 5,
-                                        child: Icon(
-                                          Icons.bolt_rounded,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                      ),
-                                    ],
+                                  icon: SvgPicture.asset(
+                                    'assets/messenger.svg',
+                                    height: 28,
+                                    width: 28,
+                                    colorFilter: const ColorFilter.mode(
+                                      Color(0xFF00B2FF),
+                                      BlendMode.srcIn,
+                                    ),
                                   ),
                                 ),
                                 if (unreadMessages > 0)
