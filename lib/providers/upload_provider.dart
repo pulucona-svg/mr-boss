@@ -20,9 +20,6 @@ class UploadState {
   final double uploadProgress;
   final String? error;
   final bool isSuccess;
-  final bool showReplacePrompt;
-  final bool showApprovedMessage;
-  final String? existingMaterialId;
 
   UploadState({
     required this.material,
@@ -31,9 +28,6 @@ class UploadState {
     this.uploadProgress = 0.0,
     this.error,
     this.isSuccess = false,
-    this.showReplacePrompt = false,
-    this.showApprovedMessage = false,
-    this.existingMaterialId,
   });
 
   bool get isValid {
@@ -64,9 +58,6 @@ class UploadState {
     double? uploadProgress,
     String? error,
     bool? isSuccess,
-    bool? showReplacePrompt,
-    bool? showApprovedMessage,
-    String? existingMaterialId,
   }) {
     return UploadState(
       material: material ?? this.material,
@@ -75,9 +66,6 @@ class UploadState {
       uploadProgress: uploadProgress ?? this.uploadProgress,
       error: error,
       isSuccess: isSuccess ?? this.isSuccess,
-      showReplacePrompt: showReplacePrompt ?? this.showReplacePrompt,
-      showApprovedMessage: showApprovedMessage ?? this.showApprovedMessage,
-      existingMaterialId: existingMaterialId ?? this.existingMaterialId,
     );
   }
 }
@@ -340,33 +328,10 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
   Future<void> upload() async {
     if (!state.isValid) return;
-
-    // Check for duplicates
-    final duplicate = ResourceService().findDuplicate(
-      state.material.unitCode,
-      state.material.materialType,
-      state.material.yearOfStudy,
-      state.material.semester,
-      state.material.yearOfPublication.toString(),
-    );
-
-    if (duplicate != null) {
-      if (duplicate.status == 'approved') {
-        state = state.copyWith(showApprovedMessage: true);
-        return;
-      } else {
-        state = state.copyWith(
-          showReplacePrompt: true,
-          existingMaterialId: duplicate.title,
-        );
-        return;
-      }
-    }
-
     await _executeUpload();
   }
 
-  Future<void> _executeUpload({bool isReplacement = false}) async {
+  Future<void> _executeUpload() async {
     state = state.copyWith(isUploading: true, error: null, isSuccess: false);
 
     try {
@@ -388,10 +353,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
           state = state.copyWith(uploadProgress: progress);
         },
       );
-
-      if (isReplacement && state.existingMaterialId != null) {
-        ResourceService().deleteUpload(state.existingMaterialId!);
-      }
 
       // Create a Resource object and add to ResourceService
       final resource = Resource(
@@ -428,8 +389,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
         isUploading: false, 
         isSuccess: true, 
         uploadProgress: 1.0,
-        showReplacePrompt: false,
-        existingMaterialId: null,
       );
     } catch (e) {
       state = state.copyWith(isUploading: false, error: e.toString());
@@ -446,7 +405,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
     } else if (name.contains('math') || name.contains('calculus') || name.contains('stat') || code.startsWith('math')) {
       return 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=400&q=80'; // Math/Blackboard
     } else if (name.contains('physics') || name.contains('electron') || code.startsWith('phys')) {
-      return 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=400&q=80'; // Physics/Atom
+      return 'https://images.unsplash.com/photo-1635070041078-e363dbe004041078e363dbe00?w=400&q=80'; // Physics/Atom
     } else if (name.contains('biolog') || name.contains('anatomy') || name.contains('health') || code.startsWith('biol')) {
       return 'https://images.unsplash.com/photo-1530213786676-41ad9f7736f6?w=400&q=80'; // Biology/Cells
     } else if (name.contains('chem') || code.startsWith('chem')) {
@@ -461,19 +420,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
     
     // Default academic thumbnail
     return 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=400&q=80';
-  }
-
-  void confirmReplace() {
-    _executeUpload(isReplacement: true);
-  }
-
-  void cancelReplace() {
-    reset();
-    state = state.copyWith(showReplacePrompt: false, existingMaterialId: null);
-  }
-
-  void dismissApprovedMessage() {
-    state = state.copyWith(showApprovedMessage: false);
   }
 
   void reset() {

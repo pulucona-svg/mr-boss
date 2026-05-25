@@ -354,26 +354,6 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             ],
           ),
           
-          // Duplicate Replacement Prompt
-          if (uploadState.showReplacePrompt)
-            _buildDialogOverlay(
-              title: 'Duplicate Upload',
-              message: 'You have already uploaded such a material. Would you like to replace the first one?',
-              onConfirm: notifier.confirmReplace,
-              onCancel: notifier.cancelReplace,
-              confirmLabel: 'YES',
-              cancelLabel: 'NO',
-            ),
-
-          // Approved Material Message
-          if (uploadState.showApprovedMessage)
-            _buildDialogOverlay(
-              title: 'Already Approved',
-              message: "The previous material has already been approved by admin and can't be replaced because it's already uploaded to the platform. Contact admin if you want it removed.",
-              onConfirm: notifier.dismissApprovedMessage,
-              confirmLabel: 'OKAY',
-            ),
-          
           // Progress Overlay
           if (uploadState.isUploading)
             _buildLoadingOverlay(uploadState.uploadProgress),

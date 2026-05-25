@@ -37,6 +37,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   late bool _isDownloadsSelected;
   bool _isUploadSheetOpen = false;
   late bool _isLoading;
+  String? _lastCorrectedOriginal;
+  String? _lastCorrectedResult;
+  String _lastSearchValue = '';
 
   @override
   void initState() {
@@ -49,15 +52,116 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _searchFocusNode.addListener(_onSearchFocusChange);
   }
 
+  int _levenshtein(String s, String t) {
+    if (s == t) return 0;
+    if (s.isEmpty) return t.length;
+    if (t.isEmpty) return s.length;
+
+    List<int> v0 = List<int>.generate(t.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(t.length + 1, 0);
+
+    for (int i = 0; i < s.length; i++) {
+      v1[0] = i + 1;
+      for (int j = 0; j < t.length; j++) {
+        int cost = (s[i] == t[j]) ? 0 : 1;
+        v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost].reduce((a, b) => a < b ? a : b);
+      }
+      for (int j = 0; j < t.length + 1; j++) v0[j] = v1[j];
+    }
+    return v1[t.length];
+  }
+
+  Set<String> _getDictionary() {
+    final resources = ResourceService().allResources;
+    final dictionary = <String>{};
+    for (var res in resources) {
+      final codeParts = res.unitCode.split(' ');
+      for (var p in codeParts) {
+        if (!RegExp(r'^\d+$').hasMatch(p)) dictionary.add(p);
+      }
+      final nameParts = res.unitName.split(' ');
+      for (var p in nameParts) {
+        if (p.length > 3) dictionary.add(p);
+      }
+      for (var l in res.lecturers) {
+        final lectParts = l.split(' ');
+        for (var p in lectParts) {
+          if (p.length > 3) dictionary.add(p);
+        }
+      }
+      dictionary.addAll(['Notes', 'CATs', 'Exams', 'Timetable', 'Manual', 'Supplementary']);
+    }
+    return dictionary;
+  }
+
+  void _handleAutocorrect(String value) {
+    if (!value.endsWith(' ')) return;
+    
+    final words = value.trim().split(RegExp(r'\s+'));
+    if (words.isEmpty) return;
+
+    final lastWord = words.last;
+    if (lastWord.length < 3 || RegExp(r'^\d+$').hasMatch(lastWord)) return;
+
+    final dictionary = _getDictionary();
+    String? bestMatch;
+    int minDistance = 2;
+
+    for (var entry in dictionary) {
+      final distance = _levenshtein(lastWord.toLowerCase(), entry.toLowerCase());
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestMatch = entry;
+      }
+    }
+
+    if (bestMatch != null && bestMatch.toLowerCase() != lastWord.toLowerCase()) {
+      final newWords = List<String>.from(words);
+      newWords[newWords.length - 1] = bestMatch;
+      final newText = "${newWords.join(' ')} ";
+      
+      setState(() {
+        _lastCorrectedOriginal = lastWord;
+        _lastCorrectedResult = bestMatch;
+        _searchController.text = newText;
+        _lastSearchValue = newText;
+        _searchController.selection = TextSelection.fromPosition(TextPosition(offset: newText.length));
+      });
+    }
+  }
+
+  void _revertAutocorrect() {
+    if (_lastCorrectedOriginal == null || _lastCorrectedResult == null) return;
+    
+    final currentText = _searchController.text;
+    final revertedText = currentText.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
+    
+    setState(() {
+      _searchController.text = revertedText;
+      _lastSearchValue = revertedText;
+      _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
+      _lastCorrectedOriginal = null;
+      _lastCorrectedResult = null;
+    });
+  }
+
   void _handleBack() {
     if (_searchController.text.isNotEmpty) {
       setState(() {
         _searchController.clear();
+        _lastSearchValue = '';
       });
       return;
     }
     if (_searchFocusNode.hasFocus) {
       _searchFocusNode.unfocus();
+      return;
+    }
+    if (_lastCorrectedOriginal != null) {
+      setState(() {
+        _lastCorrectedOriginal = null;
+        _lastCorrectedResult = null;
+      });
       return;
     }
     _resetAllFilters();
@@ -205,19 +309,77 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   List<String> _getSuggestions(String query, List<Resource> availableResources) {
     if (query.isEmpty) return [];
     final suggestions = <String>{};
+    final q = query.toLowerCase().trim();
+
+    final tokens = q.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+
+    // Priority matches for types
+    if ('supplementary exams'.contains(q) || 'supp'.contains(q)) suggestions.add('Supplementary Exams');
+    if ('class timetable'.contains(q) || 'table'.contains(q)) suggestions.add('Class Timetable');
+    if ('exam timetable'.contains(q)) suggestions.add('EXAM Timetable');
+    if ('time tables'.contains(q) || 'timetable'.contains(q)) suggestions.add('Time tables');
 
     for (var res in availableResources) {
-      if (res.title.toLowerCase().contains(query.toLowerCase())) suggestions.add(res.title);
-      if (res.unitCode.toLowerCase().contains(query.toLowerCase())) suggestions.add(res.unitCode);
-      if (res.unitName.toLowerCase().contains(query.toLowerCase())) suggestions.add(res.unitName);
+      // Helper to check if all query tokens match a target string
+      bool allTokensMatch(String? target) {
+        if (target == null) return false;
+        final targetLower = target.toLowerCase();
+        return tokens.every((token) => targetLower.contains(token));
+      }
+
+      void addIfMatch(String? text, {bool appendLecturer = false}) {
+        if (allTokensMatch(text)) {
+          String suggestion = text!;
+          if (appendLecturer && res.lecturers.isNotEmpty) {
+            suggestion = "$text - ${res.lecturers.first}";
+          }
+          suggestions.add(suggestion);
+        }
+      }
+
+      addIfMatch(res.unitCode, appendLecturer: true);
+      addIfMatch(res.title);
+      addIfMatch(res.unitName, appendLecturer: true);
+      addIfMatch(res.type);
+      for (var l in res.lecturers) addIfMatch(l);
+      for (var p in res.targetPrograms) addIfMatch(p);
+      for (var pc in res.programCodes) addIfMatch(pc);
+
+      // Add semester and year suggestions
+      if (q.contains('semester') || q.contains('sem')) {
+        suggestions.add("Semester ${res.semester}");
+      }
+      if (q.contains('year')) {
+        suggestions.add("Year ${res.yearOfStudy}");
+      }
     }
 
-    return suggestions.take(6).toList();
+    final sortedList = suggestions.toList();
+    sortedList.sort((a, b) {
+      final aLower = a.toLowerCase();
+      final bLower = b.toLowerCase();
+      
+      // Exact matches first
+      if (aLower == q && bLower != q) return -1;
+      if (bLower == q && aLower != q) return 1;
+      
+      // Prefix matches second
+      final aStarts = aLower.startsWith(q);
+      final bStarts = bLower.startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (bStarts && !aStarts) return 1;
+      
+      // Then by length
+      return a.length.compareTo(b.length);
+    });
+
+    return sortedList.take(8).toList();
   }
 
   void _showOverlay(List<Resource> availableResources) {
     _hideOverlay();
-    final suggestions = _getSuggestions(_searchController.text, availableResources);
+    final query = _searchController.text;
+    final suggestions = _getSuggestions(query, availableResources);
     if (suggestions.isEmpty) return;
 
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
@@ -232,6 +394,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           offset: const Offset(0, 60),
           child: CustomSearchDropdown(
             suggestions: suggestions,
+            query: query,
             width: size.width - 42,
             onSelected: (selection) {
               setState(() {
@@ -280,19 +443,155 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             : userUploads;
         
         final filteredResources = baseResources.where((res) {
-          final matchesCategory = _selectedCategory == 'All' || res.type == _selectedCategory;
-          final query = _searchController.text.trim();
+          final isTimetableCategory = _selectedCategory == 'All' ? false : _selectedCategory == 'Time tables';
+          final matchesCategory = _selectedCategory == 'All' || 
+              (isTimetableCategory 
+                  ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
+                  : res.type == _selectedCategory);
           
-          final searchFields = [
-            res.title,
-            res.unitCode,
-            res.unitName,
-            res.type,
-            ...res.lecturers,
-            ...res.targetPrograms,
-          ].join(' ');
+          final query = _searchController.text.trim().toLowerCase();
+          
+          if (query.isEmpty) return matchesCategory;
 
-          final matchesSearch = query.isEmpty || _fuzzyMatch(query, searchFields);
+          // Check for specialized exact matches across the entire resource set to decide filtering mode
+          bool isPrimaryMatch(Resource r, String q) {
+            final rUnitCode = r.unitCode.toLowerCase();
+            final rUnitName = r.unitName.toLowerCase();
+            final rSemester = r.semester.toLowerCase();
+            final rYearOfStudy = r.yearOfStudy.toLowerCase();
+            final rType = r.type.toLowerCase();
+            
+            // 1. Exact Material Type Matches
+            if (rType == q) return true;
+            
+            // Broad categories
+            if ((q == 'time tables' || q == 'timetable' || q == 'timetables') && rType.contains('timetable')) return true;
+            if ((q == 'supp' || q == 'supps' || q == 'supplementary') && rType.contains('supplementary')) return true;
+            if ((q == 'manual' || q == 'manuals' || q == 'prac manual') && rType.contains('manual')) return true;
+
+            // 2. Exact matches for primary fields
+            if (rUnitCode == q || rUnitName == q) return true;
+            if (r.lecturers.any((l) => l.toLowerCase() == q)) return true;
+            if (r.targetPrograms.any((p) => p.toLowerCase() == q)) return true;
+            if (r.programCodes.any((pc) => pc.toLowerCase() == q)) return true;
+            
+            // 3. Unit + Type combination (Two criteria)
+            final knownTypes = [
+              'notes', 'cats', 'exams', 'supplementary exams', 
+              'class timetable', 'exam timetable', 'prac manual'
+            ];
+            
+            for (var kt in knownTypes) {
+              if (q.contains(kt)) {
+                final unitPart = q.replaceAll(kt, '').trim();
+                if (unitPart.isNotEmpty) {
+                  bool typeMatch = rType == kt;
+                  // Handle aliases in combination
+                  if (kt == 'exams' && rType == 'exams') typeMatch = true;
+                  if (kt == 'notes' && rType == 'notes') typeMatch = true;
+                  
+                  if (typeMatch && (rUnitCode.contains(unitPart) || rUnitName.contains(unitPart))) {
+                    return true;
+                  }
+                }
+              }
+            }
+
+            // Fallback for other combinations (like unit + 'exam' without 's')
+            final qParts = q.split(' ');
+            if (qParts.length >= 2) {
+              String? detectedType;
+              List<String> remainingParts = [];
+              
+              for (var part in qParts) {
+                if (part == 'exam' || part == 'exams' || 
+                    part == 'note' || part == 'notes' ||
+                    part == 'cat' || part == 'cats' ||
+                    part == 'supp' || part == 'supps' ||
+                    part == 'timetable' || part == 'timetables' ||
+                    part == 'manual' || part == 'manuals') {
+                  detectedType = part;
+                } else {
+                  remainingParts.add(part);
+                }
+              }
+
+              if (detectedType != null && remainingParts.isNotEmpty) {
+                final unitPart = remainingParts.join(' ');
+                bool typeMatch = false;
+                if (detectedType.startsWith('exam') && rType.contains('exam')) typeMatch = true;
+                else if (detectedType.startsWith('note') && rType.contains('note')) typeMatch = true;
+                else if (detectedType.startsWith('cat') && rType.contains('cat')) typeMatch = true;
+                else if (detectedType.startsWith('supp') && rType.contains('supplementary')) typeMatch = true;
+                else if (detectedType.contains('table') && rType.contains('timetable')) typeMatch = true;
+                else if (detectedType.startsWith('manual') && rType.contains('manual')) typeMatch = true;
+
+                if (typeMatch && (rUnitCode.contains(unitPart) || rUnitName.contains(unitPart))) {
+                  return true;
+                }
+              }
+            }
+
+            // Semester/Year special handling to avoid over-matching on single digits
+            if (q.contains('semester') || q.contains('sem')) {
+              final digit = q.replaceAll(RegExp(r'[^0-9]'), '');
+              if (digit.isNotEmpty && rSemester.contains(digit)) return true;
+            } else if (q.length > 1 && rSemester == q) {
+              return true;
+            }
+
+            if (q.contains('year')) {
+              final digit = q.replaceAll(RegExp(r'[^0-9]'), '');
+              if (digit.isNotEmpty && rYearOfStudy.contains(digit)) return true;
+            }
+
+            return false;
+          }
+
+          // Optimization: Check if ANY resource has a primary match for the current query
+          final hasAnyPrimaryMatch = baseResources.any((r) => isPrimaryMatch(r, query));
+
+          bool matchesSearch;
+          if (hasAnyPrimaryMatch) {
+            // Strict mode: only show those that match primary fields
+            matchesSearch = isPrimaryMatch(res, query);
+          } else {
+            // Check if query matches a material type or specialized category
+            final allTypes = baseResources.map((r) => r.type.toLowerCase()).toSet();
+            final isTypeSearch = allTypes.contains(query) || 
+                                 query == 'timetable' || 
+                                 query == 'time tables' ||
+                                 query == 'manual' ||
+                                 query == 'supp' ||
+                                 query == 'supps';
+
+            if (isTypeSearch) {
+              // Strict match for type search
+              if (query == 'time tables' || query == 'timetable') {
+                matchesSearch = res.type.toLowerCase().contains('timetable') || res.type.toLowerCase().contains('time tables');
+              } else if (query == 'manual') {
+                matchesSearch = res.type.toLowerCase().contains('manual');
+              } else if (query == 'supp' || query == 'supps' || query == 'supplementary exams') {
+                matchesSearch = res.type.toLowerCase().contains('supplementary');
+              } else {
+                matchesSearch = res.type.toLowerCase() == query;
+              }
+            } else {
+              // Fuzzy match for general search
+              final searchFields = [
+                res.title,
+                res.unitCode,
+                res.unitName,
+                res.type,
+                res.semester,
+                res.yearOfStudy,
+                ...res.lecturers,
+                ...res.targetPrograms,
+                ...res.programCodes,
+              ].join(' ');
+              matchesSearch = _fuzzyMatch(query, searchFields);
+            }
+          }
           
           bool matchesFilters = true;
           _activeFilters.forEach((key, value) {
@@ -447,7 +746,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                             focusNode: _searchFocusNode,
                                             textCapitalization: TextCapitalization.sentences,
                                             onChanged: (value) {
-                                              setState(() {});
+                                              if (_lastCorrectedOriginal != null && _lastCorrectedResult != null && !value.endsWith(' ')) {
+                                                if (value.length < _lastSearchValue.length) {
+                                                  final revertedText = value.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
+                                                  setState(() {
+                                                    _searchController.text = revertedText;
+                                                    _lastSearchValue = revertedText;
+                                                    _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
+                                                    _lastCorrectedOriginal = null;
+                                                    _lastCorrectedResult = null;
+                                                  });
+                                                  _showOverlay(baseResources);
+                                                  return;
+                                                } else {
+                                                  setState(() {
+                                                    _lastCorrectedOriginal = null;
+                                                    _lastCorrectedResult = null;
+                                                  });
+                                                }
+                                              }
+                                              _handleAutocorrect(value);
+                                              setState(() => _lastSearchValue = value);
                                               _showOverlay(baseResources);
                                             },
                                             onTap: () => _showOverlay(baseResources),
@@ -456,6 +775,42 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                               hintText: _isDownloadsSelected ? 'Search downloaded units' : 'Search your uploads',
                                               hintStyle: TextStyle(color: textColor.withValues(alpha: 0.5)),
                                               prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
+                                              suffixIcon: _lastCorrectedOriginal != null
+                                                  ? GestureDetector(
+                                                      onTap: _revertAutocorrect,
+                                                      child: Container(
+                                                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                                        decoration: BoxDecoration(
+                                                          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                                                          borderRadius: BorderRadius.circular(12),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Text(
+                                                              _lastCorrectedOriginal!,
+                                                              style: TextStyle(
+                                                                color: isDark ? Colors.white54 : Colors.black54,
+                                                                fontSize: 10,
+                                                                fontWeight: FontWeight.bold,
+                                                                decoration: TextDecoration.lineThrough,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(width: 4),
+                                                            const Text(
+                                                              'Undo',
+                                                              style: TextStyle(
+                                                                color: Color(0xFF24C7FF),
+                                                                fontSize: 10,
+                                                                fontWeight: FontWeight.w900,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    )
+                                                  : null,
                                               filled: true,
                                               fillColor: isDark ? const Color(0xFF181739).withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.72),
                                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
@@ -632,7 +987,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                   crossAxisCount: 2,
                                   crossAxisSpacing: 12,
                                   mainAxisSpacing: 12,
-                                  childAspectRatio: 0.8,
+                                  childAspectRatio: 0.72,
                                 ),
                                 delegate: SliverChildBuilderDelegate(
                                   (context, index) {

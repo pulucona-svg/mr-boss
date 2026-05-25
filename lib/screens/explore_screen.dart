@@ -25,6 +25,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final List<String> _categories = [
     'For You',
     'Trending',
+    'Latest',
     'Kenya',
     'World',
     'Sports',
@@ -54,7 +55,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         id: '1',
         title: 'Ruto: Kenya to Create 2M Jobs by 2027',
         summary: 'The President says the government is focused on economic growth and youth empowerment.',
-        imageUrl: 'https://images.unsplash.com/photo-1597058811219-41b497f4d2bb?q=80&w=2000&auto=format&fit=crop',
+        imageUrl: 'https://images.unsplash.com/photo-1591115765373-5056e382d512?q=80&w=2000&auto=format&fit=crop',
         source: 'Citizen Digital',
         timeAgo: '2h ago',
         category: 'TOP STORY',
@@ -63,7 +64,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         id: '2',
         title: 'Tech Giants Announce New AI Hub in Nairobi',
         summary: 'Major investment aimed at boosting digital infrastructure in East Africa.',
-        imageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=2000&auto=format&fit=crop',
+        imageUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?q=80&w=2000&auto=format&fit=crop',
         source: 'TechCrunch',
         timeAgo: '4h ago',
         category: 'TOP STORY',
@@ -76,30 +77,150 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: '#FinanceBill2024',
         icon: Icons.trending_up_rounded,
         gradientColors: [const Color(0xFF20C8FF), const Color(0xFF287BFF)],
+        imageUrls: ['https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?q=80&w=800&auto=format&fit=crop'],
+        source: 'KBC News',
+        timeAgo: '1h ago',
+        description: 'Nationwide debates intensify as citizens and lawmakers dissect the proposed fiscal measures aimed at economic recovery.',
       ),
       TrendingTopic(
         id: '2',
         title: 'Raila Odinga',
         icon: Icons.person_rounded,
         gradientColors: [const Color(0xFF00A85A), const Color(0xFF00D1FF)],
+        imageUrls: ['https://images.unsplash.com/photo-1591115765373-5056e382d512?q=80&w=800&auto=format&fit=crop'],
+        source: 'Citizen Digital',
+        timeAgo: '2h ago',
+        description: 'The veteran politician makes a bold statement on national unity, sparking fresh conversations about the country\'s political future.',
       ),
       TrendingTopic(
         id: '3',
         title: 'Premier League',
         icon: Icons.sports_soccer_rounded,
         gradientColors: [const Color(0xFF7B5CFF), const Color(0xFFFF4667)],
+        imageUrls: ['https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=800&auto=format&fit=crop'],
+        source: 'Sky Sports',
+        timeAgo: '3h ago',
+        description: 'A thrilling weekend of football as the title race heats up with unexpected upsets and masterclass performances.',
       ),
       TrendingTopic(
         id: '4',
         title: 'Olympics 2024',
         icon: Icons.emoji_events_rounded,
         gradientColors: [const Color(0xFFFF8A00), const Color(0xFFFFD600)],
+        imageUrls: ['https://images.unsplash.com/photo-1569517282132-25d22f4573e6?q=80&w=800&auto=format&fit=crop'],
+        source: 'BBC News',
+        timeAgo: '4h ago',
+        description: 'World records tumble as elite athletes gather for the ultimate display of sporting excellence and human spirit.',
       ),
       TrendingTopic(
         id: '5',
         title: 'Trending Kenya',
         icon: Icons.whatshot_rounded,
         gradientColors: [const Color(0xFFFF4667), const Color(0xFF7B5CFF)],
+        imageUrls: ['https://images.unsplash.com/photo-1489392191049-fc10c97e64b6?q=80&w=800&auto=format&fit=crop'],
+        source: 'Standard News',
+        timeAgo: '5h ago',
+        description: 'From viral challenges to cultural milestones, discover what has captured the collective imagination of the Kenyan digital space.',
+      ),
+      TrendingTopic(
+        id: '6',
+        title: 'World Cup 2026',
+        icon: Icons.emoji_events_rounded,
+        gradientColors: [const Color(0xFF20C8FF), const Color(0xFF7B5CFF)],
+        imageUrls: ['https://images.unsplash.com/photo-1551244072-5d12893278ab?q=80&w=800&auto=format&fit=crop'],
+        source: 'FIFA',
+        timeAgo: '6h ago',
+        description: 'Host cities prepare for a global football extravaganza that promises to be the largest and most inclusive tournament ever.',
+      ),
+      TrendingTopic(
+        id: '7',
+        title: 'Bitcoin Surge',
+        icon: Icons.currency_bitcoin_rounded,
+        gradientColors: [const Color(0xFFFF9900), const Color(0xFFFFCC00)],
+        imageUrls: ['https://images.unsplash.com/photo-1518546305927-5a555bb7020d?q=80&w=800&auto=format&fit=crop'],
+        source: 'CoinDesk',
+        timeAgo: '7h ago',
+        description: 'Digital gold reaches new heights as institutional adoption and market optimism drive the cryptocurrency to record peaks.',
+      ),
+      TrendingTopic(
+        id: '8',
+        title: 'SpaceX Launch',
+        icon: Icons.rocket_launch_rounded,
+        gradientColors: [const Color(0xFF005288), const Color(0xFF00A0E3)],
+        imageUrls: ['https://images.unsplash.com/photo-1517976487492-5750f3195933?q=80&w=800&auto=format&fit=crop'],
+        source: 'SpaceX',
+        timeAgo: '8h ago',
+        description: 'Pushing the boundaries of interstellar travel as another successful mission paves the way for future lunar and Mars expeditions.',
+      ),
+      TrendingTopic(
+        id: '9',
+        title: 'AI Revolution',
+        icon: Icons.psychology_rounded,
+        gradientColors: [const Color(0xFF00F2FF), const Color(0xFF0061FF)],
+        imageUrls: ['https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=800&auto=format&fit=crop'],
+        source: 'Wired',
+        timeAgo: '9h ago',
+        description: 'Artificial intelligence transforms industries overnight, raising profound questions about the future of work and human creativity.',
+      ),
+      TrendingTopic(
+        id: '10',
+        title: 'Climate Action',
+        icon: Icons.eco_rounded,
+        gradientColors: [const Color(0xFF00D1FF), const Color(0xFF00A85A)],
+        imageUrls: ['https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=800&auto=format&fit=crop'],
+        source: 'National Geographic',
+        timeAgo: '10h ago',
+        description: 'Global leaders and activists unite in a critical race against time to implement sustainable solutions for a greener planet.',
+      ),
+      TrendingTopic(
+        id: '11',
+        title: 'Tech Expo 2024',
+        icon: Icons.devices_rounded,
+        gradientColors: [const Color(0xFF7B5CFF), const Color(0xFF00D1FF)],
+        imageUrls: ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop'],
+        source: 'TechCrunch',
+        timeAgo: '11h ago',
+        description: 'A glimpse into the future as cutting-edge gadgets and innovative software solutions take center stage at the annual tech showcase.',
+      ),
+      TrendingTopic(
+        id: '12',
+        title: 'Global Health',
+        icon: Icons.health_and_safety_rounded,
+        gradientColors: [const Color(0xFFFF4667), const Color(0xFFFF8A00)],
+        imageUrls: ['https://images.unsplash.com/photo-1505751172107-573966a09905?q=80&w=800&auto=format&fit=crop'],
+        source: 'WHO',
+        timeAgo: '12h ago',
+        description: 'International health agencies coordinate efforts to combat emerging challenges and ensure equitable access to medical care.',
+      ),
+      TrendingTopic(
+        id: '13',
+        title: 'Art & Design',
+        icon: Icons.palette_rounded,
+        gradientColors: [const Color(0xFFFFD600), const Color(0xFFFF8A00)],
+        imageUrls: ['https://images.unsplash.com/photo-1513364776144-60967b0f800f?q=80&w=800&auto=format&fit=crop'],
+        source: 'Behance',
+        timeAgo: '13h ago',
+        description: 'Exploring the intersection of aesthetics and functionality as visionary artists redefine the visual language of the modern era.',
+      ),
+      TrendingTopic(
+        id: '14',
+        title: 'Formula 1',
+        icon: Icons.speed_rounded,
+        gradientColors: [const Color(0xFFFF0000), const Color(0xFF000000)],
+        imageUrls: ['https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=800&auto=format&fit=crop'],
+        source: 'F1 Official',
+        timeAgo: '14h ago',
+        description: 'High-speed drama on the track as legendary drivers battle for podium finishes in the world\'s most prestigious racing circuit.',
+      ),
+      TrendingTopic(
+        id: '15',
+        title: 'Electric Vehicles',
+        icon: Icons.electric_car_rounded,
+        gradientColors: [const Color(0xFF00FF00), const Color(0xFF0000FF)],
+        imageUrls: ['https://images.unsplash.com/photo-1593941707882-a5bba14938c7?q=80&w=800&auto=format&fit=crop'],
+        source: 'Tesla',
+        timeAgo: '15h ago',
+        description: 'The automotive industry accelerates towards a zero-emission future with groundbreaking battery tech and sustainable manufacturing.',
       ),
     ];
 
@@ -109,8 +230,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: 'Fuel Prices Expected to Drop Next Month - EPRA',
         category: 'KENYA',
         imageUrls: [
-          'https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?q=80&w=800&auto=format&fit=crop',
-          'https://images.unsplash.com/photo-15206304640581-d334cdbbf45e?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1542224566-6e85f2e6772f?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1613665813446-82a78c44b8fe?q=80&w=800&auto=format&fit=crop',
         ],
         source: 'Nation Africa',
         timeAgo: '1h ago',
@@ -127,8 +248,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: 'Gaza Ceasefire Talks Resume in Cairo',
         category: 'WORLD',
         imageUrls: [
-          'https://images.unsplash.com/photo-1547721064-36202335dddb?q=80&w=800&auto=format&fit=crop',
-          'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1534067783941-51c9c23ecefd?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1444723121867-7a241cacace9?q=80&w=800&auto=format&fit=crop',
         ],
         source: 'Al Jazeera',
         timeAgo: '2h ago',
@@ -145,8 +266,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: 'Arsenal Beat Man United 2-1 in Thrilling Clash',
         category: 'SPORTS',
         imageUrls: [
+          'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=800&auto=format&fit=crop',
           'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?q=80&w=800&auto=format&fit=crop',
-          'https://images.unsplash.com/photo-1574629810360-7efbbe195018?q=80&w=800&auto=format&fit=crop',
         ],
         source: 'BBC Sport',
         timeAgo: '3h ago',
@@ -163,8 +284,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: 'Apple Announces iPhone 16 Series With AI Features',
         category: 'TECH',
         imageUrls: [
-          'https://images.unsplash.com/photo-1616348436168-de43ad0db179?q=80&w=800&auto=format&fit=crop',
           'https://images.unsplash.com/photo-1510557880182-3d4d3cba3f21?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1556656793-062ff987850c?q=80&w=800&auto=format&fit=crop',
         ],
         source: 'TechCrunch',
         timeAgo: '4h ago',
@@ -181,7 +302,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: 'Nairobi Expressway to Undergo Major Maintenance',
         category: 'KENYA',
         imageUrls: [
-          'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?q=80&w=800&auto=format&fit=crop',
           'https://images.unsplash.com/photo-1545143333-11bb24019bca?q=80&w=800&auto=format&fit=crop',
         ],
         source: 'The Standard',
@@ -199,7 +320,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         title: 'New Health Insurance Model to Begin in July',
         category: 'HEALTH',
         imageUrls: [
-          'https://images.unsplash.com/photo-1505751172177-51ad1857f032?q=80&w=800&auto=format&fit=crop',
+          'https://images.unsplash.com/photo-1538108149393-fdfd81895907?q=80&w=800&auto=format&fit=crop',
           'https://images.unsplash.com/photo-1576091160550-2173dba999ef?q=80&w=800&auto=format&fit=crop',
         ],
         source: 'Kenyans.co.ke',
@@ -483,20 +604,55 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             final category = _categories[index];
             final isSelected = _selectedCategory == category;
             return GestureDetector(
-              onTap: () => setState(() => _selectedCategory = category),
+              onTap: () {
+                if (category == 'Trending') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TrendingSeeAllScreen(topics: _trendingTopics),
+                    ),
+                  );
+                } else if (category == 'Latest') {
+                  Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => LatestNewsSeeAllScreen(articles: _latestNews),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        const begin = Offset(0.0, 1.0);
+                        const end = Offset.zero;
+                        const curve = Curves.easeOutCubic;
+                        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                        return SlideTransition(
+                          position: animation.drive(tween),
+                          child: child,
+                        );
+                      },
+                      transitionDuration: const Duration(milliseconds: 600),
+                    ),
+                  );
+                } else if (category != 'For You') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CategoryNewsScreen(
+                        category: category,
+                        articles: _generateCategoryNews(category),
+                      ),
+                    ),
+                  );
+                } else {
+                  setState(() => _selectedCategory = category);
+                }
+              },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeInOutSine,
                 margin: const EdgeInsets.only(right: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  gradient: isSelected
-                      ? LinearGradient(
-                          colors: [neonCyan, neonCyan.withOpacity(0.8)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : null,
-                  color: isSelected ? null : (isDark ? const Color(0xFF181739).withOpacity(0.5) : Colors.transparent),
+                  color: isSelected 
+                      ? neonCyan.withOpacity(0.9) 
+                      : (isDark ? const Color(0xFF181739).withOpacity(0.3) : Colors.transparent),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isSelected ? neonCyan : (isDark ? Colors.white10 : Colors.black12),
@@ -505,21 +661,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: neonCyan.withOpacity(0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            color: neonCyan.withOpacity(0.6),
+                            blurRadius: 15,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 0),
                           )
                         ]
                       : [],
                 ),
                 child: Center(
-                  child: Text(
-                    category,
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeIn,
                     style: TextStyle(
                       color: isSelected ? Colors.black : (isDark ? Colors.white70 : Colors.black54),
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                       fontSize: 13,
                     ),
+                    child: Text(category),
                   ),
                 ),
               ),
@@ -689,7 +848,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TrendingSeeAllScreen(topics: _trendingTopics),
+                      ),
+                    );
+                  },
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     minimumSize: Size.zero,
@@ -707,42 +873,58 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 48,
+            height: 42,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: _trendingTopics.length,
               itemBuilder: (context, index) {
                 final topic = _trendingTopics[index];
-                return Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: topic.gradientColors.map((c) => c.withOpacity(0.15)).toList(),
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: topic.gradientColors[0].withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(topic.icon, color: topic.gradientColors[0], size: 16),
-                      const SizedBox(width: 6),
-                      Text(
-                        topic.title.startsWith('#') ? topic.title : '#${topic.title.replaceAll(' ', '')}',
-                        style: TextStyle(
-                          color: textColor,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TrendingDetailScreen(topic: topic),
                         ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: topic.gradientColors[0].withOpacity(0.5),
+                          width: 1.5,
+                        ),
+                        color: isDark ? const Color(0xFF181739) : Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: topic.gradientColors[0].withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(topic.icon, color: topic.gradientColors[0], size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            topic.title,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               },
@@ -775,7 +957,25 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => LatestNewsSeeAllScreen(articles: _latestNews),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              const begin = Offset(0.0, 1.0);
+                              const end = Offset.zero;
+                              const curve = Curves.easeOutCubic;
+                              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                              return SlideTransition(
+                                position: animation.drive(tween),
+                                child: child,
+                              );
+                            },
+                            transitionDuration: const Duration(milliseconds: 600),
+                          ),
+                        );
+                      },
                       child: const Text('See all', style: TextStyle(color: Color(0xFF20C8FF))),
                     ),
                   ],
@@ -783,7 +983,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               );
             }
             final article = _latestNews[index - 1];
-            return _buildNewsCard(article, isDark, textColor);
+            final isStretched = (index - 1) % 7 == 0;
+            return _buildNewsCard(context, article, isDark, textColor, isStretched: isStretched);
           },
           childCount: _latestNews.length + 1,
         ),
@@ -791,9 +992,138 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
-  Widget _buildNewsCard(NewsArticle article, bool isDark, Color textColor) {
-    return Container(
+}
+
+Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Color textColor, {bool isStretched = false}) {
+  if (isStretched) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => NewsDetailScreen(
+              article: article,
+              initialImageIndex: 0,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        height: 220,
+        margin: const EdgeInsets.only(bottom: 16),
+        child: Stack(
+          children: [
+            FadingImageThumbnail(
+              imageUrls: article.imageUrls,
+              width: double.infinity,
+              height: 220,
+              borderRadius: 20,
+            ),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withOpacity(0.9),
+                    Colors.black.withOpacity(0.3),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF20C8FF),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      article.category,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.6,
+                    child: Text(
+                      article.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.7,
+                    child: Text(
+                      article.content,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text(
+                        '${article.source} • ${article.timeAgo}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Color(0xFF20C8FF),
+                        size: 14,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  return GestureDetector(
+    onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NewsDetailScreen(
+            article: article,
+            initialImageIndex: 0,
+          ),
+        ),
+      );
+    },
+    child: Container(
       margin: const EdgeInsets.only(bottom: 16),
+      color: Colors.transparent, // Ensure it's tappable
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -824,6 +1154,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  article.content,
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -850,13 +1190,23 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class FadingImageThumbnail extends StatefulWidget {
   final List<String> imageUrls;
-  const FadingImageThumbnail({super.key, required this.imageUrls});
+  final double width;
+  final double height;
+  final double borderRadius;
+
+  const FadingImageThumbnail({
+    super.key,
+    required this.imageUrls,
+    this.width = 100,
+    this.height = 100,
+    this.borderRadius = 12,
+  });
 
   @override
   State<FadingImageThumbnail> createState() => _FadingImageThumbnailState();
@@ -888,46 +1238,31 @@ class _FadingImageThumbnailState extends State<FadingImageThumbnail> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => NewsDetailScreen(
-              article: (context.findAncestorWidgetOfExactType<ExploreScreen>() != null) 
-                  ? (context.findAncestorStateOfType<_ExploreScreenState>()!._latestNews.firstWhere((a) => a.imageUrls == widget.imageUrls))
-                  : NewsArticle(id: '', title: '', category: '', imageUrls: widget.imageUrls, source: '', timeAgo: ''), // Fallback
-              initialImageIndex: _currentIndex,
-            ),
-          ),
-        );
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: 100,
-          height: 100,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 1500),
-            transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
-            child: CachedNetworkImage(
-              key: ValueKey<int>(_currentIndex),
-              imageUrl: widget.imageUrls[_currentIndex],
-              width: 100,
-              height: 100,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => const Skeleton(borderRadius: 12),
-              errorWidget: (context, url, error) => Container(
-                width: 100,
-                height: 100,
-                color: Colors.grey.shade900,
-                child: const Icon(Icons.error, color: Colors.white38),
-              ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 1500),
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
+          child: CachedNetworkImage(
+            key: ValueKey<int>(_currentIndex),
+            imageUrl: widget.imageUrls[_currentIndex],
+            width: widget.width,
+            height: widget.height,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Skeleton(borderRadius: widget.borderRadius),
+            errorWidget: (context, url, error) => Container(
+              width: widget.width,
+              height: widget.height,
+              color: Colors.grey.shade900,
+              child: const Icon(Icons.error, color: Colors.white38),
             ),
           ),
         ),
@@ -936,7 +1271,7 @@ class _FadingImageThumbnailState extends State<FadingImageThumbnail> {
   }
 }
 
-class NewsDetailScreen extends StatelessWidget {
+class NewsDetailScreen extends StatefulWidget {
   final NewsArticle article;
   final int initialImageIndex;
 
@@ -947,14 +1282,37 @@ class NewsDetailScreen extends StatelessWidget {
   });
 
   @override
+  State<NewsDetailScreen> createState() => _NewsDetailScreenState();
+}
+
+class _NewsDetailScreenState extends State<NewsDetailScreen> {
+  late PageController _pageController;
+  late int _currentPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = widget.initialImageIndex;
+    _pageController = PageController(initialPage: widget.initialImageIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF070716),
       body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
-            expandedHeight: 450,
+            expandedHeight: 400, // Increased height for better "fully open" feel
             pinned: true,
+            stretch: true,
             backgroundColor: const Color(0xFF070716),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -971,66 +1329,102 @@ class NewsDetailScreen extends StatelessWidget {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
+              stretchModes: const [
+                StretchMode.zoomBackground,
+                StretchMode.blurBackground,
+              ],
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: article.imageUrls[initialImageIndex],
-                    fit: BoxFit.cover,
+                  PageView.builder(
+                    controller: _pageController,
+                    itemCount: widget.article.imageUrls.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentPage = index;
+                      });
+                    },
+                    itemBuilder: (context, index) {
+                      return CachedNetworkImage(
+                        imageUrl: widget.article.imageUrls[index],
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Skeleton(),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey.shade900,
+                          child: const Icon(Icons.error, color: Colors.white38),
+                        ),
+                      );
+                    },
                   ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          const Color(0xFF070716).withOpacity(0.8),
-                          const Color(0xFF070716),
-                        ],
-                        stops: const [0.6, 0.9, 1.0],
+                  IgnorePointer(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            const Color(0xFF070716).withOpacity(0.5),
+                            const Color(0xFF070716),
+                          ],
+                          stops: const [0.7, 0.9, 1.0],
+                        ),
                       ),
                     ),
                   ),
-                  Positioned(
-                    bottom: 40,
-                    left: 20,
-                    right: 20,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          article.category,
-                          style: const TextStyle(
-                            color: Color(0xFF20C8FF),
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
+                  if (widget.article.imageUrls.length > 1)
+                    Positioned(
+                      bottom: 20,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          widget.article.imageUrls.length,
+                          (index) => Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _currentPage == index
+                                  ? const Color(0xFF20C8FF)
+                                  : Colors.white.withOpacity(0.4),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          article.title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    widget.article.category,
+                    style: const TextStyle(
+                      color: Color(0xFF20C8FF),
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.article.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
                   const Text(
                     'More Information',
                     style: TextStyle(
@@ -1041,15 +1435,15 @@ class NewsDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    article.content,
+                    widget.article.content,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.9),
                       fontSize: 14,
-                      height: 1.5,
+                      height: 1.6,
                     ),
                   ),
                   const SizedBox(height: 24),
-                  ...article.details.entries.map((entry) {
+                  ...widget.article.details.entries.map((entry) {
                     IconData icon;
                     switch (entry.key) {
                       case 'What\'s New?':
@@ -1111,31 +1505,43 @@ class NewsDetailScreen extends StatelessWidget {
                     );
                   }),
                   const Divider(color: Colors.white10, height: 40),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Media, links, and docs',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
+                  Center(
+                    child: Container(
+                      width: double.infinity,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF20C8FF), Color(0xFF287BFF)],
                         ),
-                      ),
-                      Row(
-                        children: [
-                          Text(
-                            '14',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 14,
-                            ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF20C8FF).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                          const SizedBox(width: 4),
-                          Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.5), size: 20),
                         ],
                       ),
-                    ],
+                      child: ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Read Article...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 40),
                 ],
@@ -1147,3 +1553,624 @@ class NewsDetailScreen extends StatelessWidget {
     );
   }
 }
+
+class TrendingDetailScreen extends StatefulWidget {
+  final TrendingTopic topic;
+
+  const TrendingDetailScreen({super.key, required this.topic});
+
+  @override
+  State<TrendingDetailScreen> createState() => _TrendingDetailScreenState();
+}
+
+class _TrendingDetailScreenState extends State<TrendingDetailScreen> {
+  late PageController _pageController;
+  late int _currentPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = 0;
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF070716),
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 400,
+            pinned: true,
+            stretch: true,
+            backgroundColor: const Color(0xFF070716),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              stretchModes: const [
+                StretchMode.zoomBackground,
+                StretchMode.blurBackground,
+              ],
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PageView.builder(
+                    controller: _pageController,
+                    itemCount: widget.topic.imageUrls.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentPage = index;
+                      });
+                    },
+                    itemBuilder: (context, index) {
+                      return CachedNetworkImage(
+                        imageUrl: widget.topic.imageUrls[index],
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Skeleton(),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey.shade900,
+                          child: const Icon(Icons.error, color: Colors.white38),
+                        ),
+                      );
+                    },
+                  ),
+                  IgnorePointer(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            const Color(0xFF070716).withOpacity(0.5),
+                            const Color(0xFF070716),
+                          ],
+                          stops: const [0.7, 0.9, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (widget.topic.imageUrls.length > 1)
+                    Positioned(
+                      bottom: 20,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          widget.topic.imageUrls.length,
+                          (index) => Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _currentPage == index
+                                  ? const Color(0xFF20C8FF)
+                                  : Colors.white.withOpacity(0.4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(widget.topic.icon, color: widget.topic.gradientColors[0], size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.topic.title,
+                          style: const TextStyle(
+                            color: Color(0xFF20C8FF),
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Trending Insight',
+                    style: TextStyle(
+                      color: Color(0xFF20C8FF),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.topic.description,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ...widget.topic.details.entries.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF181739),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: Icon(widget.topic.icon, color: widget.topic.gradientColors[0], size: 20),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  entry.key,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  entry.value,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.7),
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const Divider(color: Colors.white10, height: 40),
+                  Center(
+                    child: Container(
+                      width: double.infinity,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF20C8FF), Color(0xFF287BFF)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF20C8FF).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Read Article...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TrendingSeeAllScreen extends ConsumerWidget {
+  final List<TrendingTopic> topics;
+
+  const TrendingSeeAllScreen({super.key, required this.topics});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
+      appBar: AppBar(
+        title: const Text('Trending Now', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: textColor,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF140C37), Color(0xFF070716)],
+                )
+              : LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white, Colors.blue.shade50],
+                ),
+        ),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: topics.length,
+          itemBuilder: (context, index) {
+            final topic = topics[index];
+            return _buildTrendingCard(context, topic, isDark, textColor, isStretched: true);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+Widget _buildTrendingCard(BuildContext context, TrendingTopic topic, bool isDark, Color textColor, {bool isStretched = false}) {
+  if (isStretched) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TrendingDetailScreen(topic: topic),
+          ),
+        );
+      },
+      child: Container(
+        height: 220,
+        margin: const EdgeInsets.only(bottom: 16),
+        child: Stack(
+          children: [
+            FadingImageThumbnail(
+              imageUrls: topic.imageUrls,
+              width: double.infinity,
+              height: 220,
+              borderRadius: 20,
+            ),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withOpacity(0.9),
+                    Colors.black.withOpacity(0.3),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: topic.gradientColors[0],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(topic.icon, color: Colors.white, size: 10),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'TRENDING',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.6,
+                    child: Text(
+                      topic.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.7,
+                    child: Text(
+                      topic.description,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text(
+                        '${topic.source} • ${topic.timeAgo}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        color: topic.gradientColors[0],
+                        size: 14,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  return GestureDetector(
+    onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TrendingDetailScreen(topic: topic),
+        ),
+      );
+    },
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      color: Colors.transparent,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FadingImageThumbnail(imageUrls: topic.imageUrls),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(topic.icon, color: topic.gradientColors[0], size: 12),
+                    const SizedBox(width: 4),
+                    Text(
+                      'TRENDING',
+                      style: TextStyle(
+                        color: topic.gradientColors[0],
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  topic.title,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  topic.description,
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${topic.source} • ${topic.timeAgo}',
+                        style: TextStyle(
+                          color: isDark ? Colors.white38 : Colors.black38,
+                          fontSize: 11,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(
+                      Icons.more_vert,
+                      color: isDark ? Colors.white38 : Colors.black38,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+List<NewsArticle> _generateCategoryNews(String category) {
+  return List.generate(15, (index) {
+    return NewsArticle(
+      id: '${category.toLowerCase()}_$index',
+      title: index == 0 
+          ? 'Major $category Milestone Achieved This Week'
+          : 'Latest Updates in $category: What You Need to Know',
+      category: category.toUpperCase(),
+      imageUrls: [
+        'https://images.unsplash.com/photo-1511497584788-876760111969?q=80&w=800&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop',
+      ],
+      source: 'Global News Network',
+      timeAgo: '${index + 1}h ago',
+      content: 'In-depth analysis of the current trends affecting the $category sector, with insights from industry leaders and experts on the ground.',
+      details: {
+        'Analysis': 'Strategic shift observed across the entire $category landscape.',
+        'Impact': 'Broad reach across multiple demographics and international markets.',
+      },
+    );
+  });
+}
+
+class CategoryNewsScreen extends ConsumerWidget {
+  final String category;
+  final List<NewsArticle> articles;
+
+  const CategoryNewsScreen({super.key, required this.category, required this.articles});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
+      appBar: AppBar(
+        title: Text(category, style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: textColor,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF140C37), Color(0xFF070716)],
+                )
+              : LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white, Colors.blue.shade50],
+                ),
+        ),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: articles.length,
+          itemBuilder: (context, index) {
+            final article = articles[index];
+            // Only the first card is horizontal (stretched), others are compact
+            return _buildNewsCard(context, article, isDark, textColor, isStretched: index == 0);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class LatestNewsSeeAllScreen extends ConsumerWidget {
+  final List<NewsArticle> articles;
+
+  const LatestNewsSeeAllScreen({super.key, required this.articles});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
+      appBar: AppBar(
+        title: const Text('Latest News', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: textColor,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF140C37), Color(0xFF070716)],
+                )
+              : LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white, Colors.blue.shade50],
+                ),
+        ),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: articles.length,
+          itemBuilder: (context, index) {
+            final article = articles[index];
+            return _buildNewsCard(context, article, isDark, textColor, isStretched: true);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+

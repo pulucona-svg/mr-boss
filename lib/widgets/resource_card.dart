@@ -486,15 +486,24 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                       children: [
                         Row(
                           children: [
-                            _pill(
-                              (widget.type == 'Time tables' || widget.type.contains('Timetable')) && widget.programCodes.isNotEmpty
-                                  ? widget.programCodes.join(', ')
-                                  : widget.unitCode,
-                              const Color(0xFFD92680),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: _pill(
+                                      (widget.type == 'Time tables' || 
+                                       widget.type == 'Class Timetable' || 
+                                       widget.type == 'EXAM Timetable') && widget.programCodes.isNotEmpty
+                                          ? widget.programCodes.join(', ')
+                                          : widget.unitCode,
+                                      const Color(0xFFD92680),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  _pill(widget.publicationYear, const Color(0xFFD9BD26)),
+                                ],
+                              ),
                             ),
-                            const SizedBox(width: 4),
-                            _pill(widget.publicationYear, const Color(0xFFD9BD26)),
-                            const Spacer(),
                             GestureDetector(
                               onTap: _showDetails,
                               behavior: HitTestBehavior.translucent,
@@ -572,6 +581,9 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
       ),
       child: Text(
         text,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        softWrap: false,
         style: const TextStyle(
           color: Colors.black,
           fontSize: 10,
