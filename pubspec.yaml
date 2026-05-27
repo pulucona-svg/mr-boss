@@ -97,6 +97,9 @@ flutter:
     - assets/lessons.json
     - assets/admin_pic.jpeg
     - assets/messenger.svg
+    - assets/chat_bg_light.svg
+    - assets/chat_bg_dark.svg
+    - assets/chat_bg_neutral.svg
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

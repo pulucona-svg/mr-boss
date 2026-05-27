@@ -1,0 +1,35 @@
+<svg width="1080" height="2400" viewBox="0 0 1080 2400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="2400" fill="#0B141B"/>
+  <g opacity="0.04">
+    <!-- Doodle pattern inspired by WhatsApp/Support -->
+    <path d="M100 100h20v20h-20zM200 150l10 10-10 10-10-10zM50 200c0 10 10 10 10 0s-10-10-10 0" stroke="#20C8FF" stroke-width="2"/>
+    <circle cx="400" cy="300" r="30" stroke="#20C8FF" stroke-width="1.5"/>
+    <path d="M800 200q20-20 40 0t40 0" stroke="#20C8FF" stroke-width="2" fill="none"/>
+    <rect x="150" y="600" width="40" height="60" rx="4" stroke="#20C8FF" stroke-width="1.5"/>
+    <path d="M900 800c0 20 20 20 20 0s-20-20-20 0" stroke="#20C8FF" stroke-width="2"/>
+    <circle cx="100" cy="1200" r="50" stroke="#20C8FF" stroke-width="1"/>
+    <path d="M500 1500l30-30m0 30l-30-30" stroke="#20C8FF" stroke-width="2"/>
+    <rect x="850" y="1800" width="80" height="40" rx="20" stroke="#20C8FF" stroke-width="1.5"/>
+    <path d="M200 2200h100v2h-100z" fill="#20C8FF"/>
+    
+    <!-- Repeated clusters -->
+    <g transform="translate(300, 400) scale(1.5)">
+       <path d="M0 0h10v10H0z" stroke="#20C8FF" stroke-width="1"/>
+    </g>
+    <g transform="translate(700, 1200) scale(2)">
+       <circle cx="0" cy="0" r="10" stroke="#20C8FF" stroke-width="1"/>
+    </g>
+    <g transform="translate(150, 1800) scale(1.2)">
+       <path d="M0 0l10 10m0-10l-10 10" stroke="#20C8FF" stroke-width="1"/>
+    </g>
+  </g>
+  
+  <!-- Soft bottom glow -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="100%" r="50%" fx="50%" fy="100%">
+      <stop offset="0%" stop-color="#20C8FF" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#20C8FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="2400" fill="url(#glow)"/>
+</svg>

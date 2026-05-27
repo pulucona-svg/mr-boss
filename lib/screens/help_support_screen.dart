@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../providers/chat_provider.dart';
@@ -395,21 +396,18 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
                 IconButton(icon: const Icon(Icons.more_vert, color: Colors.white), onPressed: () {}),
               ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: const NetworkImage('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'),
-            fit: BoxFit.cover,
-            opacity: isDark ? 0.15 : 0.2, // Increased visibility
-            colorFilter: isDark 
-                ? ColorFilter.mode(Colors.black.withOpacity(0.9), BlendMode.dstATop)
-                : ColorFilter.mode(Colors.white.withOpacity(0.9), BlendMode.dstATop),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: SvgPicture.asset(
+              isDark ? 'assets/chat_bg_dark.svg' : 'assets/chat_bg_light.svg',
+              fit: BoxFit.cover,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
+          Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
                 reverse: true,
                 controller: _scrollController,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
@@ -519,9 +517,10 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
             _buildInputArea(isDark),
           ],
         ),
-      ),
+      ],
     ),
-   );
+  ),
+);
   }
 
   Widget _buildTypingIndicator(Color color, bool isDark) {
