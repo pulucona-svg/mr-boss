@@ -5,6 +5,7 @@ import 'screens/profile_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/explore_screen.dart';
+import 'screens/login_screen.dart';
 import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
@@ -57,7 +58,12 @@ class MirrorApp extends ConsumerWidget {
         useMaterial3: true,
       ),
       themeMode: themeMode,
-      home: const MainNavigation(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const MainNavigation(),
+        '/home': (context) => const MainNavigation(),
+        '/login': (context) => const LoginScreen(),
+      },
     );
   }
 }

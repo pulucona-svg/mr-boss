@@ -100,8 +100,7 @@ flutter:
     - assets/chat_bg_light.svg
     - assets/chat_bg_dark.svg
     - assets/chat_bg_neutral.svg
-
-
+    - assets/login_bg.jpeg
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

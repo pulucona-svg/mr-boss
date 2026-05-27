@@ -12,6 +12,7 @@ import '../providers/user_provider.dart';
 import 'help_support_screen.dart';
 import 'reset_password_screen.dart';
 import 'library_screen.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -393,7 +394,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginScreen()),
+                            (route) => false,
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.redAccent.withOpacity(0.8),
                           foregroundColor: Colors.white,
