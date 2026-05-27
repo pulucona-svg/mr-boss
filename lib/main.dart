@@ -13,6 +13,7 @@ import 'services/course_service.dart';
 import 'services/resource_service.dart';
 import 'providers/upload_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/top_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,11 +31,21 @@ void main() async {
   );
 }
 
-class MirrorApp extends ConsumerWidget {
+class MirrorApp extends ConsumerStatefulWidget {
   const MirrorApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MirrorApp> createState() => _MirrorAppState();
+}
+
+class _MirrorAppState extends ConsumerState<MirrorApp> {
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
 
     return MaterialApp(
@@ -60,7 +71,7 @@ class MirrorApp extends ConsumerWidget {
       themeMode: themeMode,
       initialRoute: '/',
       routes: {
-        '/': (context) => const MainNavigation(),
+        '/': (context) => const LoginScreen(),
         '/home': (context) => const MainNavigation(),
         '/login': (context) => const LoginScreen(),
       },
@@ -89,6 +100,25 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final courseService = ref.read(courseServiceProvider);
       ResourceService().synchronizeWithPool(courseService);
+
+      // Welcome messages trigger
+      if (!mounted) return;
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final bool isFirstLogin = (args != null && args['isFirstLogin'] == true) || TopNotificationService.pendingWelcome;
+
+      if (isFirstLogin) {
+        // Clear the flags so they don't trigger again on rebuilds within this route
+        if (args != null) args['isFirstLogin'] = false;
+        TopNotificationService.pendingWelcome = false;
+        
+        // Slight delay to ensure screen is visible and stable
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) {
+            TopNotificationService().showNotification(context, 'Welcome back to Mirror Laikipia');
+            TopNotificationService().showNotification(context, 'Where should we start from today');
+          }
+        });
+      }
     });
   }
 

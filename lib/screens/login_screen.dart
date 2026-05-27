@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'signup_screen.dart';
+import 'reset_password_screen.dart';
+import '../services/top_notification_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -211,7 +213,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                               TextButton(
-                                onPressed: () {},
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const ResetPasswordScreen(showInitialSuccess: true),
+                                    ),
+                                  );
+                                },
                                 style: TextButton.styleFrom(padding: EdgeInsets.zero),
                                 child: const Text(
                                   'Forgot Password?',
@@ -221,8 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                              ),
-                            ],
+                              ),                            ],
                           ),
                           const SizedBox(height: 24),
                           SizedBox(
@@ -230,7 +238,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             height: 54,
                             child: ElevatedButton(
                               onPressed: () {
-                                Navigator.pushReplacementNamed(context, '/home');
+                                TopNotificationService().showNotification(context, 'Login successful');
+                                TopNotificationService.pendingWelcome = true;
+                                Future.delayed(const Duration(milliseconds: 1500), () {
+                                  if (mounted) {
+                                    Navigator.pushReplacementNamed(context, '/home');
+                                  }
+                                });
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFE31E24),

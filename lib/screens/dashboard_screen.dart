@@ -13,6 +13,7 @@ import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
 import '../providers/theme_provider.dart';
 import '../providers/chat_provider.dart';
+import '../services/top_notification_service.dart';
 import 'help_support_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {

@@ -1,27 +1,74 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
+import '../services/top_notification_service.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
-  const ResetPasswordScreen({super.key});
+  final bool showInitialSuccess;
+  const ResetPasswordScreen({super.key, this.showInitialSuccess = false});
 
   @override
   ConsumerState<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
+class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  // Timer state
+  Timer? _timer;
+  int _countdown = 60;
+  bool _canResend = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+    
+    if (widget.showInitialSuccess) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        TopNotificationService().showNotification(context, 'Password reset code sent successfully');
+      });
+    }
+  }
+
+  void _startTimer() {
+    setState(() {
+      _countdown = 60;
+      _canResend = false;
+    });
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdown == 0) {
+        setState(() {
+          _canResend = true;
+          _timer?.cancel();
+        });
+      } else {
+        setState(() {
+          _countdown--;
+        });
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _timer?.cancel();
     _codeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  void _handleResendCode() {
+    if (!_canResend) return;
+    _startTimer();
+    TopNotificationService().showNotification(context, 'Password reset code sent successfully');
   }
 
   void _handleReset() {
@@ -51,10 +98,18 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     }
 
     // Success simulation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password reset successfully')),
-    );
-    Navigator.pop(context);
+    TopNotificationService().showNotification(context, 'Password changed successfully');
+    TopNotificationService.pendingWelcome = true;
+    
+    Future.delayed(const Duration(milliseconds: 2000), () {
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context, 
+          '/home', 
+          (route) => false,
+        );
+      }
+    });
   }
 
   @override
@@ -72,7 +127,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: isDark ? Colors.blue : Colors.blue.shade700),
+          icon: Icon(Icons.arrow_back_ios, color: isDark ? const Color(0xFF20C8FF) : Colors.blue.shade700),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -105,6 +160,25 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               keyboardType: TextInputType.number,
               isDark: isDark,
               fieldBgColor: fieldBgColor,
+              suffixWidget: Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: TextButton(
+                  onPressed: _canResend ? _handleResendCode : null,
+                  style: TextButton.styleFrom(
+                    backgroundColor: _canResend ? Colors.green.withOpacity(0.1) : Colors.transparent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: Text(
+                    _canResend ? 'Resend Code' : '${_countdown}s',
+                    style: TextStyle(
+                      color: _canResend ? Colors.green : Colors.grey,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -174,6 +248,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     TextInputType? keyboardType,
     required bool isDark,
     required Color fieldBgColor,
+    Widget? suffixWidget,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -192,7 +267,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           hintText: hint,
           hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
           prefixIcon: Icon(icon, color: Colors.grey, size: 22),
-          suffixIcon: isPassword
+          suffixIcon: suffixWidget ?? (isPassword
               ? IconButton(
                   icon: Icon(
                     obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
@@ -201,7 +276,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   ),
                   onPressed: onToggleVisibility,
                 )
-              : null,
+              : null),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         ),

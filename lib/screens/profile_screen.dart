@@ -833,7 +833,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         } else if (text == 'Change Password') {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const ResetPasswordScreen()),
+            MaterialPageRoute(builder: (context) => const ResetPasswordScreen(showInitialSuccess: true)),
           );
         }
       },
