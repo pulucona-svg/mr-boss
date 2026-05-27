@@ -33,8 +33,25 @@ class CourseUnit {
   }
 }
 
+class University {
+  final String name;
+  final String location;
+  final String type;
+
+  University({required this.name, required this.location, required this.type});
+
+  factory University.fromJson(Map<String, dynamic> json) {
+    return University(
+      name: json['name'] ?? '',
+      location: json['location'] ?? '',
+      type: json['type'] ?? '',
+    );
+  }
+}
+
 class CourseService {
   List<CourseUnit> _allUnits = [];
+  List<University> _allUniversities = [];
   final Map<String, String> _courseMap = {}; // Name -> Code
   final Map<String, String> _codeMap = {}; // Code -> Name
   final Map<String, String> _programCodeMap = {}; // Program Name -> Program Code
@@ -47,6 +64,7 @@ class CourseService {
     if (_isInitialized) return;
 
     try {
+      // Load Programs and Units
       final String response = await rootBundle.loadString('assets/lessons.json');
       final List<dynamic> data = json.decode(response);
       _allUnits = data.map((json) => CourseUnit.fromJson(json)).toList();
@@ -54,15 +72,12 @@ class CourseService {
       for (var unit in _allUnits) {
         if (unit.unitName.isEmpty) continue;
 
-        // Store primary mapping
         _courseMap[unit.unitName] = unit.unitCode;
         
-        // Handle combined codes like "MATH/MAT 121"
         final codes = _parseCodes(unit.unitCode);
         for (var code in codes) {
           _codeMap[code] = unit.unitName;
         }
-        // Also map the original full code string
         _codeMap[unit.unitCode] = unit.unitName;
 
         if (unit.programName.isNotEmpty) {
@@ -71,9 +86,13 @@ class CourseService {
         }
       }
 
+      // Load Universities
+      final String univResponse = await rootBundle.loadString('assets/universities.json');
+      final List<dynamic> univData = json.decode(univResponse);
+      _allUniversities = univData.map((json) => University.fromJson(json)).toList();
+
       _isInitialized = true;
     } catch (e) {
-      // In a real app, you might want to log this or show an error
       print('Error loading course data: $e');
     }
   }
@@ -129,5 +148,17 @@ class CourseService {
 
   List<CourseUnit> getUnitsByCode(String code) {
     return _allUnits.where((u) => u.unitCode == code || _parseCodes(u.unitCode).contains(code)).toList();
+  }
+
+  List<University> get universities => _allUniversities;
+  
+  List<String> get universityNames => _allUniversities.map((u) => u.name).toList();
+  
+  String? getUniversityLocation(String name) {
+    try {
+      return _allUniversities.firstWhere((u) => u.name == name).location;
+    } catch (e) {
+      return null;
+    }
   }
 }

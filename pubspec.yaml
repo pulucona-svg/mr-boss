@@ -95,6 +95,7 @@ flutter:
     - assets/ad_data.jpeg
     - assets/ad_snake.jpeg
     - assets/lessons.json
+    - assets/universities.json
     - assets/admin_pic.jpeg
     - assets/messenger.svg
     - assets/chat_bg_light.svg
