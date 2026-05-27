@@ -17,6 +17,7 @@ import '../providers/theme_provider.dart';
 import '../providers/chat_provider.dart';
 import 'help_support_screen.dart';
 import 'archive_trash_screen.dart';
+import '../utils/feedback_utils.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   final bool initialShowUploads;
@@ -530,17 +531,42 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 
                 return IconButton(
                   onPressed: () {
+                    final titles = selectedTitles.toList();
                     if (isDownloads) {
                       if (allPinned) {
-                        DownloadService().unpinMultiple(selectedTitles.toList());
+                        DownloadService().unpinMultiple(titles);
+                        FeedbackUtils.showActionFeedback(
+                          context: context,
+                          type: FeedbackActionType.unpin,
+                          count: titles.length,
+                          isDownloads: true,
+                        );
                       } else {
-                        DownloadService().pinMultiple(selectedTitles.toList());
+                        DownloadService().pinMultiple(titles);
+                        FeedbackUtils.showActionFeedback(
+                          context: context,
+                          type: FeedbackActionType.pin,
+                          count: titles.length,
+                          isDownloads: true,
+                        );
                       }
                     } else {
                       if (allPinned) {
-                        ResourceService().unpinMultiple(selectedTitles.toList());
+                        ResourceService().unpinMultiple(titles);
+                        FeedbackUtils.showActionFeedback(
+                          context: context,
+                          type: FeedbackActionType.unpin,
+                          count: titles.length,
+                          isDownloads: false,
+                        );
                       } else {
-                        ResourceService().pinMultiple(selectedTitles.toList());
+                        ResourceService().pinMultiple(titles);
+                        FeedbackUtils.showActionFeedback(
+                          context: context,
+                          type: FeedbackActionType.pin,
+                          count: titles.length,
+                          isDownloads: false,
+                        );
                       }
                     }
                     _exitSelectionMode(isDownloads: isDownloads);
@@ -557,10 +583,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           IconButton(
             onPressed: () {
+              final titles = selectedTitles.toList();
               if (isDownloads) {
-                DownloadService().archiveMultiple(selectedTitles.toList());
+                DownloadService().archiveMultiple(titles);
+                FeedbackUtils.showActionFeedback(
+                  context: context,
+                  type: FeedbackActionType.archive,
+                  count: titles.length,
+                  isDownloads: true,
+                );
               } else {
-                ResourceService().archiveMultiple(selectedTitles.toList());
+                ResourceService().archiveMultiple(titles);
+                FeedbackUtils.showActionFeedback(
+                  context: context,
+                  type: FeedbackActionType.archive,
+                  count: titles.length,
+                  isDownloads: false,
+                );
               }
               _exitSelectionMode(isDownloads: isDownloads);
             },
@@ -570,10 +609,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
           IconButton(
             onPressed: () {
+              final titles = selectedTitles.toList();
               if (isDownloads) {
-                DownloadService().deleteMultiple(selectedTitles.toList());
+                DownloadService().deleteMultiple(titles);
+                FeedbackUtils.showActionFeedback(
+                  context: context,
+                  type: FeedbackActionType.moveToTrash,
+                  count: titles.length,
+                  isDownloads: true,
+                );
               } else {
-                ResourceService().deleteMultiple(selectedTitles.toList());
+                ResourceService().deleteMultiple(titles);
+                FeedbackUtils.showActionFeedback(
+                  context: context,
+                  type: FeedbackActionType.moveToTrash,
+                  count: titles.length,
+                  isDownloads: false,
+                );
               }
               _exitSelectionMode(isDownloads: isDownloads);
             },

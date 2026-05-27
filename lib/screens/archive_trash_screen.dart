@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/download_service.dart';
 import '../services/resource_service.dart';
+import '../utils/feedback_utils.dart';
 
 class ArchiveTrashScreen extends StatefulWidget {
   final bool isDownloads;
@@ -52,6 +53,12 @@ class _ArchiveTrashScreenState extends State<ArchiveTrashScreen> {
     } else {
       ResourceService().restoreMultiple(titles);
     }
+    FeedbackUtils.showActionFeedback(
+      context: context,
+      type: widget.isTrash ? FeedbackActionType.restore : FeedbackActionType.unarchive,
+      count: titles.length,
+      isDownloads: widget.isDownloads,
+    );
     _exitSelectionMode();
   }
 
@@ -62,6 +69,12 @@ class _ArchiveTrashScreenState extends State<ArchiveTrashScreen> {
     } else {
       ResourceService().permanentlyDeleteMultiple(titles);
     }
+    FeedbackUtils.showActionFeedback(
+      context: context,
+      type: FeedbackActionType.permanentDelete,
+      count: titles.length,
+      isDownloads: widget.isDownloads,
+    );
     _exitSelectionMode();
   }
 

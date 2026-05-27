@@ -8,6 +8,7 @@ import '../services/view_service.dart';
 import '../services/download_service.dart';
 import '../services/comment_service.dart';
 import '../services/resource_service.dart';
+import '../utils/feedback_utils.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/user_provider.dart';
@@ -500,8 +501,20 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                     _handleTap();
                                     if (isPinned) {
                                       DownloadService().unpin(widget.title);
+                                      FeedbackUtils.showActionFeedback(
+                                        context: context,
+                                        type: FeedbackActionType.unpin,
+                                        count: 1,
+                                        isDownloads: true,
+                                      );
                                     } else if (isDownloaded) {
                                       DownloadService().pin(widget.title);
+                                      FeedbackUtils.showActionFeedback(
+                                        context: context,
+                                        type: FeedbackActionType.pin,
+                                        count: 1,
+                                        isDownloads: true,
+                                      );
                                     } else {
                                       DownloadService().startDownload(_getResourceData());
                                     }
