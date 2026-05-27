@@ -15,35 +15,38 @@ class _SignupScreenState extends State<SignupScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Full Screen Background Image (Sunset Building)
+          // Full Screen Background Image with Natural Framing
           Positioned.fill(
             child: Image.asset(
               'assets/login_bg.jpeg', 
               fit: BoxFit.cover,
-              alignment: Alignment.center,
+              alignment: const Alignment(0, -0.2), // Adjust framing to show more important areas
             ),
           ),
           
-          // Subtle Gradient Overlay for readability (much lighter now)
+          // Very Subtle Gradient Overlay for visibility (Natural colors preserved)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
+                  stops: const [0, 0.4, 0.7, 1.0],
                   colors: [
+                    Colors.black.withOpacity(0.02),
                     Colors.black.withOpacity(0.05),
-                    Colors.black.withOpacity(0.1),
-                    Colors.black.withOpacity(0.25),
+                    Colors.black.withOpacity(0.2),
+                    Colors.black.withOpacity(0.4),
                   ],
                 ),
               ),
             ),
           ),
           
-          // Main Content wrapped in ScrollView to prevent overflows
+          // Main Content wrapped in ScrollView for responsiveness
           SafeArea(
             child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
@@ -52,21 +55,18 @@ class _SignupScreenState extends State<SignupScreen> {
                     Align(
                       alignment: Alignment.topLeft,
                       child: IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_ios, 
-                          color: Colors.white,
-                        ),
+                        icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ),
                     
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 30),
                     
                     // Circular Logo (WhatsApp Profile Style)
                     Center(
                       child: Container(
-                        height: 120,
-                        width: 120,
+                        height: 110,
+                        width: 110,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
@@ -85,18 +85,18 @@ class _SignupScreenState extends State<SignupScreen> {
                       ),
                     ),
                     
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
                     
                     Text(
                       'Join Mirror Laikipia',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Colors.purpleAccent,
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
                         shadows: [
                           Shadow(
                             blurRadius: 12,
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withOpacity(0.4),
                             offset: const Offset(0, 2),
                           ),
                         ],
@@ -116,21 +116,17 @@ class _SignupScreenState extends State<SignupScreen> {
                         shadows: [
                           Shadow(
                             blurRadius: 8,
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withOpacity(0.4),
                             offset: const Offset(0, 1),
                           ),
                         ],
                       ),
                     ),
                     
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 40),
                     
-                    // Social Buttons
-                    _buildSocialButton(
-                      icon: Icons.g_mobiledata,
-                      label: 'Continue with Google',
-                      onPressed: () {},
-                    ),
+                    // Social Buttons with Proper Branding
+                    _buildGoogleButton(onPressed: () {}),
                     const SizedBox(height: 16),
                     _buildSocialButton(
                       icon: Icons.apple,
@@ -144,13 +140,13 @@ class _SignupScreenState extends State<SignupScreen> {
                       onPressed: () {},
                     ),
                     
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 32),
                     
                     // Terms and Privacy Box
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.black.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.white.withOpacity(0.1)),
                       ),
@@ -196,20 +192,76 @@ class _SignupScreenState extends State<SignupScreen> {
                       ),
                     ),
                     
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 48),
+                    
+                    // Unified Footer Section copied from Login Screen
+                    const Column(
+                      children: [
+                        Text(
+                          'Copyright © 2026- MIRROR Softwares',
+                          style: TextStyle(
+                            color: Color(0xFFE31E24),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'International',
+                          style: TextStyle(
+                            color: Color(0xFFE31E24),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),
             ),
           ),
-          
-          // Decorative star
-          Positioned(
-            bottom: 20,
-            right: 20,
-            child: Icon(Icons.star_border, color: Colors.white.withOpacity(0.3), size: 32),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGoogleButton({required VoidCallback onPressed}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.network(
+              'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png',
+              height: 24,
+              width: 24,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(Icons.g_mobiledata_rounded, color: Colors.blue, size: 30);
+              },
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Continue with Google',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
