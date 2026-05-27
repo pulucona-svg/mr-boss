@@ -42,6 +42,11 @@ class ResourceCard extends ConsumerStatefulWidget {
     this.declineReason,
     this.onLikeToggle,
     this.onViewIncrement,
+    this.uploaderProfilePic,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+    this.showPin = true,
+    this.onLongPress,
   });
 
   final String title;
@@ -62,15 +67,20 @@ class ResourceCard extends ConsumerStatefulWidget {
   final String uploadedBy;
   final String uploaderRole;
   final String uploaderId;
+  final String? uploaderProfilePic;
   final String views;
   final String likes;
   final String comments;
   final bool isLiked;
   final bool showDownload;
+  final bool showPin;
   final String? status;
   final String? declineReason;
   final VoidCallback? onLikeToggle;
   final VoidCallback? onViewIncrement;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback? onLongPress;
 
   @override
   ConsumerState<ResourceCard> createState() => _ResourceCardState();
@@ -170,6 +180,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         uploadedBy: widget.uploadedBy,
         uploaderRole: widget.uploaderRole,
         uploaderId: resource?.uploaderId ?? widget.uploaderId,
+        uploaderProfilePic: resource?.uploaderProfilePic ?? widget.uploaderProfilePic,
         showDownload: widget.showDownload,
       ),
     );
@@ -279,12 +290,13 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ResourceService(),
+      listenable: Listenable.merge([ResourceService(), DownloadService()]),
       builder: (context, child) {
         final resource = ResourceService().findResourceByTitle(widget.title);
         final isActive = ResourceService().activeResourceId == widget.title;
+        final isPinned = DownloadService().isPinned(widget.title);
+        final isDownloaded = DownloadService().isDownloaded(widget.title);
         
-        // Use live data from service if available, otherwise fallback to widget properties
         final viewsCount = resource?.views.toString() ?? widget.views;
         final likesCount = resource?.likes.toString() ?? widget.likes;
         final isLiked = resource?.isLiked ?? widget.isLiked;
@@ -294,18 +306,27 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutBack,
           child: GestureDetector(
-            onTap: _handleTap,
+            onTap: widget.isSelectionMode ? widget.onTap : _handleTap,
+            onLongPress: widget.onLongPress,
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF181739).withValues(alpha: 0.9),
+                color: widget.isSelected 
+                    ? const Color(0xFF20C8FF).withValues(alpha: 0.1)
+                    : (widget.isSelectionMode 
+                        ? const Color(0xFF20C8FF).withValues(alpha: 0.05)
+                        : const Color(0xFF181739).withValues(alpha: 0.9)),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isActive ? const Color(0xFF20C8FF) : Colors.white10,
-                  width: isActive ? 2 : 1,
+                  color: widget.isSelected 
+                      ? const Color(0xFF20C8FF) 
+                      : (widget.isSelectionMode 
+                          ? const Color(0xFF20C8FF).withValues(alpha: 0.3)
+                          : (isActive ? const Color(0xFF20C8FF) : Colors.white10)),
+                  width: (isActive || widget.isSelected || widget.isSelectionMode) ? 2 : 1,
                 ),
-                boxShadow: isActive ? [
+                boxShadow: (isActive || widget.isSelected || widget.isSelectionMode) ? [
                   BoxShadow(
-                    color: const Color(0xFF20C8FF).withValues(alpha: 0.3),
+                    color: const Color(0xFF20C8FF).withValues(alpha: widget.isSelected ? 0.3 : 0.1),
                     blurRadius: 15,
                     spreadRadius: 2,
                   )
@@ -324,7 +345,6 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                           ? CachedNetworkImage(
                               imageUrl: widget.thumbnailUrl,
                               fit: BoxFit.cover,
-                              // Ensure images are cached for long-term offline access
                               cacheKey: widget.thumbnailUrl,
                               placeholder: (context, url) => Container(
                                 color: Colors.white10,
@@ -343,6 +363,14 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                 child: const Icon(Icons.broken_image, color: Colors.white24),
                               ),
                             ),
+                        
+                        if (widget.isSelectionMode)
+                          Container(
+                            color: widget.isSelected 
+                                ? Colors.black.withValues(alpha: 0.4) 
+                                : Colors.black.withValues(alpha: 0.1),
+                          ),
+
                         Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -353,32 +381,84 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                           ),
                         ),
 
-                        Positioned(
-                          top: 10,
-                          left: 10,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.white24, width: 0.5),
+                        if (widget.isSelectionMode)
+                          Positioned(
+                            top: 10,
+                            left: 10,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: widget.isSelected ? const Color(0xFF20C8FF) : Colors.transparent,
+                                border: Border.all(
+                                  color: widget.isSelected ? const Color(0xFF20C8FF) : Colors.white70,
+                                  width: 2,
+                                ),
+                              ),
+                              child: widget.isSelected 
+                                ? const Icon(Icons.check, color: Colors.white, size: 16) 
+                                : null,
                             ),
-                            child: Text(
-                              _getTypeLabel(widget.type),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.0,
+                          ),
+
+                        if (widget.isSelectionMode)
+                          Positioned(
+                            top: 10,
+                            right: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${(widget.title.length * 1.5 + 40).toStringAsFixed(2)} kB',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          )
+                        else if (isPinned && widget.showPin)
+                          const Positioned(
+                            top: 10,
+                            right: 10,
+                            child: Icon(Icons.push_pin, color: Color(0xFF20C8FF), size: 18),
+                          ),
+
+                        if (!widget.isSelectionMode)
+                          Positioned(
+                            top: 10,
+                            left: (isPinned && widget.showPin && (widget.type == 'Time tables' || widget.type.contains('Timetable'))) ? 10 : 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.white24, width: 0.5),
+                              ),
+                              child: Text(
+                                _getTypeLabel(widget.type),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.0,
+                                ),
                               ),
                             ),
                           ),
-                        ),
 
-                        if (widget.type == 'Time tables' || widget.type.contains('Timetable'))
+                        if (!widget.isSelectionMode && (widget.type == 'Time tables' || widget.type.contains('Timetable')))
                           Positioned(
                             top: 10,
-                            right: widget.showDownload ? 50 : 10,
+                            // If pinned and pin is shown (Library), move to left side but after the 'TABLE' badge.
+                            left: (isPinned && widget.showPin) ? 65 : null,
+                            // On Dashboard (showPin is false), ensure it's on the right, avoiding the download icon if present.
+                            right: (isPinned && widget.showPin) ? null : (widget.showDownload ? 45 : 10),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -400,20 +480,31 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                             ),
                           ),
                         
-                        if (widget.showDownload)
+                        if (!widget.isSelectionMode && widget.showDownload)
                           Positioned(
                             top: 10,
-                            right: 10,
+                            // If pinned and pin is shown (Library), shift action icon further left to avoid badges.
+                            // Badges are at Left: 10 (TABLE) and Left: 65 (CLASS/EXAM).
+                            // So we move action icon to Left: 110 or 120.
+                            left: (isPinned && widget.showPin && (widget.type == 'Time tables' || widget.type.contains('Timetable'))) ? 115 : null,
+                            right: (isPinned && widget.showPin) ? (widget.type.contains('Timetable') ? null : 35) : 10,
                             child: ListenableBuilder(
                               listenable: DownloadService(),
                               builder: (context, child) {
                                 final isDownloading = DownloadService().isDownloading(widget.title);
+                                final isDownloaded = DownloadService().isDownloaded(widget.title);
                                 final progress = DownloadService().getProgress(widget.title);
                                 
                                 return GestureDetector(
                                   onTap: () {
                                     _handleTap();
-                                    DownloadService().startDownload(_getResourceData());
+                                    if (isPinned) {
+                                      DownloadService().unpin(widget.title);
+                                    } else if (isDownloaded) {
+                                      DownloadService().pin(widget.title);
+                                    } else {
+                                      DownloadService().startDownload(_getResourceData());
+                                    }
                                   },
                                   behavior: HitTestBehavior.translucent,
                                   child: Stack(
@@ -433,24 +524,20 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                       Container(
                                         padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
-                                          color: Colors.black38,
+                                          color: (isPinned && widget.showPin)
+                                              ? const Color(0xFFD9BD26) 
+                                              : (isDownloaded ? const Color(0xFF00A85A) : Colors.black38),
                                           shape: BoxShape.circle,
-                                          border: isDownloading ? null : Border.all(color: Colors.white24, width: 0.5),
+                                          border: (isDownloading || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
                                         ),
                                         child: Icon(
-                                          isDownloading ? Icons.download_for_offline : Icons.download_rounded,
-                                          color: isDownloading ? const Color(0xFF00A85A) : Colors.white,
+                                          (isPinned && widget.showPin)
+                                              ? Icons.push_pin_rounded 
+                                              : (isDownloading ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
+                                          color: Colors.white,
                                           size: 16,
                                         ),
                                       ),
-                                      if (isDownloading)
-                                        Positioned(
-                                          bottom: -15,
-                                          child: Text(
-                                            '${(progress * 100).toInt()}%',
-                                            style: const TextStyle(color: Color(0xFF00A85A), fontSize: 8, fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
                                     ],
                                   ),
                                 );

@@ -39,13 +39,10 @@ class _FilterModalState extends ConsumerState<FilterModal> {
 
   List<String> _getYearOptions() {
     final currentYear = DateTime.now().year;
-    final List<String> years = [];
-    
-    for (int year = currentYear; year >= 2020; year--) {
-      years.add(year.toString());
-    }
-    
-    return years;
+    return List.generate(
+      currentYear - 2020 + 1,
+      (index) => (currentYear - index).toString(),
+    );
   }
 
   @override

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/download_service.dart';
 import '../services/progress_service.dart';
 import '../providers/upload_provider.dart';
 import '../screens/material_viewer_screen.dart';
-
+import '../providers/theme_provider.dart';
 import '../providers/user_provider.dart';
+import '../services/resource_service.dart';
 
 class ResourceDetailsModal extends ConsumerWidget {
   final String title;
@@ -25,6 +27,7 @@ class ResourceDetailsModal extends ConsumerWidget {
   final String uploadedBy;
   final String uploaderRole;
   final String uploaderId;
+  final String? uploaderProfilePic;
   final bool showDownload;
 
   const ResourceDetailsModal({
@@ -45,6 +48,7 @@ class ResourceDetailsModal extends ConsumerWidget {
     required this.uploadedBy,
     required this.uploaderRole,
     this.uploaderId = 'admin',
+    this.uploaderProfilePic,
     this.showDownload = true,
   });
 
@@ -69,17 +73,23 @@ class ResourceDetailsModal extends ConsumerWidget {
       'lecturer': displayLecturers.join(', '),
       'uploadedBy': displayUploadedBy,
       'uploaderRole': uploaderRole,
+      'uploaderId': uploaderId,
+      'uploaderProfilePic': uploaderProfilePic ?? '',
     };
   }
 
-  Widget _buildProgressBar(double progress) {
+  Widget _buildProgressBar(bool isDark, double progress) {
+    final subTextColor = isDark ? Colors.white38 : Colors.black38;
+    final dividerColor = isDark ? Colors.white10 : Colors.black12;
+    final borderColor = isDark ? Colors.white24 : Colors.black26;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Reading Progress',
           style: TextStyle(
-            color: Colors.white38,
+            color: subTextColor,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -88,18 +98,17 @@ class ResourceDetailsModal extends ConsumerWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             final availableWidth = constraints.maxWidth;
-            final barWidth = availableWidth - 60; // Leave room for percentage text
+            final barWidth = availableWidth - 60; 
             
             return Row(
               children: [
-                // Battery-style bar (Dynamically sized to fill space)
                 Container(
                   width: barWidth,
                   height: 30,
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white24, width: 2),
+                    border: Border.all(color: borderColor, width: 2),
                   ),
                   child: Stack(
                     children: [
@@ -113,13 +122,12 @@ class ResourceDetailsModal extends ConsumerWidget {
                     ],
                   ),
                 ),
-                // Battery tip
                 Container(
                   width: 5,
                   height: 15,
-                  decoration: const BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.horizontal(right: Radius.circular(3)),
+                  decoration: BoxDecoration(
+                    color: borderColor,
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -136,13 +144,16 @@ class ResourceDetailsModal extends ConsumerWidget {
           }
         ),
         const SizedBox(height: 16),
-        const Divider(color: Colors.white10, height: 1),
+        Divider(color: dividerColor, height: 1),
       ],
     );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+
     final isTimetable = type == 'Time tables' || type.contains('Timetable');
 
     final courseService = ref.watch(courseServiceProvider);
@@ -167,11 +178,16 @@ class ResourceDetailsModal extends ConsumerWidget {
     final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
     final String displayUploadedBy = isMe ? userProfile.username : uploadedBy;
 
+    final bgColor = isDark ? const Color(0xFF141232) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white38 : Colors.black38;
+    final dividerColor = isDark ? Colors.white10 : Colors.black12;
+
     return Container(
       padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
-      decoration: const BoxDecoration(
-        color: Color(0xFF141232),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -180,7 +196,7 @@ class ResourceDetailsModal extends ConsumerWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: subTextColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -193,14 +209,33 @@ class ResourceDetailsModal extends ConsumerWidget {
                 height: 60,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
+                  border: Border.all(color: dividerColor),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: thumbnailUrl.startsWith('http')
-                  ? Image.network(thumbnailUrl, fit: BoxFit.cover)
+                  ? CachedNetworkImage(
+                      imageUrl: thumbnailUrl,
+                      fit: BoxFit.cover,
+                      cacheKey: thumbnailUrl,
+                      placeholder: (context, url) => Container(
+                        color: dividerColor,
+                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: dividerColor,
+                        child: Icon(Icons.broken_image, color: subTextColor),
+                      ),
+                    )
                   : thumbnailUrl.isNotEmpty 
-                      ? Image.file(File(thumbnailUrl), fit: BoxFit.cover)
-                      : const Icon(Icons.description, color: Colors.white24),
+                      ? Image.file(
+                          File(thumbnailUrl), 
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: dividerColor,
+                            child: Icon(Icons.broken_image, color: subTextColor),
+                          ),
+                        )
+                      : Icon(Icons.description, color: subTextColor),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -209,15 +244,15 @@ class ResourceDetailsModal extends ConsumerWidget {
                   children: [
                     Text(
                       isTimetable ? 'Timetable Details' : 'Material Details',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: textColor,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
                       title,
-                      style: const TextStyle(color: Colors.white54, fontSize: 13),
+                      style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 13),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -226,7 +261,7 @@ class ResourceDetailsModal extends ConsumerWidget {
               ),
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close, color: Colors.white38),
+                icon: Icon(Icons.close, color: subTextColor),
               ),
             ],
           ),
@@ -237,56 +272,68 @@ class ResourceDetailsModal extends ConsumerWidget {
               child: Column(
                 children: isTimetable ? [
                   _buildDetailRow(
+                    isDark,
                     Icons.school_outlined, 
                     'Program Name', 
                     '', 
                     customValueWidget: Padding(
                       padding: const EdgeInsets.only(top: 8.0),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: displayPrograms.map((program) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF20C8FF).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFF20C8FF).withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            program,
-                            style: const TextStyle(
-                              color: Color(0xFF20C8FF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: displayPrograms.map((program) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF20C8FF).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: const Color(0xFF20C8FF).withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    program,
+                                    style: const TextStyle(
+                                      color: Color(0xFF20C8FF),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         )).toList(),
                       ),
                     ),
                   ),
-                  _buildDetailRow(Icons.code_rounded, 'Program Code', programCodes.join(', ')),
-                  _buildDetailRow(Icons.info_outline, 'Type of Timetable', type.contains('EXAM') ? 'Exam Timetable' : 'Class Timetable'),
-                  _buildDetailRow(Icons.history_edu_outlined, 'Year of Publication', publicationYear),
-                  _buildDetailRow(Icons.school_outlined, 'Year of Study', yearOfStudy),
-                  _buildDetailRow(Icons.layers_outlined, 'Semester', semester),
+                  _buildDetailRow(isDark, Icons.code_rounded, 'Program Code', programCodes.join(', ')),
+                  _buildDetailRow(isDark, Icons.info_outline, 'Type of Timetable', type.contains('EXAM') ? 'Exam Timetable' : 'Class Timetable'),
+                  _buildDetailRow(isDark, Icons.history_edu_outlined, 'Year of Publication', publicationYear),
+                  _buildDetailRow(isDark, Icons.school_outlined, 'Year of Study', yearOfStudy),
+                  _buildDetailRow(isDark, Icons.layers_outlined, 'Semester', semester),
                   _buildDetailRow(
+                    isDark,
                     Icons.cloud_upload_outlined, 
                     'Uploaded By', 
                     '$displayUploadedBy ($uploaderRole)',
                     isLast: true,
-                  ),
+                    customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath),                  ),
                 ] : [
-                  _buildDetailRow(Icons.book_outlined, 'Unit Name', unitName),
-                  _buildDetailRow(Icons.code_rounded, 'Unit Code', unitCode),
-                  _buildDetailRow(Icons.file_present_outlined, 'Material Format', materialFormat),
-                  _buildDetailRow(Icons.calendar_month_outlined, 'Year of Upload', uploadYear),
-                  _buildDetailRow(Icons.history_edu_outlined, 'Year of Publication', publicationYear),
-                  _buildDetailRow(Icons.school_outlined, 'Year of Study', yearOfStudy),
-                  _buildDetailRow(Icons.layers_outlined, 'Semester', semester),
+                  _buildDetailRow(isDark, Icons.book_outlined, 'Unit Name', unitName),
+                  _buildDetailRow(isDark, Icons.code_rounded, 'Unit Code', unitCode),
+                  _buildDetailRow(isDark, Icons.file_present_outlined, 'Material Format', materialFormat),
+                  _buildDetailRow(isDark, Icons.calendar_month_outlined, 'Year of Upload', uploadYear),
+                  _buildDetailRow(isDark, Icons.history_edu_outlined, 'Year of Publication', publicationYear),
+                  _buildDetailRow(isDark, Icons.school_outlined, 'Year of Study', yearOfStudy),
+                  _buildDetailRow(isDark, Icons.layers_outlined, 'Semester', semester),
                   _buildDetailRow(
+                    isDark,
                     Icons.person_outline, 
                     'Lecturer', 
                     '', 
@@ -298,10 +345,10 @@ class ResourceDetailsModal extends ConsumerWidget {
                         children: displayLecturers.map((lecturer) => Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00A85A).withValues(alpha: 0.1),
+                            color: const Color(0xFF00A85A).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: const Color(0xFF00A85A).withValues(alpha: 0.3),
+                              color: const Color(0xFF00A85A).withOpacity(0.3),
                               width: 1,
                             ),
                           ),
@@ -318,10 +365,11 @@ class ResourceDetailsModal extends ConsumerWidget {
                     ),
                   ),
                   _buildDetailRow(
+                    isDark,
                     Icons.cloud_upload_outlined, 
                     'Uploaded By', 
                     '$displayUploadedBy ($uploaderRole)',
-                  ),
+                    customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath),                  ),
                   
                   ListenableBuilder(
                     listenable: Listenable.merge([DownloadService(), ProgressService()]),
@@ -336,7 +384,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                             children: [
                               const Icon(Icons.auto_graph_rounded, color: Color(0xFF20C8FF), size: 20),
                               const SizedBox(width: 16),
-                              Expanded(child: _buildProgressBar(progress)),
+                              Expanded(child: _buildProgressBar(isDark, progress)),
                             ],
                           ),
                         );
@@ -346,32 +394,42 @@ class ResourceDetailsModal extends ConsumerWidget {
                   ),
 
                   _buildDetailRow(
+                    isDark,
                     Icons.school_outlined, 
                     'Target Programs', 
                     '', 
                     isLast: true,
                     customValueWidget: Padding(
                       padding: const EdgeInsets.only(top: 8.0),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: displayPrograms.map((program) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF20C8FF).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFF20C8FF).withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            program,
-                            style: const TextStyle(
-                              color: Color(0xFF20C8FF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: displayPrograms.map((program) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF20C8FF).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: const Color(0xFF20C8FF).withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    program,
+                                    style: const TextStyle(
+                                      color: Color(0xFF20C8FF),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         )).toList(),
                       ),
@@ -437,11 +495,11 @@ class ResourceDetailsModal extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
                       color: isDownloading 
-                          ? Colors.white10 
+                          ? dividerColor 
                           : const Color(0xFF00A85A),
                       borderRadius: BorderRadius.circular(15),
                       border: isDownloading 
-                          ? Border.all(color: Colors.white10) 
+                          ? Border.all(color: dividerColor) 
                           : null,
                     ),
                     child: Center(
@@ -458,7 +516,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                                   value: progress,
                                   strokeWidth: 2,
                                   color: const Color(0xFF00A85A),
-                                  backgroundColor: Colors.white12,
+                                  backgroundColor: dividerColor,
                                 ),
                               ),
                             ),
@@ -486,7 +544,60 @@ class ResourceDetailsModal extends ConsumerWidget {
     );
   }
 
-  Widget _buildDetailRow(IconData icon, String label, String value, {bool isLast = false, Widget? customValueWidget}) {
+  Widget _buildUploaderProfilePic(WidgetRef ref, bool isMe, String? myProfilePic) {
+    final String? profilePic = isMe ? myProfilePic : uploaderProfilePic;
+    
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFF20C8FF), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF20C8FF).withValues(alpha: 0.2),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: _buildProfileImage(profilePic),
+      ),
+    );
+  }
+
+  Widget _buildProfileImage(String? path) {
+    if (path == null || path.isEmpty) {
+      return Container(
+        color: const Color(0xFF20C8FF).withValues(alpha: 0.1),
+        child: const Icon(Icons.person, color: Color(0xFF20C8FF), size: 20),
+      );
+    }
+
+    if (path.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: path,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Container(color: Colors.white10),
+        errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.white24),
+      );
+    } else if (path.startsWith('assets/')) {
+      return Image.asset(path, fit: BoxFit.cover);
+    } else {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, color: Colors.white24),
+      );
+    }
+  }
+
+  Widget _buildDetailRow(bool isDark, IconData icon, String label, String value, {bool isLast = false, Widget? customValueWidget}) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white38 : Colors.black38;
+    final dividerColor = isDark ? Colors.white10 : Colors.black12;
+
     return Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 16.0),
       child: Row(
@@ -500,27 +611,48 @@ class ResourceDetailsModal extends ConsumerWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white38,
+                  style: TextStyle(
+                    color: subTextColor,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 2),
-                if (value.isNotEmpty)
+                if (value.isNotEmpty && customValueWidget != null)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          value,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      customValueWidget,
+                    ],
+                  )
+                else if (value.isNotEmpty)
                   Text(
                     value,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: textColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       height: 1.4,
                     ),
-                  ),
-                if (customValueWidget != null) customValueWidget,
+                  )
+                else if (customValueWidget != null)
+                  customValueWidget,
+                
                 if (!isLast) ...[
                   const SizedBox(height: 12),
-                  const Divider(color: Colors.white10, height: 1),
+                  Divider(color: dividerColor, height: 1),
                 ],
               ],
             ),

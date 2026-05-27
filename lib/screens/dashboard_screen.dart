@@ -7,6 +7,7 @@ import '../widgets/ad_carousel.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../services/resource_service.dart';
+import '../services/download_service.dart';
 import '../widgets/filter_modal.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
@@ -352,6 +353,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (allTokensMatch(codeLower)) suggestions.add(res.unitCode);
       if (allTokensMatch(nameLower)) suggestions.add(res.unitName);
       
+      if (allTokensMatch(res.uploadedBy.toLowerCase())) {
+        suggestions.add(res.uploadedBy);
+      }
+      
       for (var l in res.lecturers) {
         if (allTokensMatch(l)) suggestions.add(l);
       }
@@ -441,178 +446,64 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final subTextColor = isDark ? const Color(0xFFC9CBF2) : Colors.black54;
 
     return ListenableBuilder(
-      listenable: ResourceService(),
+      listenable: Listenable.merge([ResourceService(), DownloadService()]),
       builder: (context, child) {
         final allResources = ResourceService().allResources;
 
         final filteredResources = allResources.where((res) {
+          // 1. Filter out pinned non-timetable items
+          final isPinned = DownloadService().isPinned(res.title);
+          final isTimetableType = res.type.toLowerCase().contains('timetable') || 
+                                res.type.toLowerCase().contains('time tables');
+          if (isPinned && !isTimetableType) return false;
+
+          // 2. Strict Category Match
           final isTimetableCategory = _selectedCategory == 'All' ? false : _selectedCategory == 'Time tables';
           final matchesCategory = _selectedCategory == 'All' || 
               (isTimetableCategory 
                   ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
                   : res.type == _selectedCategory);
-          
+          if (!matchesCategory) return false;
+
+          // 3. Strict Search Query Match
           final query = _searchController.text.trim().toLowerCase();
-          
-          if (query.isEmpty) return matchesCategory;
-
-          // Check for specialized exact matches across the entire resource set to decide filtering mode
-          bool isPrimaryMatch(Resource r, String q) {
-            final rUnitCode = r.unitCode.toLowerCase();
-            final rUnitName = r.unitName.toLowerCase();
-            final rSemester = r.semester.toLowerCase();
-            final rYearOfStudy = r.yearOfStudy.toLowerCase();
-            final rType = r.type.toLowerCase();
+          if (query.isNotEmpty) {
+            final searchFields = [
+              res.title,
+              res.unitCode,
+              res.unitName,
+              res.type,
+              res.semester,
+              res.yearOfStudy,
+              res.uploadedBy,
+              ...res.lecturers,
+              ...res.targetPrograms,
+              ...res.programCodes,
+            ].map((s) => s.toLowerCase().trim()).join(' ');
             
-            // 1. Exact Material Type Matches
-            if (rType == q) return true;
-            
-            // Broad categories
-            if ((q == 'time tables' || q == 'timetable' || q == 'timetables') && rType.contains('timetable')) return true;
-            if ((q == 'supp' || q == 'supps' || q == 'supplementary') && rType.contains('supplementary')) return true;
-            if ((q == 'manual' || q == 'manuals' || q == 'prac manual') && rType.contains('manual')) return true;
-
-            // 2. Exact matches for primary fields
-            if (rUnitCode == q || rUnitName == q) return true;
-            if (r.lecturers.any((l) => l.toLowerCase() == q)) return true;
-            if (r.targetPrograms.any((p) => p.toLowerCase() == q)) return true;
-            if (r.programCodes.any((pc) => pc.toLowerCase() == q)) return true;
-            
-            // 3. Unit + Type combination (Two criteria)
-            final knownTypes = [
-              'notes', 'cats', 'exams', 'supplementary exams', 
-              'class timetable', 'exam timetable', 'prac manual'
-            ];
-            
-            for (var kt in knownTypes) {
-              if (q.contains(kt)) {
-                final unitPart = q.replaceAll(kt, '').trim();
-                if (unitPart.isNotEmpty) {
-                  bool typeMatch = rType == kt;
-                  // Handle aliases in combination
-                  if (kt == 'exams' && rType == 'exams') typeMatch = true;
-                  if (kt == 'notes' && rType == 'notes') typeMatch = true;
-                  
-                  if (typeMatch && (rUnitCode.contains(unitPart) || rUnitName.contains(unitPart))) {
-                    return true;
-                  }
-                }
-              }
-            }
-
-            // Fallback for other combinations (like unit + 'exam' without 's')
-            final qParts = q.split(' ');
-            if (qParts.length >= 2) {
-              String? detectedType;
-              List<String> remainingParts = [];
-              
-              for (var part in qParts) {
-                if (part == 'exam' || part == 'exams' || 
-                    part == 'note' || part == 'notes' ||
-                    part == 'cat' || part == 'cats' ||
-                    part == 'supp' || part == 'supps' ||
-                    part == 'timetable' || part == 'timetables' ||
-                    part == 'manual' || part == 'manuals') {
-                  detectedType = part;
-                } else {
-                  remainingParts.add(part);
-                }
-              }
-
-              if (detectedType != null && remainingParts.isNotEmpty) {
-                final unitPart = remainingParts.join(' ');
-                bool typeMatch = false;
-                if (detectedType.startsWith('exam') && rType.contains('exam')) typeMatch = true;
-                else if (detectedType.startsWith('note') && rType.contains('note')) typeMatch = true;
-                else if (detectedType.startsWith('cat') && rType.contains('cat')) typeMatch = true;
-                else if (detectedType.startsWith('supp') && rType.contains('supplementary')) typeMatch = true;
-                else if (detectedType.contains('table') && rType.contains('timetable')) typeMatch = true;
-                else if (detectedType.startsWith('manual') && rType.contains('manual')) typeMatch = true;
-
-                if (typeMatch && (rUnitCode.contains(unitPart) || rUnitName.contains(unitPart))) {
-                  return true;
-                }
-              }
-            }
-
-            // Semester/Year special handling
-            if (q.contains('semester') || q.contains('sem')) {
-              final digit = q.replaceAll(RegExp(r'[^0-9]'), '');
-              if (digit.isNotEmpty && rSemester.contains(digit)) return true;
-            } else if (q.length > 1 && rSemester == q) {
-              return true;
-            }
-
-            if (q.contains('year')) {
-              final digit = q.replaceAll(RegExp(r'[^0-9]'), '');
-              if (digit.isNotEmpty && rYearOfStudy.contains(digit)) return true;
-            }
-
-            return false;
+            final tokens = query.split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
+            final matchesSearch = tokens.every((token) => searchFields.contains(token));
+            if (!matchesSearch) return false;
           }
 
-          // Optimization: Check if ANY resource has a primary match for the current query
-          final hasAnyPrimaryMatch = allResources.any((r) => isPrimaryMatch(r, query));
-
-          bool matchesSearch;
-          if (hasAnyPrimaryMatch) {
-            // Strict mode: only show those that match primary fields
-            matchesSearch = isPrimaryMatch(res, query);
-          } else {
-            // Existing logic fallback
-            final allTypes = allResources.map((r) => r.type.toLowerCase()).toSet();
-            final isSingleTypeSearch = (allTypes.contains(query) || 
-                                        query == 'timetable' || 
-                                        query == 'time tables' ||
-                                        query == 'manual' ||
-                                        query == 'supp' ||
-                                        query == 'supps') && !query.contains(' ');
-
-            if (isSingleTypeSearch) {
-              if (query == 'time tables' || query == 'timetable') {
-                matchesSearch = res.type.toLowerCase().contains('timetable') || res.type.toLowerCase().contains('time tables');
-              } else if (query == 'manual') {
-                matchesSearch = res.type.toLowerCase().contains('manual');
-              } else if (query == 'supp' || query == 'supps' || query == 'supplementary exams') {
-                matchesSearch = res.type.toLowerCase().contains('supplementary');
-              } else {
-                matchesSearch = res.type.toLowerCase() == query;
-              }
-            } else {
-              // General multi-keyword search
-              final searchFields = [
-                res.title,
-                res.unitCode,
-                res.unitName,
-                res.type,
-                res.semester,
-                res.yearOfStudy,
-                ...res.lecturers,
-                ...res.targetPrograms,
-                ...res.programCodes,
-              ].join(' ');
-              
-              final tokens = query.split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
-              matchesSearch = tokens.every((token) {
-                if (token == 'supp' || token == 'supps') return searchFields.toLowerCase().contains('supplementary');
-                if (token == 'table' || token == 'tables') {
-                  return searchFields.toLowerCase().contains('timetable') || searchFields.toLowerCase().contains('time tables');
-                }
-                return _tokenMatch(token, searchFields);
-              });
-            }
-          }
-
+          // 4. Strict AND Filter Logic
           bool matchesFilters = true;
           _activeFilters.forEach((key, value) {
-            if (key == 'publicationYear' && res.publicationYear != value) matchesFilters = false;
-            if (key == 'yearOfStudy' && res.yearOfStudy != value) matchesFilters = false;
-            if (key == 'semester' && res.semester != value) matchesFilters = false;
-            if (key == 'lecturer' && !res.lecturers.contains(value)) matchesFilters = false;
-            if (key == 'courseProgram' && !res.targetPrograms.contains(value)) matchesFilters = false;
+            final normalizedValue = value.toLowerCase().trim();
+            if (key == 'publicationYear') {
+              if (res.publicationYear.toLowerCase().trim() != normalizedValue) matchesFilters = false;
+            } else if (key == 'yearOfStudy') {
+              if (res.yearOfStudy.toLowerCase().trim() != normalizedValue) matchesFilters = false;
+            } else if (key == 'semester') {
+              if (res.semester.toLowerCase().trim() != normalizedValue) matchesFilters = false;
+            } else if (key == 'lecturer') {
+              if (!res.lecturers.any((l) => l.toLowerCase().trim() == normalizedValue)) matchesFilters = false;
+            } else if (key == 'courseProgram') {
+              if (!res.targetPrograms.any((p) => p.toLowerCase().trim() == normalizedValue)) matchesFilters = false;
+            }
           });
 
-          return matchesCategory && matchesSearch && matchesFilters;
+          return matchesFilters;
         }).toList();
 
         final isSearching = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
@@ -743,6 +634,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
                             Text('Find your academic edge.', style: TextStyle(color: subTextColor)),
+                            const SizedBox(height: 20),
+                            const AdCarousel(),
                             const SizedBox(height: 20),
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
@@ -943,6 +836,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 isLiked: res.isLiked,
                                 onLikeToggle: () => ResourceService().toggleLike(res.title),
                                 onViewIncrement: () => ResourceService().incrementViews(res.title),
+                                showPin: false,
                                 onTap: () {},
                               );
                             },

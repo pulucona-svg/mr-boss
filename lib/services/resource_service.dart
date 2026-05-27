@@ -18,6 +18,7 @@ class Resource {
   final String uploadedBy;
   final String uploaderRole;
   final String uploaderId;
+  final String? uploaderProfilePic;
   final List<String> targetPrograms;
   final List<String> programCodes;
   final String materialFormat;
@@ -45,6 +46,7 @@ class Resource {
     required this.uploadedBy,
     required this.uploaderRole,
     required this.uploaderId,
+    this.uploaderProfilePic,
     required this.uploadDate,
     this.targetPrograms = const ['Computer Science'],
     this.programCodes = const [],
@@ -86,6 +88,8 @@ class Resource {
       'lecturer': lecturers.join(', '),
       'uploadedBy': uploadedBy,
       'uploaderRole': uploaderRole,
+      'uploaderId': uploaderId,
+      'uploaderProfilePic': uploaderProfilePic ?? '',
       'targetPrograms': targetPrograms.join(', '),
       'programCodes': programCodes.join(','),
       'status': status ?? '',
@@ -112,6 +116,7 @@ class Resource {
       uploadedBy: uploadedBy,
       uploaderRole: uploaderRole,
       uploaderId: uploaderId,
+      uploaderProfilePic: uploaderProfilePic,
       uploadDate: uploadDate,
       targetPrograms: poolPrograms.isNotEmpty ? poolPrograms : targetPrograms,
       programCodes: poolProgramCodes.isNotEmpty ? poolProgramCodes : programCodes,
@@ -138,6 +143,7 @@ class ResourceService extends ChangeNotifier {
 
   static const String currentUserId = 'user_12345';
   static const String currentUserName = 'Me';
+  static const String adminPic = 'assets/admin_pic.jpeg';
 
   void synchronizeWithPool(CourseService courseService) {
     if (_isSynchronized) return;
@@ -189,6 +195,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 1)),
       targetPrograms: ['Bachelor of Science Computer Science', 'Bachelor of Science Applied Statistics'],
       programCodes: ['COMP', 'STAT'],
@@ -212,6 +219,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 2)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       programCodes: ['COMP'],
@@ -235,6 +243,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 3)),
       targetPrograms: ['Bachelor of Commerce', 'Bachelor of Arts'],
       programCodes: ['BCOM', 'ARTS'],
@@ -258,6 +267,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 4)),
       targetPrograms: ['Bachelor of Science Biomedical Science', 'Bachelor of Education Science'],
       programCodes: ['BMED', 'BEDS'],
@@ -282,6 +292,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 5)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       programCodes: ['COMP'],
@@ -305,6 +316,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 6)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       programCodes: ['BMED'],
@@ -328,6 +340,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 7)),
       targetPrograms: ['Bachelor of Education Arts'],
       programCodes: ['BED'],
@@ -352,6 +365,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 8)),
       targetPrograms: ['All Programs'],
       programCodes: ['ALL'],
@@ -375,6 +389,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 9)),
       targetPrograms: ['All Programs'],
       programCodes: ['ALL'],
@@ -398,6 +413,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(hours: 10)),
       targetPrograms: ['Postgraduate Programs'],
       programCodes: ['GRAD'],
@@ -422,6 +438,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 15)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -444,6 +461,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 12)),
       targetPrograms: [
         'Bachelor of Science Computer Science',
@@ -470,6 +488,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 10)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -492,6 +511,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 9)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -514,6 +534,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 7)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -536,6 +557,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 6)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -558,6 +580,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 4)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -580,6 +603,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 3)),
       targetPrograms: ['Bachelor of Science Computer Science'],
       status: 'approved',
@@ -604,6 +628,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 14)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -626,6 +651,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 13)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -648,6 +674,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 11)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -670,6 +697,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 10)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -692,6 +720,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 8)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -714,6 +743,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 7)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -736,6 +766,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 5)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -758,6 +789,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 3)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -780,6 +812,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 20)),
       targetPrograms: [
         'Bachelor of Science Biomedical Science',
@@ -807,6 +840,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 18)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -829,6 +863,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 17)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -851,6 +886,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 16)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -873,6 +909,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 15)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -895,6 +932,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 14)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -917,6 +955,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 13)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -939,6 +978,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 12)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -961,6 +1001,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 11)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -983,6 +1024,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 10)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -1005,6 +1047,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 9)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -1027,6 +1070,7 @@ class ResourceService extends ChangeNotifier {
       uploadedBy: 'Admin',
       uploaderRole: 'Administrator',
       uploaderId: 'admin_001',
+      uploaderProfilePic: adminPic,
       uploadDate: DateTime.now().subtract(const Duration(days: 8)),
       targetPrograms: ['Bachelor of Science Biomedical Science'],
       status: 'approved',
@@ -1090,11 +1134,168 @@ class ResourceService extends ChangeNotifier {
     return combined;
   }
 
+  final List<String> _pinnedUploadTitles = [];
+  final List<String> _recentlyUnpinnedUploads = [];
+  final List<Resource> _archivedUploads = [];
+  final List<Map<String, dynamic>> _trashedUploads = [];
+
+  bool isPinned(String title) => _pinnedUploadTitles.contains(title);
+  List<Resource> get archivedUploads => _archivedUploads;
+  List<Map<String, dynamic>> get trashedUploads {
+    _autoDeleteExpiredTrash();
+    return _trashedUploads;
+  }
+
+  void _autoDeleteExpiredTrash() {
+    final now = DateTime.now();
+    _trashedUploads.removeWhere((item) {
+      final deletedAt = DateTime.parse(item['deletedAt'] as String);
+      return now.difference(deletedAt).inDays >= 30;
+    });
+  }
+
+  void _enforcePinLimit() {
+    while (_pinnedUploadTitles.length > 4) {
+      final evicted = _pinnedUploadTitles.removeLast();
+      _recentlyUnpinnedUploads.remove(evicted);
+      _recentlyUnpinnedUploads.insert(0, evicted);
+    }
+  }
+
+  Resource? _findAndRemove(String title) {
+    // Search active uploads
+    int idx = _userUploads.indexWhere((r) => r.title == title);
+    if (idx != -1) {
+      final res = _userUploads.removeAt(idx);
+      _pinnedUploadTitles.remove(title);
+      _recentlyUnpinnedUploads.remove(title);
+      return res;
+    }
+    // Search archive
+    idx = _archivedUploads.indexWhere((r) => r.title == title);
+    if (idx != -1) return _archivedUploads.removeAt(idx);
+    // Search trash
+    idx = _trashedUploads.indexWhere((item) => (item['resource'] as Resource).title == title);
+    if (idx != -1) return _trashedUploads.removeAt(idx)['resource'] as Resource;
+
+    return null;
+  }
+
+  void pin(String title) {
+    final res = findResourceByTitle(title);
+    if (res != null) {
+      _pinnedUploadTitles.remove(title);
+      _recentlyUnpinnedUploads.remove(title);
+      _pinnedUploadTitles.insert(0, title);
+      _enforcePinLimit();
+      notifyListeners();
+    }
+  }
+
+  void unpin(String title) {
+    if (_pinnedUploadTitles.contains(title)) {
+      _pinnedUploadTitles.remove(title);
+      _recentlyUnpinnedUploads.remove(title);
+      _recentlyUnpinnedUploads.insert(0, title);
+      notifyListeners();
+    }
+  }
+
+  void togglePin(String title) {
+    if (isPinned(title)) unpin(title);
+    else pin(title);
+  }
+
+  void pinMultiple(List<String> titles) {
+    for (var title in titles) {
+      _pinnedUploadTitles.remove(title);
+      _recentlyUnpinnedUploads.remove(title);
+    }
+    for (var title in titles.reversed) {
+      _pinnedUploadTitles.insert(0, title);
+    }
+    _enforcePinLimit();
+    notifyListeners();
+  }
+
+  void unpinMultiple(List<String> titles) {
+    for (var title in titles) {
+      if (_pinnedUploadTitles.contains(title)) {
+        _pinnedUploadTitles.remove(title);
+        _recentlyUnpinnedUploads.remove(title);
+        _recentlyUnpinnedUploads.insert(0, title);
+      }
+    }
+    notifyListeners();
+  }
+
+  void archiveMultiple(List<String> titles) {
+    for (var title in titles) {
+      final res = _findAndRemove(title);
+      if (res != null) {
+        _archivedUploads.insert(0, res);
+      }
+    }
+    notifyListeners();
+  }
+
+  void deleteMultiple(List<String> titles) {
+    for (var title in titles) {
+      final res = _findAndRemove(title);
+      if (res != null) {
+        _trashedUploads.insert(0, {
+          'resource': res,
+          'deletedAt': DateTime.now().toIso8601String(),
+        });
+      }
+    }
+    notifyListeners();
+  }
+
+  void restoreMultiple(List<String> titles) {
+    for (var title in titles) {
+      final res = _findAndRemove(title);
+      if (res != null) {
+        _userUploads.add(res);
+      }
+    }
+    notifyListeners();
+  }
+
+  void permanentlyDeleteMultiple(List<String> titles) {
+    _trashedUploads.removeWhere((item) => titles.contains((item['resource'] as Resource).title));
+    notifyListeners();
+  }
+
   List<Resource> get userUploads {
     _cleanRejectedUploads();
-    final sorted = List<Resource>.from(_userUploads);
-    sorted.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
-    return sorted;
+    
+    final pinned = <Resource>[];
+    final recentlyUnpinned = <Resource>[];
+    final others = <Resource>[];
+
+    for (var title in _pinnedUploadTitles) {
+      final res = _userUploads.firstWhere((r) => r.title == title, orElse: () => Resource(title: '', type: '', thumbnailUrl: '', unitName: '', unitCode: '', year: '', uploadYear: '', publicationYear: '', yearOfStudy: '', semester: '', lecturers: [], uploadedBy: '', uploaderRole: '', uploaderId: '', uploadDate: DateTime.now()));
+      if (res.title.isNotEmpty) pinned.add(res);
+    }
+
+    for (var title in _recentlyUnpinnedUploads) {
+      if (!_pinnedUploadTitles.contains(title)) {
+        final res = _userUploads.firstWhere((r) => r.title == title, orElse: () => Resource(title: '', type: '', thumbnailUrl: '', unitName: '', unitCode: '', year: '', uploadYear: '', publicationYear: '', yearOfStudy: '', semester: '', lecturers: [], uploadedBy: '', uploaderRole: '', uploaderId: '', uploadDate: DateTime.now()));
+        if (res.title.isNotEmpty) recentlyUnpinned.add(res);
+      }
+    }
+
+    final sortedUserUploads = List<Resource>.from(_userUploads);
+    sortedUserUploads.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
+
+    for (var res in sortedUserUploads) {
+      if (!_pinnedUploadTitles.contains(res.title) && !_recentlyUnpinnedUploads.contains(res.title)) {
+        others.add(res);
+      }
+    }
+
+    return [...pinned, ...recentlyUnpinned, ...others];
   }
 
   void _cleanRejectedUploads() {
