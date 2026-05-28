@@ -47,6 +47,8 @@ dependencies:
   shimmer: ^3.0.0
   audioplayers: ^6.6.0
   flutter_svg: ^2.0.10+1
+  google_mobile_ads: ^8.0.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

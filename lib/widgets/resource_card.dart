@@ -13,6 +13,9 @@ import '../utils/feedback_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/user_provider.dart';
 
+import '../services/subscription_service.dart';
+import 'download_modal.dart';
+
 class ResourceCard extends ConsumerStatefulWidget {
   const ResourceCard({
     super.key,
@@ -288,6 +291,27 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     );
   }
 
+  void _handleDownload() {
+    if (SubscriptionService().isSubscribed) {
+      DownloadService().startDownload(_getResourceData());
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => DownloadModal(
+          onWatchAd: () async {
+            await SubscriptionService().showRewardedAd(
+              onRewardEarned: () {
+                if (Navigator.canPop(context)) Navigator.pop(context);
+                DownloadService().startDownload(_getResourceData());
+              },
+            );
+          },
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -516,7 +540,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                         isDownloads: true,
                                       );
                                     } else {
-                                      DownloadService().startDownload(_getResourceData());
+                                      _handleDownload();
                                     }
                                   },
                                   behavior: HitTestBehavior.translucent,

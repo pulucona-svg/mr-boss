@@ -15,11 +15,18 @@ import 'providers/upload_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/top_notification_service.dart';
 
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'services/subscription_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
   
   final courseService = CourseService();
   await courseService.init();
+
+  final subscriptionService = SubscriptionService();
+  await subscriptionService.init();
 
   runApp(
     ProviderScope(

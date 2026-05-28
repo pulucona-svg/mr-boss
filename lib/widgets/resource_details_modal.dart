@@ -10,6 +10,9 @@ import '../providers/theme_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/resource_service.dart';
 
+import '../services/subscription_service.dart';
+import 'download_modal.dart';
+
 class ResourceDetailsModal extends ConsumerWidget {
   final String title;
   final String type;
@@ -489,7 +492,27 @@ class ResourceDetailsModal extends ConsumerWidget {
                 }
 
                 return GestureDetector(
-                  onTap: () => DownloadService().startDownload(_getResourceData(displayPrograms, displayLecturers, ref)),
+                  onTap: () {
+                    final resourceData = _getResourceData(displayPrograms, displayLecturers, ref);
+                    if (SubscriptionService().isSubscribed) {
+                      DownloadService().startDownload(resourceData);
+                    } else {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (context) => DownloadModal(
+                          onWatchAd: () async {
+                            await SubscriptionService().showRewardedAd(
+                              onRewardEarned: () {
+                                if (Navigator.canPop(context)) Navigator.pop(context);
+                                DownloadService().startDownload(resourceData);
+                              },
+                            );
+                          },
+                        ),
+                      );
+                    }
+                  },
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 14),

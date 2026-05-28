@@ -8,7 +8,7 @@ class MainActivity : FlutterActivity() {
     
     // TOGGLE: Set to true to ENABLE screenshot protection, false to DISABLE it.
     // This blocks screenshots, screen recordings, and hides recent app previews.
-    private val SECURE_SCREEN_ENABLED = false
+    private val SECURE_SCREEN_ENABLED = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
