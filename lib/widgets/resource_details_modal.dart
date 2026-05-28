@@ -91,7 +91,7 @@ class ResourceDetailsModal extends ConsumerWidget {
     return isSubscribed || isDownloaded || isMyUpload || isSessionUnlocked;
   }
 
-  void _handleMaterialAction(BuildContext context, WidgetRef ref, List<String> displayPrograms, List<String> displayLecturers, bool isDownload) {
+  void _handleMaterialAction(BuildContext context, WidgetRef ref, List<String> displayPrograms, List<String> displayLecturers, bool isDownload) async {
     final resourceData = _getResourceData(displayPrograms, displayLecturers, ref);
     
     if (_hasFullAccess(ref)) {
@@ -107,7 +107,7 @@ class ResourceDetailsModal extends ConsumerWidget {
         );
       }
     } else {
-      showDialog(
+      final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
@@ -115,6 +115,11 @@ class ResourceDetailsModal extends ConsumerWidget {
           actionType: isDownload ? AccessActionType.download : AccessActionType.read,
         ),
       );
+
+      if (result == true) {
+        // Auto-resume action after unlock
+        _handleMaterialAction(context, ref, displayPrograms, displayLecturers, isDownload);
+      }
     }
   }
 

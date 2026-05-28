@@ -17,21 +17,18 @@ class DownloadModal extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subService = ref.watch(subscriptionServiceProvider);
-    
-    // Auto-close if the resource becomes unlocked while the modal is open
-    // (e.g. user subscribed in another screen or ad finished)
-    final bool isSubscribed = subService.isSubscribed;
-    final bool isUnlocked = subService.isResourceUnlocked(resourceTitle);
-    
-    // We use addPostFrameCallback to avoid popping during build
-    if (isSubscribed || isUnlocked) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    // We listen to the provider to handle external state changes (like ad rewards)
+    // but we handle the subscription return flow explicitly in the button handler.
+    ref.listen(subscriptionServiceProvider, (previous, next) {
+      final bool isUnlocked = next.isResourceUnlocked(resourceTitle);
+      // Only auto-pop if unlocked via ad (since that happens while modal is "active")
+      // Subscription pops are handled by the 'await' in the button handler below.
+      if (isUnlocked) {
         if (Navigator.canPop(context)) {
-          Navigator.pop(context);
+          Navigator.pop(context, true);
         }
-      });
-    }
+      }
+    });
 
     final String actionText = actionType == AccessActionType.download ? 'downloading' : 'accessing';
     final String message = 'Subscribe to packages and enjoy $actionText materials without watching ads.';
@@ -114,11 +111,10 @@ class DownloadModal extends ConsumerWidget {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
-                                // IMPORTANT: Only unlock, do NOT trigger open/download
                                 await ref.read(subscriptionServiceProvider).showRewardedAd(
                                   onRewardEarned: () {
                                     ref.read(subscriptionServiceProvider).unlockResource(resourceTitle);
-                                    // The auto-close logic above will handle popping the modal
+                                    // The ref.listen above will handle popping the modal
                                   },
                                 );
                               },
@@ -140,11 +136,23 @@ class DownloadModal extends ConsumerWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.push(
+                              onPressed: () async {
+                                // Wait for user to come back from Subscription Screen
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(builder: (context) => const SubscriptionScreen()),
                                 );
+                                
+                                // Once we are back, check if they successfully subscribed
+                                if (context.mounted) {
+                                  final subService = ref.read(subscriptionServiceProvider);
+                                  if (subService.isSubscribed) {
+                                    // Pop the modal with true to trigger auto-resume in the caller
+                                    if (Navigator.canPop(context)) {
+                                      Navigator.pop(context, true);
+                                    }
+                                  }
+                                }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF00A85A),

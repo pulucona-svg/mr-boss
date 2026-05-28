@@ -137,7 +137,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     });
   }
 
-  void _handleRead() {
+  void _handleRead() async {
     if (_hasFullAccess()) {
       Navigator.push(
         context,
@@ -146,7 +146,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         ),
       );
     } else {
-      showDialog(
+      final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
@@ -154,6 +154,11 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
           actionType: AccessActionType.read,
         ),
       );
+
+      if (result == true && mounted) {
+        // Auto-resume reading after unlock
+        _handleRead();
+      }
     }
   }
 
@@ -326,11 +331,11 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     );
   }
 
-  void _handleDownload() {
+  void _handleDownload() async {
     if (_hasFullAccess()) {
       ref.read(downloadServiceProvider).startDownload(_getResourceData());
     } else {
-      showDialog(
+      final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
@@ -338,6 +343,11 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
           actionType: AccessActionType.download,
         ),
       );
+
+      if (result == true && mounted) {
+        // Auto-resume download after unlock
+        _handleDownload();
+      }
     }
   }
 
