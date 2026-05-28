@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/resource_card.dart';
-import '../widgets/ad_carousel.dart';
+import '../widgets/smart_ad_banner.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../services/resource_service.dart';
@@ -636,7 +636,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             const SizedBox(height: 8),
                             Text('Find your academic edge.', style: TextStyle(color: subTextColor)),
                             const SizedBox(height: 20),
-                            const AdCarousel(),
+                            const SmartAdBanner(),
                             const SizedBox(height: 20),
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,

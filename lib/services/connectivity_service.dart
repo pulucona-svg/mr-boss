@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
-class ConnectivityService {
+class ConnectivityService extends ChangeNotifier {
   static final ConnectivityService _instance = ConnectivityService._internal();
   factory ConnectivityService() => _instance;
   ConnectivityService._internal();
@@ -10,21 +10,32 @@ class ConnectivityService {
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _subscription;
   bool? _wasOffline;
+  bool _isInitialized = false;
 
   // Global key for showing snackbars without requiring BuildContext in async gaps
   final GlobalKey<ScaffoldMessengerState> messengerKey = GlobalKey<ScaffoldMessengerState>();
 
+  bool _isOffline = false;
+  bool get isOffline => _isOffline;
+
   void initialize() {
+    if (_isInitialized) return;
+    _isInitialized = true;
     _subscription?.cancel();
+    _connectivity.checkConnectivity().then((results) {
+      _isOffline = results.contains(ConnectivityResult.none);
+      notifyListeners();
+    });
     _subscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
       _handleConnectivityChange(results);
     });
   }
 
   void _handleConnectivityChange(List<ConnectivityResult> results) {
-    final bool isOffline = results.contains(ConnectivityResult.none);
+    _isOffline = results.contains(ConnectivityResult.none);
+    notifyListeners();
     
-    if (isOffline) {
+    if (_isOffline) {
       _wasOffline = true;
       _showSnackBar(
         'Check internet connection to get latest material',

@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/subscription_model.dart';
 import '../services/subscription_service.dart';
 import '../widgets/purchase_modal.dart';
+import '../providers/user_provider.dart';
 
-class SubscriptionScreen extends StatefulWidget {
+class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
 
   @override
-  State<SubscriptionScreen> createState() => _SubscriptionScreenState();
+  ConsumerState<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen> {
+class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   final List<SubscriptionPackage> _packages = const [
     SubscriptionPackage(id: 'daily', title: 'Daily Pass', price: 5, duration: Duration(days: 1)),
     SubscriptionPackage(id: 'weekly', title: 'Weekly Pass', price: 30, duration: Duration(days: 7)),
@@ -21,15 +23,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   ];
 
   void _showPurchaseModal(SubscriptionPackage package) {
+    final userProfile = ref.read(userProfileProvider);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => PurchaseModal(
         package: package,
-        phoneNumber: '0712345678', // This could be fetched from user provider
+        phoneNumber: userProfile.phone,
         onSuccess: () {
           _showSuccessMessage();
-          setState(() {}); // Refresh list
+          setState(() {});
         },
       ),
     );
@@ -45,7 +48,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                'You can now access materials without ads. Go back to download.',
+                'Subscription successful. Enjoy ad-free access!',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
@@ -56,6 +59,37 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 3),
         margin: const EdgeInsets.all(20),
+      ),
+    );
+  }
+
+  void _confirmTermination(SubscriptionHistory sub) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A3F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Terminate Package?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Terminating this package does not provide any refund. Are you sure you want to proceed?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () {
+              SubscriptionService().terminateSubscription(sub.id);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Package terminated successfully.')),
+              );
+            },
+            child: const Text('Terminate', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
@@ -79,13 +113,48 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       body: ListenableBuilder(
         listenable: SubscriptionService(),
         builder: (context, child) {
-          final history = SubscriptionService().history;
+          final service = SubscriptionService();
+          final activeSub = service.activeSubscription;
+          final queuedSubs = service.queuedSubscriptions;
+          final history = service.history.where((s) => 
+              s.status == SubscriptionStatus.expired || 
+              s.status == SubscriptionStatus.terminated).toList();
           
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (activeSub != null) ...[
+                  const Text(
+                    'ACTIVE PACKAGE',
+                    style: TextStyle(
+                      color: Color(0xFF7B5CFF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _activePackageCard(activeSub),
+                  const SizedBox(height: 30),
+                ],
+
+                if (queuedSubs.isNotEmpty) ...[
+                  const Text(
+                    'QUEUED PACKAGES',
+                    style: TextStyle(
+                      color: Color(0xFF20C8FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...queuedSubs.map((s) => _queuedPackageCard(s)),
+                  const SizedBox(height: 30),
+                ],
+
                 const Text(
                   'SELECT A PACKAGE',
                   style: TextStyle(
@@ -123,6 +192,138 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
+  Widget _activePackageCard(SubscriptionHistory sub) {
+    final dateFormat = DateFormat('MMM d, yyyy • HH:mm');
+    final now = DateTime.now();
+    final remaining = sub.expiryDate.difference(now);
+    final remainingDays = remaining.inDays;
+    final remainingHours = remaining.inHours % 24;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF7B5CFF), Color(0xFF5C3DFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7B5CFF).withOpacity(0.3),
+            blurRadius: 15,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          sub.packageTitle,
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const Text('Currently Active', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                    IconButton(
+                      onPressed: () => _confirmTermination(sub),
+                      icon: const Icon(Icons.cancel_outlined, color: Colors.white70),
+                      tooltip: 'Terminate Package',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _infoColumn('Activated On', dateFormat.format(sub.activationDate)),
+                    _infoColumn('Expires On', dateFormat.format(sub.expiryDate)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.timer_outlined, color: Colors.white, size: 20),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Remaining: $remainingDays Days, $remainingHours Hours',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _queuedPackageCard(SubscriptionHistory sub) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF20C8FF).withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF20C8FF).withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF20C8FF).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.queue_play_next, color: Color(0xFF20C8FF), size: 18),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(sub.packageTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                const Text('Waiting in Queue', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _confirmTermination(sub),
+            child: const Text('Cancel', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoColumn(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
   Widget _packageCard(SubscriptionPackage package) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -147,7 +348,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF7B5CFF).withValues(alpha: 0.1),
+                    color: const Color(0xFF7B5CFF).withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.star_rounded, color: Color(0xFF7B5CFF)),
@@ -190,13 +391,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Widget _historyCard(SubscriptionHistory history) {
     final dateFormat = DateFormat('MMM d, yyyy • HH:mm');
-    final isExpired = history.expiryDate.isBefore(DateTime.now());
+    final isTerminated = history.status == SubscriptionStatus.terminated;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Colors.white.withOpacity(0.03),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10, width: 0.5),
       ),
@@ -213,15 +414,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isExpired 
-                      ? Colors.red.withValues(alpha: 0.1) 
-                      : const Color(0xFF00A85A).withValues(alpha: 0.1),
+                  color: isTerminated 
+                      ? Colors.red.withOpacity(0.1) 
+                      : Colors.white10,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isExpired ? 'EXPIRED' : 'ACTIVE',
+                  isTerminated ? 'TERMINATED' : 'EXPIRED',
                   style: TextStyle(
-                    color: isExpired ? Colors.red : const Color(0xFF00A85A),
+                    color: isTerminated ? Colors.redAccent : Colors.white38,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -233,7 +434,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           _historyRow('Transaction', history.transactionCode),
           _historyRow('Amount', 'Ksh.${history.amount.toInt()}'),
           _historyRow('Purchase', dateFormat.format(history.purchaseDate)),
-          _historyRow('Expires', dateFormat.format(history.expiryDate)),
+          if (!isTerminated) _historyRow('Expired', dateFormat.format(history.expiryDate))
+          else _historyRow('Terminated', dateFormat.format(DateTime.now())), // Ideally use actual termination date
         ],
       ),
     );
@@ -245,7 +447,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          Text(label, style: const TextStyle(color: Color(0xFF7B5CFF), fontSize: 11, fontWeight: FontWeight.bold)),
           Text(value, style: const TextStyle(color: Colors.white70, fontSize: 11)),
         ],
       ),
@@ -257,7 +459,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 30),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: Colors.white.withOpacity(0.02),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10, width: 0.5),
       ),

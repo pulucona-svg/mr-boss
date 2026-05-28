@@ -8,7 +8,7 @@ import '../services/resource_service.dart';
 import '../widgets/filter_modal.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
-import '../widgets/ad_carousel.dart';
+import '../widgets/smart_ad_banner.dart';
 import '../widgets/upload_bottom_sheet.dart';
 import '../widgets/draggable_fab.dart';
 import '../widgets/skeleton.dart';
@@ -786,7 +786,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           const SizedBox(height: 8),
           Text('Your offline academic hub.', style: TextStyle(color: subTextColor, fontSize: 16)),
           const SizedBox(height: 20),
-          const AdCarousel(),
+          const SmartAdBanner(),
           const SizedBox(height: 20),
           Row(
             children: [

@@ -1,3 +1,10 @@
+enum SubscriptionStatus {
+  active,
+  queued,
+  expired,
+  terminated,
+}
+
 class SubscriptionPackage {
   final String id;
   final String title;
@@ -18,8 +25,9 @@ class SubscriptionHistory {
   final double amount;
   final String transactionCode;
   final DateTime purchaseDate;
+  final DateTime activationDate;
   final DateTime expiryDate;
-  final bool isActive;
+  final SubscriptionStatus status;
 
   SubscriptionHistory({
     required this.id,
@@ -27,9 +35,27 @@ class SubscriptionHistory {
     required this.amount,
     required this.transactionCode,
     required this.purchaseDate,
+    required this.activationDate,
     required this.expiryDate,
-    this.isActive = true,
+    required this.status,
   });
+
+  SubscriptionHistory copyWith({
+    SubscriptionStatus? status,
+    DateTime? activationDate,
+    DateTime? expiryDate,
+  }) {
+    return SubscriptionHistory(
+      id: id,
+      packageTitle: packageTitle,
+      amount: amount,
+      transactionCode: transactionCode,
+      purchaseDate: purchaseDate,
+      activationDate: activationDate ?? this.activationDate,
+      expiryDate: expiryDate ?? this.expiryDate,
+      status: status ?? this.status,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -37,8 +63,9 @@ class SubscriptionHistory {
     'amount': amount,
     'transactionCode': transactionCode,
     'purchaseDate': purchaseDate.toIso8601String(),
+    'activationDate': activationDate.toIso8601String(),
     'expiryDate': expiryDate.toIso8601String(),
-    'isActive': isActive,
+    'status': status.name,
   };
 
   factory SubscriptionHistory.fromJson(Map<String, dynamic> json) => SubscriptionHistory(
@@ -47,7 +74,8 @@ class SubscriptionHistory {
     amount: json['amount'],
     transactionCode: json['transactionCode'],
     purchaseDate: DateTime.parse(json['purchaseDate']),
+    activationDate: DateTime.parse(json['activationDate']),
     expiryDate: DateTime.parse(json['expiryDate']),
-    isActive: json['isActive'] ?? true,
+    status: SubscriptionStatus.values.byName(json['status'] ?? 'active'),
   );
 }

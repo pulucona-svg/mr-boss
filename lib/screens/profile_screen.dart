@@ -15,6 +15,9 @@ import 'reset_password_screen.dart';
 import 'library_screen.dart';
 import 'login_screen.dart';
 
+import 'subscription_screen.dart';
+import '../services/subscription_service.dart';
+
 class AcademicAutocompleteField extends StatefulWidget {
   final String label;
   final TextEditingController controller;
@@ -593,7 +596,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       children: [
                         Expanded(child: _buildStatusBadge('Donate', 'ACTIVE', Icons.verified, Colors.blue, isDark)),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildStatusBadge('Ad-Watch', 'INACTIVE', Icons.stars, Colors.orange, isDark)),
+                        Expanded(
+                          child: ListenableBuilder(
+                            listenable: SubscriptionService(),
+                            builder: (context, child) {
+                              final isSubscribed = SubscriptionService().isSubscribed;
+                              return _buildStatusBadge(
+                                'Ad-Watch', 
+                                isSubscribed ? 'ACTIVE' : 'INACTIVE', 
+                                Icons.stars, 
+                                Colors.orange, 
+                                isDark,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const SubscriptionScreen()),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: _buildStatusBadge(

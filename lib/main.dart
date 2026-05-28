@@ -20,22 +20,29 @@ import 'services/subscription_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
   
-  final courseService = CourseService();
-  await courseService.init();
-
-  final subscriptionService = SubscriptionService();
-  await subscriptionService.init();
+  // Start heavy initialization in background without blocking runApp
+  _initServices();
 
   runApp(
-    ProviderScope(
-      overrides: [
-        courseServiceProvider.overrideWithValue(courseService),
-      ],
-      child: const MirrorApp(),
+    const ProviderScope(
+      child: MirrorApp(),
     ),
   );
+}
+
+Future<void> _initServices() async {
+  try {
+    // Initialize in background to prevent splash screen freeze
+    await Future.wait([
+      MobileAds.instance.initialize(),
+      CourseService().init(),
+      SubscriptionService().init(),
+    ]);
+    debugPrint('All services initialized successfully');
+  } catch (e) {
+    debugPrint('Error during service initialization: $e');
+  }
 }
 
 class MirrorApp extends ConsumerStatefulWidget {

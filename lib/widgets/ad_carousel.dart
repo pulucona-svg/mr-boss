@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class AdCarousel extends StatefulWidget {
   final List<Map<String, dynamic>>? ads;
@@ -67,6 +69,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
   }
 
   void _setupAds() {
+    const defaultContactUrl = 'https://wa.me/254108462492';
     _ads = widget.ads ?? [
       {
         'type': 'image',
@@ -75,6 +78,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         'subtitle': 'In need of professional cyber services? Worry no more, Davy Cybers we have got you.',
         'url': 'assets/ad_cyber.jpeg',
         'color': const Color(0xFF20C8FF),
+        'contactUrl': defaultContactUrl,
       },
       {
         'type': 'image',
@@ -83,6 +87,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         'subtitle': 'Tired of expensive data plans? Worry no more, Manu Data Solutions we have got you.',
         'url': 'assets/ad_data.jpeg',
         'color': const Color(0xFF00A85A),
+        'contactUrl': defaultContactUrl,
       },
       {
         'type': 'image',
@@ -91,6 +96,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         'subtitle': 'In need of snake light? Say less, we got you with a discount.',
         'url': 'assets/ad_snake.jpeg',
         'color': const Color(0xFFFF8A00),
+        'contactUrl': defaultContactUrl,
       },
       {
         'type': 'image',
@@ -98,6 +104,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         'subtitle': 'End of Semester CATs are here! 📚 Get your revision materials now.',
         'url': 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800',
         'color': const Color(0xFF7B5CFF),
+        'contactUrl': defaultContactUrl,
       },
     ];
   }
@@ -151,6 +158,13 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
       );
+    }
+  }
+
+  Future<void> _launchContactUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -276,21 +290,63 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
                         ],
                       ),
                       const Spacer(),
-                      Text(
-                        ad['subtitle']!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          height: 1.4,
-                          fontWeight: FontWeight.w600,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black45,
-                              offset: Offset(0, 2),
-                              blurRadius: 4,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              ad['subtitle']!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                height: 1.2,
+                                fontWeight: FontWeight.w600,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black45,
+                                    offset: Offset(0, 2),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                          if (ad['contactUrl'] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: ElevatedButton(
+                                onPressed: () => _launchContactUrl(ad['contactUrl']),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    FaIcon(FontAwesomeIcons.whatsapp, size: 14),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Contact Us',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),

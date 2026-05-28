@@ -50,6 +50,10 @@ class University {
 }
 
 class CourseService {
+  static final CourseService _instance = CourseService._internal();
+  factory CourseService() => _instance;
+  CourseService._internal();
+
   List<CourseUnit> _allUnits = [];
   List<University> _allUniversities = [];
   final Map<String, String> _courseMap = {}; // Name -> Code

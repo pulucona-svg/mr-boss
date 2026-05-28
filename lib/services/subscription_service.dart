@@ -15,32 +15,75 @@ class SubscriptionService extends ChangeNotifier {
   bool _isAdLoading = false;
 
   List<SubscriptionHistory> get history => _history;
-  bool get isSubscribed => _history.any((s) => s.isActive && s.expiryDate.isAfter(DateTime.now()));
+  
+  bool get isSubscribed => _history.any((s) => s.status == SubscriptionStatus.active);
+
+  SubscriptionHistory? get activeSubscription {
+    try {
+      return _history.firstWhere((s) => s.status == SubscriptionStatus.active);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  List<SubscriptionHistory> get queuedSubscriptions => 
+      _history.where((s) => s.status == SubscriptionStatus.queued).toList();
 
   Future<void> init() async {
     if (_isInitialized) return;
+    _isInitialized = true;
+    
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getStringList('subscription_history') ?? [];
     _history = historyJson
         .map((j) => SubscriptionHistory.fromJson(jsonDecode(j)))
         .toList();
-    _isInitialized = true;
-    _checkExpirations();
+    
+    _updateSubscriptionStates();
     _loadRewardedAd();
     notifyListeners();
   }
 
-  void _checkExpirations() {
+  void _updateSubscriptionStates() {
     bool changed = false;
     final now = DateTime.now();
+
+    // 1. Check for expired active subscriptions
     for (int i = 0; i < _history.length; i++) {
-      if (_history[i].isActive && _history[i].expiryDate.isBefore(now)) {
-        // In a real app, you might update the status in a DB
-        // For this prototype, we'll just let the getter handle it or update local state
+      if (_history[i].status == SubscriptionStatus.active && _history[i].expiryDate.isBefore(now)) {
+        _history[i] = _history[i].copyWith(status: SubscriptionStatus.expired);
         changed = true;
       }
     }
-    if (changed) notifyListeners();
+
+    // 2. If no active subscription, try to activate the oldest queued one
+    bool currentlySubscribed = _history.any((s) => s.status == SubscriptionStatus.active);
+    if (!currentlySubscribed) {
+      final queued = _history.where((s) => s.status == SubscriptionStatus.queued).toList();
+      if (queued.isNotEmpty) {
+        // Sort by purchase date to get the oldest
+        queued.sort((a, b) => a.purchaseDate.compareTo(b.purchaseDate));
+        final oldestQueuedId = queued.first.id;
+        
+        for (int i = 0; i < _history.length; i++) {
+          if (_history[i].id == oldestQueuedId) {
+            final duration = _history[i].expiryDate.difference(_history[i].activationDate);
+            _history[i] = _history[i].copyWith(
+              status: SubscriptionStatus.active,
+              activationDate: now,
+              expiryDate: now.add(duration),
+            );
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      _saveHistory();
+      notifyListeners();
+    }
   }
 
   Future<void> _saveHistory() async {
@@ -54,24 +97,39 @@ class SubscriptionService extends ChangeNotifier {
     await Future.delayed(const Duration(seconds: 2));
 
     final now = DateTime.now();
+    bool hasActive = isSubscribed;
+
     final newSub = SubscriptionHistory(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       packageTitle: package.title,
       amount: package.price,
       transactionCode: 'TXN${DateTime.now().millisecondsSinceEpoch}',
       purchaseDate: now,
-      expiryDate: now.add(package.duration),
-      isActive: true,
+      activationDate: hasActive ? now : now, // Placeholder, will be updated if queued
+      expiryDate: hasActive ? now.add(package.duration) : now.add(package.duration),
+      status: hasActive ? SubscriptionStatus.queued : SubscriptionStatus.active,
     );
-
-    // Deactivate old active subscriptions of the same type or all for simplicity
-    for (var sub in _history) {
-      // In this simple logic, we just add a new one and the isSubscribed check will find the latest active one
-    }
 
     _history.insert(0, newSub);
     await _saveHistory();
     notifyListeners();
+  }
+
+  Future<void> terminateSubscription(String id) async {
+    bool changed = false;
+    for (int i = 0; i < _history.length; i++) {
+      if (_history[i].id == id) {
+        _history[i] = _history[i].copyWith(status: SubscriptionStatus.terminated);
+        changed = true;
+        break;
+      }
+    }
+
+    if (changed) {
+      _updateSubscriptionStates(); // This will auto-activate the next in queue if needed
+      await _saveHistory();
+      notifyListeners();
+    }
   }
 
   void _loadRewardedAd() {
@@ -101,8 +159,6 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> showRewardedAd({required Function onRewardEarned}) async {
     if (_rewardedAd == null) {
       _loadRewardedAd();
-      // If ad not ready, we could show a message or just wait. 
-      // For this task, we'll assume it's loading or show an error if it fails repeatedly.
       return;
     }
 
