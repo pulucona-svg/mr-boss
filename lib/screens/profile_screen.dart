@@ -1327,9 +1327,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         } else if (text == 'Privacy Policy') {
           _showPrivacyPolicyDialog(context, isDark);
         } else if (text == 'Change Password') {
+          final userEmail = ref.read(userProfileProvider).email;
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const ResetPasswordScreen(showInitialSuccess: true)),
+            MaterialPageRoute(
+              builder: (context) => ResetPasswordScreen(
+                showInitialSuccess: true,
+                email: userEmail,
+              ),
+            ),
           );
         }
       },

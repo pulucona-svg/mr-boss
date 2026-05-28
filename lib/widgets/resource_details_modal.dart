@@ -7,6 +7,7 @@ import '../providers/upload_provider.dart';
 import '../screens/material_viewer_screen.dart';
 import '../providers/theme_provider.dart';
 import '../providers/user_provider.dart';
+import '../services/course_service.dart';
 
 import 'download_modal.dart';
 

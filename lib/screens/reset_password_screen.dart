@@ -6,7 +6,15 @@ import '../services/top_notification_service.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   final bool showInitialSuccess;
-  const ResetPasswordScreen({super.key, this.showInitialSuccess = false});
+  final String email;
+  final bool isSignup;
+
+  const ResetPasswordScreen({
+    super.key, 
+    this.showInitialSuccess = false,
+    required this.email,
+    this.isSignup = false,
+  });
 
   @override
   ConsumerState<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -31,7 +39,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
     
     if (widget.showInitialSuccess) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        TopNotificationService().showNotification(context, 'Password reset code sent successfully');
+        TopNotificationService().showNotification(
+          context, 
+          widget.isSignup 
+            ? 'Signup code sent to ${widget.email}' 
+            : 'Password reset code sent to ${widget.email}'
+        );
       });
     }
   }
@@ -68,7 +81,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
   void _handleResendCode() {
     if (!_canResend) return;
     _startTimer();
-    TopNotificationService().showNotification(context, 'Password reset code sent successfully');
+    TopNotificationService().showNotification(
+      context, 
+      widget.isSignup 
+        ? 'Signup code resent successfully' 
+        : 'Password reset code resent successfully'
+    );
   }
 
   void _handleReset() {
@@ -85,7 +103,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
 
     if (password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a new password')),
+        SnackBar(content: Text(widget.isSignup ? 'Please enter a password' : 'Please enter a new password')),
       );
       return;
     }
@@ -98,7 +116,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
     }
 
     // Success simulation
-    TopNotificationService().showNotification(context, 'Password changed successfully');
+    TopNotificationService().showNotification(
+      context, 
+      widget.isSignup ? 'Account created successfully' : 'Password changed successfully'
+    );
     TopNotificationService.pendingWelcome = true;
     
     Future.delayed(const Duration(milliseconds: 2000), () {
@@ -131,7 +152,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Reset Password',
+          widget.isSignup ? 'Set Password' : 'Reset Password',
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
@@ -142,11 +163,23 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
           children: [
             const SizedBox(height: 20),
             Text(
-              'We sent a code to pulucona@gmail.com.\nEnter it below along with your new password.',
+              'We have sent a code to ${widget.email}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.isSignup 
+                ? 'Enter it below to set your account password.'
+                : 'Enter it below along with your new password.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: subTextColor,
-                fontSize: 16,
+                fontSize: 14,
                 height: 1.5,
               ),
             ),
@@ -155,7 +188,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
             // Reset Code Field
             _buildTextField(
               controller: _codeController,
-              hint: 'Reset Code (6 digits)',
+              hint: widget.isSignup ? 'Verification Code (6 digits)' : 'Reset Code (6 digits)',
               icon: Icons.tag,
               keyboardType: TextInputType.number,
               isDark: isDark,
@@ -185,7 +218,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
             // New Password Field
             _buildTextField(
               controller: _passwordController,
-              hint: 'New Password',
+              hint: widget.isSignup ? 'Password' : 'New Password',
               icon: Icons.lock_outline,
               isPassword: true,
               obscureText: _obscurePassword,
@@ -222,9 +255,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> with 
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  'RESET PASSWORD',
-                  style: TextStyle(
+                child: Text(
+                  widget.isSignup ? 'SET PASSWORD' : 'RESET PASSWORD',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.2,

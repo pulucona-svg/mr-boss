@@ -11,7 +11,6 @@ import '../services/comment_service.dart';
 import 'user_provider.dart';
 
 // Service Providers
-final courseServiceProvider = Provider((ref) => CourseService());
 final fileServiceProvider = Provider((ref) => FileService());
 final uploadServiceProvider = Provider((ref) => UploadService());
 final resourceServiceProvider = ChangeNotifierProvider((ref) => ResourceService());

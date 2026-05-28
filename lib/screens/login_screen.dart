@@ -15,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _rememberMe = false;
+  String? _identifierError;
 
   @override
   void dispose() {
@@ -85,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 32),
-                    
+
                     // Login Card
                     Container(
                       padding: const EdgeInsets.all(24),
@@ -116,10 +117,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 8),
                           TextField(
                             controller: _identifierController,
+                            onChanged: (val) {
+                              if (_identifierError != null) {
+                                setState(() {
+                                  _identifierError = null;
+                                });
+                              }
+                            },
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             decoration: InputDecoration(
                               hintText: 'Username/Email',
                               hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                              errorText: _identifierError,
+                              errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
                               filled: true,
                               fillColor: Colors.black.withOpacity(0.3),
                               border: OutlineInputBorder(
@@ -133,6 +143,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: const BorderSide(color: Color(0xFF20C8FF), width: 2.5),
+                              ),
+                              errorBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                              ),
+                              focusedErrorBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(color: Colors.redAccent, width: 2.5),
                               ),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                             ),
@@ -214,10 +232,34 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               TextButton(
                                 onPressed: () {
+                                  final identifier = _identifierController.text.trim();
+
+                                  if (identifier.isEmpty) {
+                                    setState(() {
+                                      _identifierError = 'Please enter your email or username first.';
+                                    });
+                                    return;
+                                  }
+
+                                  // Basic email validation if it looks like they're trying to enter an email
+                                  if (identifier.contains('@') && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(identifier)) {
+                                    setState(() {
+                                      _identifierError = 'Please enter a valid email address.';
+                                    });
+                                    return;
+                                  }
+
+                                  setState(() {
+                                    _identifierError = null;
+                                  });
+
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const ResetPasswordScreen(showInitialSuccess: true),
+                                      builder: (context) => ResetPasswordScreen(
+                                        email: identifier,
+                                        showInitialSuccess: true,
+                                      ),
                                     ),
                                   );
                                 },
@@ -230,7 +272,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                              ),                            ],
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 24),
                           SizedBox(

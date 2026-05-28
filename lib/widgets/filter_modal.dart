@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/resource_service.dart';
+import '../services/course_service.dart';
 import '../providers/upload_provider.dart';
 
 class FilterModal extends ConsumerStatefulWidget {
