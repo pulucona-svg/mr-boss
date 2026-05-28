@@ -1,9 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/subscription_model.dart';
-import '../services/subscription_service.dart';
+import '../providers/upload_provider.dart';
 
-class PurchaseModal extends StatefulWidget {
+class PurchaseModal extends ConsumerStatefulWidget {
   final SubscriptionPackage package;
   final String phoneNumber;
   final VoidCallback onSuccess;
@@ -16,10 +17,10 @@ class PurchaseModal extends StatefulWidget {
   });
 
   @override
-  State<PurchaseModal> createState() => _PurchaseModalState();
+  ConsumerState<PurchaseModal> createState() => _PurchaseModalState();
 }
 
-class _PurchaseModalState extends State<PurchaseModal> {
+class _PurchaseModalState extends ConsumerState<PurchaseModal> {
   String _buttonText = 'Purchase';
   bool _isLoading = false;
   bool _isSuccess = false;
@@ -46,7 +47,7 @@ class _PurchaseModalState extends State<PurchaseModal> {
     });
 
     try {
-      await SubscriptionService().addSubscription(widget.package);
+      await ref.read(subscriptionServiceProvider).addSubscription(widget.package);
       
       if (mounted) {
         setState(() {
@@ -153,7 +154,6 @@ class _PurchaseModalState extends State<PurchaseModal> {
                                   isDense: true,
                                   border: InputBorder.none,
                                   contentPadding: EdgeInsets.zero,
-                                  // This prevents weird yellow lines/errors in some contexts
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,
                                   errorBorder: InputBorder.none,

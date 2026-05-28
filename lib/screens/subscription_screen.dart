@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/subscription_model.dart';
-import '../services/subscription_service.dart';
 import '../widgets/purchase_modal.dart';
 import '../providers/user_provider.dart';
+import '../providers/upload_provider.dart';
 import '../widgets/countdown_timer.dart';
 
 class SubscriptionScreen extends ConsumerStatefulWidget {
@@ -33,7 +33,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         phoneNumber: userProfile.phone,
         onSuccess: () {
           _showSuccessMessage();
-          setState(() {});
+          // No need for setState because ref.watch will handle rebuilds
         },
       ),
     );
@@ -82,7 +82,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           ),
           TextButton(
             onPressed: () {
-              SubscriptionService().terminateSubscription(sub.id);
+              ref.read(subscriptionServiceProvider).terminateSubscription(sub.id);
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Package terminated successfully.')),
@@ -97,6 +97,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final service = ref.watch(subscriptionServiceProvider);
+    
     return Scaffold(
       backgroundColor: const Color(0xFF070716),
       appBar: AppBar(
@@ -111,10 +113,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: ListenableBuilder(
-        listenable: SubscriptionService(),
-        builder: (context, child) {
-          final service = SubscriptionService();
+      body: Builder(
+        builder: (context) {
           final activeSub = service.activeSubscription;
           final queuedSubs = service.queuedSubscriptions;
           final history = service.history.where((s) => 

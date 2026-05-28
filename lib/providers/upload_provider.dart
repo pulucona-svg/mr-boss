@@ -4,13 +4,21 @@ import '../services/course_service.dart';
 import '../services/file_service.dart';
 import '../services/upload_service.dart';
 import '../services/resource_service.dart';
+import '../services/subscription_service.dart';
+import '../services/download_service.dart';
+import '../services/view_service.dart';
+import '../services/comment_service.dart';
 import 'user_provider.dart';
 
 // Service Providers
 final courseServiceProvider = Provider((ref) => CourseService());
 final fileServiceProvider = Provider((ref) => FileService());
 final uploadServiceProvider = Provider((ref) => UploadService());
-final resourceServiceProvider = Provider((ref) => ResourceService());
+final resourceServiceProvider = ChangeNotifierProvider((ref) => ResourceService());
+final subscriptionServiceProvider = ChangeNotifierProvider((ref) => SubscriptionService());
+final downloadServiceProvider = ChangeNotifierProvider((ref) => DownloadService());
+final viewServiceProvider = ChangeNotifierProvider((ref) => ViewService());
+final commentServiceProvider = ChangeNotifierProvider((ref) => CommentService());
 
 // Upload State Class
 class UploadState {

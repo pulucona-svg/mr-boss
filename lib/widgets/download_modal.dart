@@ -1,21 +1,38 @@
 import 'package:flutter/material.dart';
-import '../services/subscription_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../screens/subscription_screen.dart';
+import '../providers/upload_provider.dart';
 
 enum AccessActionType { download, read }
 
-class DownloadModal extends StatelessWidget {
-  final VoidCallback onWatchAd;
+class DownloadModal extends ConsumerWidget {
+  final String resourceTitle;
   final AccessActionType actionType;
 
   const DownloadModal({
     super.key,
-    required this.onWatchAd,
+    required this.resourceTitle,
     this.actionType = AccessActionType.download,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subService = ref.watch(subscriptionServiceProvider);
+    
+    // Auto-close if the resource becomes unlocked while the modal is open
+    // (e.g. user subscribed in another screen or ad finished)
+    final bool isSubscribed = subService.isSubscribed;
+    final bool isUnlocked = subService.isResourceUnlocked(resourceTitle);
+    
+    // We use addPostFrameCallback to avoid popping during build
+    if (isSubscribed || isUnlocked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    }
+
     final String actionText = actionType == AccessActionType.download ? 'downloading' : 'accessing';
     final String message = 'Subscribe to packages and enjoy $actionText materials without watching ads.';
 
@@ -96,7 +113,15 @@ class DownloadModal extends StatelessWidget {
                         children: [
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: onWatchAd,
+                              onPressed: () async {
+                                // IMPORTANT: Only unlock, do NOT trigger open/download
+                                await ref.read(subscriptionServiceProvider).showRewardedAd(
+                                  onRewardEarned: () {
+                                    ref.read(subscriptionServiceProvider).unlockResource(resourceTitle);
+                                    // The auto-close logic above will handle popping the modal
+                                  },
+                                );
+                              },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF7B5CFF),
                                 foregroundColor: Colors.white,
@@ -116,7 +141,6 @@ class DownloadModal extends StatelessWidget {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () {
-                                Navigator.pop(context);
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(builder: (context) => const SubscriptionScreen()),

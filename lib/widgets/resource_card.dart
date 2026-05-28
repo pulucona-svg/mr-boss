@@ -4,17 +4,13 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'comment_modal.dart';
 import 'resource_details_modal.dart';
-import '../services/view_service.dart';
-import '../services/download_service.dart';
-import '../services/comment_service.dart';
-import '../services/resource_service.dart';
 import '../utils/feedback_utils.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/user_provider.dart';
+import '../providers/upload_provider.dart';
 
 import '../screens/material_viewer_screen.dart';
-import '../services/subscription_service.dart';
 import 'download_modal.dart';
 
 class ResourceCard extends ConsumerStatefulWidget {
@@ -129,11 +125,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   void _incrementView() {
+    final viewService = ref.read(viewServiceProvider);
     _viewTimer?.cancel();
     _viewTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) {
-        if (ViewService().canIncrementView(widget.title)) {
-          ViewService().recordView(widget.title);
+        if (viewService.canIncrementView(widget.title)) {
+          viewService.recordView(widget.title);
           widget.onViewIncrement?.call();
         }
       }
@@ -141,7 +138,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   void _handleRead() {
-    if (SubscriptionService().isSubscribed) {
+    if (_hasFullAccess()) {
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -153,38 +150,43 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
+          resourceTitle: widget.title,
           actionType: AccessActionType.read,
-          onWatchAd: () async {
-            await SubscriptionService().showRewardedAd(
-              onRewardEarned: () {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MaterialViewerScreen(title: widget.title),
-                  ),
-                );
-              },
-            );
-          },
         ),
       );
     }
   }
 
-  void _handleTap() {
-    ResourceService().setActiveResource(widget.title);
-    _handleRead();
+  bool _hasFullAccess() {
+    final subService = ref.read(subscriptionServiceProvider);
+    final downloadService = ref.read(downloadServiceProvider);
+    final resourceService = ref.read(resourceServiceProvider);
+
+    final bool isSubscribed = subService.isSubscribed;
+    final bool isDownloaded = downloadService.isDownloaded(widget.title);
+    final bool isMyUpload = resourceService.userUploads.any((r) => r.title == widget.title);
+    final bool isSessionUnlocked = subService.isResourceUnlocked(widget.title);
+
+    return isSubscribed || isDownloaded || isMyUpload || isSessionUnlocked;
+  }
+
+  void _setActiveResource() {
+    ref.read(resourceServiceProvider).setActiveResource(widget.title);
     _incrementView();
   }
 
+  void _handleTap() {
+    _setActiveResource();
+    _handleRead();
+  }
+
   void _toggleLike() {
-    _handleTap();
+    _setActiveResource();
     widget.onLikeToggle?.call();
   }
 
   void _showComments() {
-    _handleTap();
+    _setActiveResource();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -194,8 +196,8 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   void _showDetails() {
-    _handleTap();
-    final resource = ResourceService().findResourceByTitle(widget.title);
+    _setActiveResource();
+    final resource = ref.read(resourceServiceProvider).findResourceByTitle(widget.title);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -325,21 +327,15 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   void _handleDownload() {
-    if (SubscriptionService().isSubscribed) {
-      DownloadService().startDownload(_getResourceData());
+    if (_hasFullAccess()) {
+      ref.read(downloadServiceProvider).startDownload(_getResourceData());
     } else {
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
-          onWatchAd: () async {
-            await SubscriptionService().showRewardedAd(
-              onRewardEarned: () {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                DownloadService().startDownload(_getResourceData());
-              },
-            );
-          },
+          resourceTitle: widget.title,
+          actionType: AccessActionType.download,
         ),
       );
     }
@@ -347,18 +343,23 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
 
   @override
   Widget build(BuildContext context) {
+    final resourceService = ref.watch(resourceServiceProvider);
+    final downloadService = ref.watch(downloadServiceProvider);
+    final viewService = ref.watch(viewServiceProvider);
+    final commentService = ref.watch(commentServiceProvider);
+
+    final resource = resourceService.findResourceByTitle(widget.title);
+    final isActive = resourceService.activeResourceId == widget.title;
+    final isPinned = downloadService.isPinned(widget.title);
+    final isDownloaded = downloadService.isDownloaded(widget.title);
+    
+    final viewsCount = resource?.views.toString() ?? widget.views;
+    final likesCount = resource?.likes.toString() ?? widget.likes;
+    final isLiked = resource?.isLiked ?? widget.isLiked;
+    
     return ListenableBuilder(
-      listenable: Listenable.merge([ResourceService(), DownloadService()]),
+      listenable: Listenable.merge([resourceService, downloadService, ref.watch(subscriptionServiceProvider)]),
       builder: (context, child) {
-        final resource = ResourceService().findResourceByTitle(widget.title);
-        final isActive = ResourceService().activeResourceId == widget.title;
-        final isPinned = DownloadService().isPinned(widget.title);
-        final isDownloaded = DownloadService().isDownloaded(widget.title);
-        
-        final viewsCount = resource?.views.toString() ?? widget.views;
-        final likesCount = resource?.likes.toString() ?? widget.likes;
-        final isLiked = resource?.isLiked ?? widget.isLiked;
-        
         return AnimatedScale(
           scale: isActive ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 300),
@@ -542,76 +543,65 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                           Positioned(
                             top: 10,
                             // If pinned and pin is shown (Library), shift action icon further left to avoid badges.
-                            // Badges are at Left: 10 (TABLE) and Left: 65 (CLASS/EXAM).
-                            // So we move action icon to Left: 110 or 120.
                             left: (isPinned && widget.showPin && (widget.type == 'Time tables' || widget.type.contains('Timetable'))) ? 115 : null,
                             right: (isPinned && widget.showPin) ? (widget.type.contains('Timetable') ? null : 35) : 10,
-                            child: ListenableBuilder(
-                              listenable: DownloadService(),
-                              builder: (context, child) {
-                                final isDownloading = DownloadService().isDownloading(widget.title);
-                                final isDownloaded = DownloadService().isDownloaded(widget.title);
-                                final progress = DownloadService().getProgress(widget.title);
-                                
-                                return GestureDetector(
-                                  onTap: () {
-                                    _handleTap();
-                                    if (isPinned) {
-                                      DownloadService().unpin(widget.title);
-                                      FeedbackUtils.showActionFeedback(
-                                        context: context,
-                                        type: FeedbackActionType.unpin,
-                                        count: 1,
-                                        isDownloads: true,
-                                      );
-                                    } else if (isDownloaded) {
-                                      DownloadService().pin(widget.title);
-                                      FeedbackUtils.showActionFeedback(
-                                        context: context,
-                                        type: FeedbackActionType.pin,
-                                        count: 1,
-                                        isDownloads: true,
-                                      );
-                                    } else {
-                                      _handleDownload();
-                                    }
-                                  },
-                                  behavior: HitTestBehavior.translucent,
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      if (isDownloading)
-                                        SizedBox(
-                                          width: 32,
-                                          height: 32,
-                                          child: CircularProgressIndicator(
-                                            value: progress,
-                                            strokeWidth: 3,
-                                            color: const Color(0xFF00A85A),
-                                            backgroundColor: Colors.white10,
-                                          ),
-                                        ),
-                                      Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: (isPinned && widget.showPin)
-                                              ? const Color(0xFFD9BD26) 
-                                              : (isDownloaded ? const Color(0xFF00A85A) : Colors.black38),
-                                          shape: BoxShape.circle,
-                                          border: (isDownloading || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
-                                        ),
-                                        child: Icon(
-                                          (isPinned && widget.showPin)
-                                              ? Icons.push_pin_rounded 
-                                              : (isDownloading ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
+                            child: GestureDetector(
+                              onTap: () {
+                                _setActiveResource(); // Just set active/views, NO auto-read
+                                if (isPinned) {
+                                  downloadService.unpin(widget.title);
+                                  FeedbackUtils.showActionFeedback(
+                                    context: context,
+                                    type: FeedbackActionType.unpin,
+                                    count: 1,
+                                    isDownloads: true,
+                                  );
+                                } else if (isDownloaded) {
+                                  downloadService.pin(widget.title);
+                                  FeedbackUtils.showActionFeedback(
+                                    context: context,
+                                    type: FeedbackActionType.pin,
+                                    count: 1,
+                                    isDownloads: true,
+                                  );
+                                } else {
+                                  _handleDownload();
+                                }
                               },
+                              behavior: HitTestBehavior.translucent,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  if (downloadService.isDownloading(widget.title))
+                                    SizedBox(
+                                      width: 32,
+                                      height: 32,
+                                      child: CircularProgressIndicator(
+                                        value: downloadService.getProgress(widget.title),
+                                        strokeWidth: 3,
+                                        color: const Color(0xFF00A85A),
+                                        backgroundColor: Colors.white10,
+                                      ),
+                                    ),
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: (isPinned && widget.showPin)
+                                          ? const Color(0xFFD9BD26) 
+                                          : (isDownloaded ? const Color(0xFF00A85A) : Colors.black38),
+                                      shape: BoxShape.circle,
+                                      border: (downloadService.isDownloading(widget.title) || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
+                                    ),
+                                    child: Icon(
+                                      (isPinned && widget.showPin)
+                                          ? Icons.push_pin_rounded 
+                                          : (downloadService.isDownloading(widget.title) ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
 
@@ -685,16 +675,10 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        ListenableBuilder(
-                          listenable: ViewService(),
-                          builder: (context, child) {
-                            final hasViewed = ViewService().hasViewed(widget.title);
-                            return _statItem(
-                              Icons.visibility_outlined, 
-                              viewsCount,
-                              iconColor: hasViewed ? const Color(0xFF00A85A) : Colors.white54,
-                            );
-                          },
+                        _statItem(
+                          Icons.visibility_outlined, 
+                          viewsCount,
+                          iconColor: viewService.hasViewed(widget.title) ? const Color(0xFF00A85A) : Colors.white54,
                         ),
                         GestureDetector(
                           onTap: _toggleLike,
@@ -708,10 +692,9 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                         GestureDetector(
                           onTap: _showComments,
                           behavior: HitTestBehavior.translucent,
-                          child: ListenableBuilder(
-                            listenable: CommentService(),
-                            builder: (context, child) {
-                              final count = CommentService().getCommentCount(widget.title);
+                          child: Builder(
+                            builder: (context) {
+                              final count = commentService.getCommentCount(widget.title);
                               final displayCount = (resource?.status == 'approved') ? count.toString() : '0';
                               return _statItem(Icons.mode_comment_outlined, displayCount);
                             },
@@ -725,7 +708,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
             ),
           ),
         );
-      },
+      }
     );
   }
 

@@ -10,6 +10,7 @@ class SubscriptionService extends ChangeNotifier {
   SubscriptionService._internal();
 
   List<SubscriptionHistory> _history = [];
+  final Set<String> _unlockedResources = {}; // Track items unlocked via ads in this session
   bool _isInitialized = false;
   RewardedAd? _rewardedAd;
   bool _isAdLoading = false;
@@ -17,6 +18,13 @@ class SubscriptionService extends ChangeNotifier {
   List<SubscriptionHistory> get history => _history;
   
   bool get isSubscribed => _history.any((s) => s.status == SubscriptionStatus.active);
+
+  void unlockResource(String title) {
+    _unlockedResources.add(title);
+    notifyListeners();
+  }
+
+  bool isResourceUnlocked(String title) => _unlockedResources.contains(title);
 
   SubscriptionHistory? get activeSubscription {
     try {
