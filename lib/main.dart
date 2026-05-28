@@ -17,6 +17,7 @@ import 'services/top_notification_service.dart';
 
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'services/subscription_service.dart';
+import 'services/usage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,7 @@ Future<void> _initServices() async {
       MobileAds.instance.initialize(),
       CourseService().init(),
       SubscriptionService().init(),
+      UsageService().init(),
     ]);
     debugPrint('All services initialized successfully');
   } catch (e) {

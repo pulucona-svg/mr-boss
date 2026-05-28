@@ -5,6 +5,7 @@ import '../models/subscription_model.dart';
 import '../services/subscription_service.dart';
 import '../widgets/purchase_modal.dart';
 import '../providers/user_provider.dart';
+import '../widgets/countdown_timer.dart';
 
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
@@ -194,10 +195,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
   Widget _activePackageCard(SubscriptionHistory sub) {
     final dateFormat = DateFormat('MMM d, yyyy • HH:mm');
-    final now = DateTime.now();
-    final remaining = sub.expiryDate.difference(now);
-    final remainingDays = remaining.inDays;
-    final remainingHours = remaining.inHours % 24;
 
     return Container(
       decoration: BoxDecoration(
@@ -261,9 +258,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                     children: [
                       const Icon(Icons.timer_outlined, color: Colors.white, size: 20),
                       const SizedBox(width: 12),
-                      Text(
-                        'Remaining: $remainingDays Days, $remainingHours Hours',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      Expanded(
+                        child: CountdownTimer(
+                          expiryDate: sub.expiryDate,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),

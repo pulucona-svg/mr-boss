@@ -13,6 +13,7 @@ import '../utils/feedback_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/user_provider.dart';
 
+import '../screens/material_viewer_screen.dart';
 import '../services/subscription_service.dart';
 import 'download_modal.dart';
 
@@ -139,9 +140,41 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     });
   }
 
+  void _handleRead() {
+    if (SubscriptionService().isSubscribed) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MaterialViewerScreen(title: widget.title),
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => DownloadModal(
+          actionType: AccessActionType.read,
+          onWatchAd: () async {
+            await SubscriptionService().showRewardedAd(
+              onRewardEarned: () {
+                if (Navigator.canPop(context)) Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MaterialViewerScreen(title: widget.title),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      );
+    }
+  }
+
   void _handleTap() {
     ResourceService().setActiveResource(widget.title);
-    widget.onTap();
+    _handleRead();
     _incrementView();
   }
 

@@ -81,6 +81,50 @@ class ResourceDetailsModal extends ConsumerWidget {
     };
   }
 
+  void _handleMaterialAction(BuildContext context, WidgetRef ref, List<String> displayPrograms, List<String> displayLecturers, bool isDownload) {
+    final resourceData = _getResourceData(displayPrograms, displayLecturers, ref);
+    
+    if (SubscriptionService().isSubscribed) {
+      if (isDownload) {
+        DownloadService().startDownload(resourceData);
+      } else {
+        Navigator.pop(context);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MaterialViewerScreen(title: title),
+          ),
+        );
+      }
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => DownloadModal(
+          actionType: isDownload ? AccessActionType.download : AccessActionType.read,
+          onWatchAd: () async {
+            await SubscriptionService().showRewardedAd(
+              onRewardEarned: () {
+                if (Navigator.canPop(context)) Navigator.pop(context);
+                if (isDownload) {
+                  DownloadService().startDownload(resourceData);
+                } else {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MaterialViewerScreen(title: title),
+                    ),
+                  );
+                }
+              },
+            );
+          },
+        ),
+      );
+    }
+  }
+
   Widget _buildProgressBar(bool isDark, double progress) {
     final subTextColor = isDark ? Colors.white38 : Colors.black38;
     final dividerColor = isDark ? Colors.white10 : Colors.black12;
@@ -100,29 +144,31 @@ class ResourceDetailsModal extends ConsumerWidget {
         const SizedBox(height: 10),
         LayoutBuilder(
           builder: (context, constraints) {
-            final availableWidth = constraints.maxWidth;
-            final barWidth = availableWidth - 60; 
-            
             return Row(
               children: [
-                Container(
-                  width: barWidth,
-                  height: 30,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: borderColor, width: 2),
-                  ),
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: (barWidth - 8) * progress,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00A85A),
-                          borderRadius: BorderRadius.circular(3),
+                Expanded(
+                  child: Container(
+                    height: 30,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: borderColor, width: 2),
+                    ),
+                    child: Stack(
+                      children: [
+                        LayoutBuilder(
+                          builder: (context, innerConstraints) {
+                            return Container(
+                              width: innerConstraints.maxWidth * progress,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00A85A),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            );
+                          }
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 Container(
@@ -134,12 +180,16 @@ class ResourceDetailsModal extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  '${(progress * 100).toInt()}%',
-                  style: const TextStyle(
-                    color: Color(0xFF00A85A),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                SizedBox(
+                  width: 45, // Fixed width for percentage to prevent jumping/overflow
+                  child: Text(
+                    '${(progress * 100).toInt()}%',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      color: Color(0xFF00A85A),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -443,8 +493,40 @@ class ResourceDetailsModal extends ConsumerWidget {
             ),
           ),
           
+          const SizedBox(height: 24),
+          
+          // Sticky "Read Material" Button
+          GestureDetector(
+            onTap: () => _handleMaterialAction(context, ref, displayPrograms, displayLecturers, false),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF20C8FF),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.menu_book_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Text(
+                      'Read Material',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          
           if (showDownload) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             ListenableBuilder(
               listenable: DownloadService(),
               builder: (context, child) {
@@ -453,66 +535,36 @@ class ResourceDetailsModal extends ConsumerWidget {
                 final progress = DownloadService().getProgress(title);
                 
                 if (isDownloaded) {
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MaterialViewerScreen(title: title),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF20C8FF),
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: const Center(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.menu_book_rounded, color: Colors.white, size: 20),
-                            SizedBox(width: 10),
-                            Text(
-                              'Read Material',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                              ),
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00A85A).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: const Color(0xFF00A85A).withValues(alpha: 0.3)),
+                    ),
+                    child: const Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Color(0xFF00A85A), size: 20),
+                          SizedBox(width: 10),
+                          Text(
+                            'Downloaded',
+                            style: TextStyle(
+                              color: Color(0xFF00A85A),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   );
                 }
 
                 return GestureDetector(
-                  onTap: () {
-                    final resourceData = _getResourceData(displayPrograms, displayLecturers, ref);
-                    if (SubscriptionService().isSubscribed) {
-                      DownloadService().startDownload(resourceData);
-                    } else {
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (context) => DownloadModal(
-                          onWatchAd: () async {
-                            await SubscriptionService().showRewardedAd(
-                              onRewardEarned: () {
-                                if (Navigator.canPop(context)) Navigator.pop(context);
-                                DownloadService().startDownload(resourceData);
-                              },
-                            );
-                          },
-                        ),
-                      );
-                    }
-                  },
+                  onTap: () => _handleMaterialAction(context, ref, displayPrograms, displayLecturers, true),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 14),

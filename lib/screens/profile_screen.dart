@@ -18,6 +18,9 @@ import 'login_screen.dart';
 import 'subscription_screen.dart';
 import '../services/subscription_service.dart';
 
+import 'analytics_screen.dart';
+import '../services/usage_service.dart';
+
 class AcademicAutocompleteField extends StatefulWidget {
   final String label;
   final TextEditingController controller;
@@ -498,7 +501,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         const SizedBox(width: 8),
                         Expanded(child: _buildStatBox(Icons.star, '0', 'Stars', isDark, iconColor: Colors.amber)),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildStatBox(Icons.local_fire_department, '7', 'Day Streak', isDark, iconColor: Colors.orange)),
+                        Expanded(
+                          child: ListenableBuilder(
+                            listenable: UsageService(),
+                            builder: (context, child) {
+                              final streak = UsageService().streak;
+                              return _buildStatBox(
+                                Icons.local_fire_department, 
+                                streak.toString(), 
+                                'Day Streak', 
+                                isDark, 
+                                iconColor: Colors.orange,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(child: _buildStatBox(null, '2450', 'XP Points', isDark, customIcon: 'XP')),
                       ],
@@ -602,9 +625,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             builder: (context, child) {
                               final isSubscribed = SubscriptionService().isSubscribed;
                               return _buildStatusBadge(
-                                'Ad-Watch', 
+                                'Subscription', 
                                 isSubscribed ? 'ACTIVE' : 'INACTIVE', 
-                                Icons.stars, 
+                                Icons.workspace_premium, 
                                 Colors.orange, 
                                 isDark,
                                 onTap: () {

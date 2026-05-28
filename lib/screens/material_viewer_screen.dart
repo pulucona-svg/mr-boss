@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/progress_service.dart';
+import '../services/usage_service.dart';
 
 class MaterialViewerScreen extends StatefulWidget {
   final String title;
@@ -12,27 +13,44 @@ class MaterialViewerScreen extends StatefulWidget {
 
 class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   final ScrollController _scrollController = ScrollController();
+  double _progress = 0.0;
 
   @override
   void initState() {
     super.initState();
+    _progress = ProgressService().getProgress(widget.title);
     _scrollController.addListener(_onScroll);
+    
+    // Start tracking reading time
+    UsageService().startMaterialTracking(widget.title);
+
+    // Set initial scroll position after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients && _progress > 0) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent * _progress);
+      }
+    });
   }
 
   void _onScroll() {
     if (_scrollController.hasClients) {
-      final maxScroll = _scrollController.position.maxScrollExtent;
-      final currentScroll = _scrollController.position.pixels;
+      final double maxScroll = _scrollController.position.maxScrollExtent;
+      final double currentScroll = _scrollController.position.pixels;
       
       if (maxScroll > 0) {
-        final percentage = (currentScroll / maxScroll).clamp(0.0, 1.0);
-        ProgressService().updateProgress(widget.title, percentage);
+        final double newProgress = (currentScroll / maxScroll).clamp(0.0, 1.0);
+        if ((newProgress - _progress).abs() > 0.01) {
+          _progress = newProgress;
+          ProgressService().updateProgress(widget.title, _progress);
+        }
       }
     }
   }
 
   @override
   void dispose() {
+    // Stop tracking reading time
+    UsageService().stopMaterialTracking();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
