@@ -29,6 +29,7 @@ class AcademicAutocompleteField extends StatefulWidget {
   final Function(String) onSelected;
   final String? subText;
   final Function(String)? onChanged;
+  final bool showSuggestionsOnFocus;
 
   const AcademicAutocompleteField({
     super.key,
@@ -39,6 +40,7 @@ class AcademicAutocompleteField extends StatefulWidget {
     required this.onSelected,
     this.subText,
     this.onChanged,
+    this.showSuggestionsOnFocus = false,
   });
 
   @override
@@ -52,10 +54,22 @@ class _AcademicAutocompleteFieldState extends State<AcademicAutocompleteField> {
   void initState() {
     super.initState();
     _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (widget.showSuggestionsOnFocus && _focusNode.hasFocus && widget.controller.text.isEmpty) {
+      // Trigger the options builder by notifying listeners of a value "change"
+      widget.controller.value = widget.controller.value.copyWith(
+        text: '',
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+    }
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     super.dispose();
   }
@@ -82,7 +96,7 @@ class _AcademicAutocompleteFieldState extends State<AcademicAutocompleteField> {
             focusNode: _focusNode,
             optionsBuilder: (TextEditingValue textEditingValue) {
               if (textEditingValue.text.isEmpty) {
-                return const Iterable<String>.empty();
+                return widget.showSuggestionsOnFocus ? widget.suggestions : const Iterable<String>.empty();
               }
               return widget.suggestions.where((String option) {
                 return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
@@ -103,6 +117,14 @@ class _AcademicAutocompleteFieldState extends State<AcademicAutocompleteField> {
                 child: TextField(
                   controller: textController,
                   focusNode: focusNode,
+                  onTap: () {
+                    if (widget.showSuggestionsOnFocus && textController.text.isEmpty) {
+                      textController.value = textController.value.copyWith(
+                        text: '',
+                        selection: const TextSelection.collapsed(offset: 0),
+                      );
+                    }
+                  },
                   onChanged: (val) {
                     if (widget.onChanged != null) widget.onChanged!(val);
                   },
@@ -166,6 +188,7 @@ class SmartPhoneField extends StatefulWidget {
   final bool isDark;
   final Function(String)? onChanged;
   final Function(bool)? onValidityChanged;
+  final String? hintText;
 
   const SmartPhoneField({
     super.key,
@@ -174,6 +197,7 @@ class SmartPhoneField extends StatefulWidget {
     required this.isDark,
     this.onChanged,
     this.onValidityChanged,
+    this.hintText,
   });
 
   @override
@@ -278,9 +302,11 @@ class _SmartPhoneFieldState extends State<SmartPhoneField> {
             style: TextStyle(
               color: _isValid ? Colors.greenAccent : (widget.isDark ? Colors.redAccent : Colors.red),
             ),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              hintText: widget.hintText,
+              hintStyle: TextStyle(color: (widget.isDark ? Colors.white : Colors.black).withOpacity(0.4), fontSize: 13),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ),

@@ -93,7 +93,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => AcademicPersonalizationScreen(email: email),
+                      builder: (context) => AcademicPersonalizationScreen(email: email, isOnboarding: true),
                     ),
                   );
                 },

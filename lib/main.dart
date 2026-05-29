@@ -123,14 +123,30 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
       final bool isFirstLogin = (args != null && args['isFirstLogin'] == true) || TopNotificationService.pendingWelcome;
 
       if (isFirstLogin) {
+        // Determine the customized welcome message based on navigation source
+        String welcomeMessage = 'Welcome back to Mirror Laikipia';
+        if (args != null) {
+          if (args['source'] == 'signup') {
+            welcomeMessage = 'Welcome to Mirror Laikipia — built to support your academic journey.';
+          } else if (args['source'] == 'password_change') {
+            welcomeMessage = 'Your account is now secure — enjoy learning with confidence.';
+          }
+        }
+
         // Clear the flags so they don't trigger again on rebuilds within this route
-        if (args != null) args['isFirstLogin'] = false;
+        if (args != null) {
+          try {
+            args['isFirstLogin'] = false;
+          } catch (_) {
+            // Arguments might be immutable
+          }
+        }
         TopNotificationService.pendingWelcome = false;
         
         // Slight delay to ensure screen is visible and stable
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
-            TopNotificationService().showNotification(context, 'Welcome back to Mirror Laikipia');
+            TopNotificationService().showNotification(context, welcomeMessage);
             TopNotificationService().showNotification(context, 'Where should we start from today');
           }
         });

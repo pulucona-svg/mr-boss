@@ -21,18 +21,6 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
       final pickedFile = await _picker.pickImage(source: source);
       if (pickedFile != null) {
         ref.read(userProfileProvider.notifier).setProfileImage(pickedFile.path);
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ResetPasswordScreen(
-                email: widget.email,
-                isSignup: true,
-                showInitialSuccess: true,
-              ),
-            ),
-          );
-        }
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
@@ -79,7 +67,24 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                           ),
                         ),
                       ),
-                      const SizedBox(width: 48),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ResetPasswordScreen(
+                                email: widget.email,
+                                isSignup: true,
+                                showInitialSuccess: true,
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Skip',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -152,23 +157,39 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ResetPasswordScreen(
-                                  email: widget.email,
-                                  isSignup: true,
-                                  showInitialSuccess: true,
-                                ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: userProfile.profileImagePath != null
+                                ? () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => ResetPasswordScreen(
+                                          email: widget.email,
+                                          isSignup: true,
+                                          showInitialSuccess: true,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: userProfile.profileImagePath != null
+                                  ? const Color(0xFF20C8FF)
+                                  : Colors.grey.withOpacity(0.5),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            );
-                          },
-                          child: const Text(
-                            'Skip for now',
-                            style: TextStyle(color: Colors.white54, fontSize: 16),
+                              elevation: userProfile.profileImagePath != null ? 4 : 0,
+                            ),
+                            child: const Text(
+                              'CONTINUE',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
                           ),
                         ),
                       ],
