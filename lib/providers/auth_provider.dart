@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/persistence_service.dart';
 
 class AuthState {
   final String? lastSentEmail;
@@ -34,8 +35,49 @@ class AuthState {
 }
 
 class AuthStateNotifier extends StateNotifier<AuthState> {
-  AuthStateNotifier() : super(AuthState());
+  AuthStateNotifier() : super(AuthState()) {
+    _restoreState();
+  }
+  
   Timer? _timer;
+
+  Future<void> _restoreState() async {
+    final email = PersistenceService().getString('auth_last_email');
+    final expiryStr = PersistenceService().getString('auth_expiry_time');
+    
+    if (email != null && expiryStr != null) {
+      final expiry = DateTime.parse(expiryStr);
+      final now = DateTime.now();
+      final remaining = expiry.difference(now).inSeconds;
+      
+      if (remaining > 0) {
+        state = state.copyWith(
+          lastSentEmail: email,
+          otpSent: true,
+          expiryTime: expiry,
+          remainingSeconds: remaining,
+          canResend: false,
+        );
+        _ensureTimerIsRunning();
+      } else {
+        state = state.copyWith(
+          lastSentEmail: email,
+          otpSent: true,
+          remainingSeconds: 0,
+          canResend: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _saveState() async {
+    if (state.lastSentEmail != null) {
+      await PersistenceService().setString('auth_last_email', state.lastSentEmail!);
+    }
+    if (state.expiryTime != null) {
+      await PersistenceService().setString('auth_expiry_time', state.expiryTime!.toIso8601String());
+    }
+  }
 
   void startTimer(String email, {int seconds = 60}) {
     final now = DateTime.now();
@@ -61,6 +103,7 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
       canResend: false,
     );
 
+    _saveState();
     _ensureTimerIsRunning();
   }
 
@@ -92,6 +135,8 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
   void reset() {
     _timer?.cancel();
     state = AuthState();
+    PersistenceService().remove('auth_last_email');
+    PersistenceService().remove('auth_expiry_time');
   }
 
   @override

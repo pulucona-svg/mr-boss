@@ -16,18 +16,25 @@ import 'providers/theme_provider.dart';
 import 'services/top_notification_service.dart';
 
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'services/subscription_service.dart';
+import 'services/persistence_service.dart';
 import 'services/usage_service.dart';
+import 'services/subscription_service.dart';
+import 'providers/ui_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // Initialize persistence first as others might depend on it
+  await PersistenceService().init();
+
   // Start heavy initialization in background without blocking runApp
   _initServices();
 
+  final bool isLoggedIn = PersistenceService().getSessionUserId() != null;
+
   runApp(
-    const ProviderScope(
-      child: MirrorApp(),
+    ProviderScope(
+      child: MirrorApp(isLoggedIn: isLoggedIn),
     ),
   );
 }
@@ -46,9 +53,9 @@ Future<void> _initServices() async {
     debugPrint('Error during service initialization: $e');
   }
 }
-
 class MirrorApp extends ConsumerStatefulWidget {
-  const MirrorApp({super.key});
+  final bool isLoggedIn;
+  const MirrorApp({super.key, required this.isLoggedIn});
 
   @override
   ConsumerState<MirrorApp> createState() => _MirrorAppState();
@@ -85,7 +92,7 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
         useMaterial3: true,
       ),
       themeMode: themeMode,
-      initialRoute: '/',
+      initialRoute: widget.isLoggedIn ? '/home' : '/',
       routes: {
         '/': (context) => const LoginScreen(),
         '/home': (context) => const MainNavigation(),
@@ -103,15 +110,15 @@ class MainNavigation extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationState extends ConsumerState<MainNavigation> {
-  int _selectedIndex = 0;
   late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: _selectedIndex);
+    final uiState = ref.read(uiStateProvider);
+    _pageController = PageController(initialPage: uiState.mainNavigationIndex);
     ConnectivityService().initialize();
-    
+
     // Synchronize resources with the course pool for accurate details
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final courseService = ref.read(courseServiceProvider);
@@ -142,7 +149,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           }
         }
         TopNotificationService.pendingWelcome = false;
-        
+
         // Slight delay to ensure screen is visible and stable
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
@@ -169,9 +176,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   ];
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    ref.read(uiStateProvider.notifier).setMainNavigationIndex(index);
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 400),
@@ -182,6 +187,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
+    final uiState = ref.watch(uiStateProvider);
     final isDark = themeMode == ThemeMode.dark;
 
     return Scaffold(
@@ -189,9 +195,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
+          ref.read(uiStateProvider.notifier).setMainNavigationIndex(index);
         },
         children: _screens,
       ),
@@ -200,7 +204,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           border: Border(top: BorderSide(color: isDark ? Colors.white10 : Colors.black12, width: 0.5)),
         ),
         child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
+          currentIndex: uiState.mainNavigationIndex,
           onTap: _onItemTapped,
           type: BottomNavigationBarType.fixed,
           backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
@@ -235,3 +239,4 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     );
   }
 }
+

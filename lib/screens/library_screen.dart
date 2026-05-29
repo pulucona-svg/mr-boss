@@ -5,6 +5,7 @@ import '../widgets/category_chip.dart';
 import '../widgets/resource_card.dart';
 import '../services/download_service.dart';
 import '../services/resource_service.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/filter_modal.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
@@ -17,6 +18,7 @@ import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
 import '../providers/theme_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/ui_provider.dart';
 import 'help_support_screen.dart';
 import 'archive_trash_screen.dart';
 import '../utils/feedback_utils.dart';
@@ -31,10 +33,8 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   static bool _hasLoadedBefore = false;
-  String _selectedCategory = 'All';
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
-  Map<String, String> _activeFilters = {};
   late bool _isDownloadsSelected;
   bool _isUploadSheetOpen = false;
   late bool _isLoading;
@@ -62,7 +62,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   void initState() {
     super.initState();
+    final uiState = ref.read(uiStateProvider);
+    _isDownloadsSelected = widget.initialShowUploads ? false : (uiState.mainNavigationIndex == 1 ? true : true); 
+    // Wait, let's just use the uiState if it was already selected
+    // but the widget.initialShowUploads should take precedence if true
     _isDownloadsSelected = !widget.initialShowUploads;
+    
+    _searchControllerDownloads.text = uiState.librarySearchDownloads;
+    _lastSearchValueDownloads = uiState.librarySearchDownloads;
+    _searchControllerUploads.text = uiState.librarySearchUploads;
+    _lastSearchValueUploads = uiState.librarySearchUploads;
+
     _isLoading = !_hasLoadedBefore;
     if (_isLoading) {
       _simulateLoading();
@@ -226,10 +236,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           _lastCorrectedOriginalDownloads = lastWord;
           _lastCorrectedResultDownloads = bestMatch;
           _lastSearchValueDownloads = newText;
+          ref.read(uiStateProvider.notifier).setLibrarySearchDownloads(newText);
         } else {
           _lastCorrectedOriginalUploads = lastWord;
           _lastCorrectedResultUploads = bestMatch;
           _lastSearchValueUploads = newText;
+          ref.read(uiStateProvider.notifier).setLibrarySearchUploads(newText);
         }
         controller.text = newText;
         controller.selection = TextSelection.fromPosition(TextPosition(offset: newText.length));
@@ -253,10 +265,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         _lastSearchValueDownloads = revertedText;
         _lastCorrectedOriginalDownloads = null;
         _lastCorrectedResultDownloads = null;
+        ref.read(uiStateProvider.notifier).setLibrarySearchDownloads(revertedText);
       } else {
         _lastSearchValueUploads = revertedText;
         _lastCorrectedOriginalUploads = null;
         _lastCorrectedResultUploads = null;
+        ref.read(uiStateProvider.notifier).setLibrarySearchUploads(revertedText);
       }
       controller.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
     });
@@ -270,8 +284,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (controller.text.isNotEmpty) {
       setState(() {
         controller.clear();
-        if (_isDownloadsSelected) _lastSearchValueDownloads = '';
-        else _lastSearchValueUploads = '';
+        if (_isDownloadsSelected) {
+          _lastSearchValueDownloads = '';
+          ref.read(uiStateProvider.notifier).setLibrarySearchDownloads('');
+        } else {
+          _lastSearchValueUploads = '';
+          ref.read(uiStateProvider.notifier).setLibrarySearchUploads('');
+        }
       });
       return;
     }
@@ -315,6 +334,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _handleRefresh() async {
+    if (ConnectivityService().isOffline) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Connect to the internet to refresh and load the latest content.',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
     await Future.delayed(const Duration(milliseconds: 800));
     if (mounted) {
       setState(() {});
@@ -344,31 +390,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   void _showFilters() {
+    final uiState = ref.read(uiStateProvider);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => FilterModal(
-        initialFilters: _activeFilters,
+        initialFilters: uiState.libraryFilters,
         onApply: (filters) {
-          setState(() {
-            _activeFilters = filters;
-          });
+          ref.read(uiStateProvider.notifier).setLibraryFilters(filters);
         },
       ),
     );
   }
 
   void _resetAllFilters() {
-    setState(() {
-      _activeFilters = {};
-      _selectedCategory = 'All';
-      _searchControllerDownloads.clear();
-      _searchControllerUploads.clear();
-      _lastSearchValueDownloads = '';
-      _lastSearchValueUploads = '';
-      _hideOverlay();
-    });
+    _searchControllerDownloads.clear();
+    _searchControllerUploads.clear();
+    _lastSearchValueDownloads = '';
+    _lastSearchValueUploads = '';
+    ref.read(uiStateProvider.notifier).resetLibraryUI();
+    _hideOverlay();
   }
 
   final List<Map<String, dynamic>> _categoryData = [
@@ -478,6 +520,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 _hideOverlay();
                 final focusNode = _isDownloadsSelected ? _searchFocusNodeDownloads : _searchFocusNodeUploads;
                 focusNode.unfocus();
+                if (_isDownloadsSelected) ref.read(uiStateProvider.notifier).setLibrarySearchDownloads(selection);
+                else ref.read(uiStateProvider.notifier).setLibrarySearchUploads(selection);
               });
             },
           ),
@@ -647,6 +691,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             onSelected: (value) {
+              final uiState = ref.read(uiStateProvider);
               if (value == 'select_all') {
                 setState(() {
                   final baseResources = isDownloads 
@@ -657,11 +702,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       : ResourceService().userUploads;
                   
                   final filteredResources = baseResources.where((res) {
-                    final isTimetableCategory = _selectedCategory == 'All' ? false : _selectedCategory == 'Time tables';
-                    final matchesCategory = _selectedCategory == 'All' || 
+                    final isTimetableCategory = uiState.libraryCategory == 'All' ? false : uiState.libraryCategory == 'Time tables';
+                    final matchesCategory = uiState.libraryCategory == 'All' || 
                         (isTimetableCategory 
                             ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
-                            : res.type == _selectedCategory);
+                            : res.type == uiState.libraryCategory);
                     if (!matchesCategory) return false;
                     return true; // Simplified for select all
                   }).toList();
@@ -699,6 +744,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildHeader(bool isDownloads, Color textColor, Color subTextColor, bool isDark) {
+    final uiState = ref.watch(uiStateProvider);
     final controller = isDownloads ? _searchControllerDownloads : _searchControllerUploads;
     final focusNode = isDownloads ? _searchFocusNodeDownloads : _searchFocusNodeUploads;
     final lastOriginal = isDownloads ? _lastCorrectedOriginalDownloads : _lastCorrectedOriginalUploads;
@@ -820,10 +866,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               _lastSearchValueDownloads = revertedText;
                               _lastCorrectedOriginalDownloads = null;
                               _lastCorrectedResultDownloads = null;
+                              ref.read(uiStateProvider.notifier).setLibrarySearchDownloads(revertedText);
                             } else {
                               _lastSearchValueUploads = revertedText;
                               _lastCorrectedOriginalUploads = null;
                               _lastCorrectedResultUploads = null;
+                              ref.read(uiStateProvider.notifier).setLibrarySearchUploads(revertedText);
                             }
                             controller.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
                           });
@@ -843,8 +891,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       }
                       _handleAutocorrect(value);
                       setState(() {
-                        if (isDownloads) _lastSearchValueDownloads = value;
-                        else _lastSearchValueUploads = value;
+                        if (isDownloads) {
+                          _lastSearchValueDownloads = value;
+                          ref.read(uiStateProvider.notifier).setLibrarySearchDownloads(value);
+                        } else {
+                          _lastSearchValueUploads = value;
+                          ref.read(uiStateProvider.notifier).setLibrarySearchUploads(value);
+                        }
                       });
                       _triggerOverlay(isDownloads);
                     },
@@ -928,11 +981,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   final String label = data['label'];
                   final Color color = data['color'];
                   final IconData icon = data['icon'];
-                  final isSelected = _selectedCategory == label;
+                  final isSelected = uiState.libraryCategory == label;
                   return Padding(
                     padding: const EdgeInsets.only(right: 12.0),
                     child: GestureDetector(
-                      onTap: () => setState(() => _selectedCategory = label),
+                      onTap: () => ref.read(uiStateProvider.notifier).setLibraryCategory(label),
                       child: CategoryChip(label: label, color: color, icon: icon, isActive: isSelected),
                     ),
                   );
@@ -945,9 +998,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               onPressed: _showFilters,
-              icon: Icon(Icons.tune, color: _activeFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
+              icon: Icon(Icons.tune, color: uiState.libraryFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
               label: Text(
-                _activeFilters.isNotEmpty ? 'Filters Active (${_activeFilters.length})' : 'Filter',
+                uiState.libraryFilters.isNotEmpty ? 'Filters Active (${uiState.libraryFilters.length})' : 'Filter',
                 style: TextStyle(color: textColor.withValues(alpha: 0.7)),
               ),
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
@@ -1044,6 +1097,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Widget _buildTabContent({required bool isDownloads}) {
     final isDark = ref.watch(themeProvider) == ThemeMode.dark;
+    final uiState = ref.watch(uiStateProvider);
     final textColor = isDark ? Colors.white : Colors.black87;
     final subTextColor = isDark ? const Color(0xFFC9CBF2) : Colors.black54;
     final isSelectionMode = isDownloads ? _isDownloadSelectionMode : _isUploadSelectionMode;
@@ -1060,11 +1114,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     
     final filteredResources = baseResources.where((res) {
       // 1. Strict Category Match
-      final isTimetableCategory = _selectedCategory == 'All' ? false : _selectedCategory == 'Time tables';
-      final matchesCategory = _selectedCategory == 'All' || 
+      final isTimetableCategory = uiState.libraryCategory == 'All' ? false : uiState.libraryCategory == 'Time tables';
+      final matchesCategory = uiState.libraryCategory == 'All' || 
           (isTimetableCategory 
               ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
-              : res.type == _selectedCategory);
+              : res.type == uiState.libraryCategory);
       if (!matchesCategory) return false;
 
       // 2. Strict Search Query Match
@@ -1092,7 +1146,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
       // 3. Strict AND Filter Logic
       bool matchesFilters = true;
-      _activeFilters.forEach((key, value) {
+      uiState.libraryFilters.forEach((key, value) {
         final normalizedValue = value.toLowerCase().trim();
         if (key == 'publicationYear') {
           if (res.publicationYear.toLowerCase().trim() != normalizedValue) matchesFilters = false;
@@ -1290,15 +1344,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeProvider);
+    final uiState = ref.watch(uiStateProvider);
     final activeFocusNode = _isDownloadsSelected ? _searchFocusNodeDownloads : _searchFocusNodeUploads;
     final activeController = _isDownloadsSelected ? _searchControllerDownloads : _searchControllerUploads;
     
     final isSearching = activeFocusNode.hasFocus || activeController.text.isNotEmpty;
-    final hasOtherFilters = _activeFilters.isNotEmpty || _selectedCategory != 'All';
+    final hasOtherFilters = uiState.libraryFilters.isNotEmpty || uiState.libraryCategory != 'All';
     final currentSelectionMode = _isDownloadsSelected ? _isDownloadSelectionMode : _isUploadSelectionMode;
 
     if (_isLoading) {
-      final isDark = ref.watch(themeProvider) == ThemeMode.dark;
+      final isDark = themeMode == ThemeMode.dark;
       return Scaffold(
         backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
         body: const LibrarySkeleton(),

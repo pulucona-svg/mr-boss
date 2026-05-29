@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/top_notification_service.dart';
+import '../services/persistence_service.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   final bool showInitialSuccess;
@@ -137,6 +138,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     
     // Clear auth state on success
     ref.read(authStateProvider.notifier).reset();
+    
+    // Save session so user is logged in automatically next time
+    PersistenceService().saveSession('user_12345');
     
     Future.delayed(const Duration(milliseconds: 2000), () {
       if (mounted) {

@@ -399,8 +399,8 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
       body: Stack(
         children: [
           Positioned.fill(
-            child: SvgPicture.asset(
-              isDark ? 'assets/chat_bg_dark.svg' : 'assets/chat_bg_light.svg',
+            child: Image.asset(
+              'assets/chat_wallpaper.jpeg',
               fit: BoxFit.cover,
             ),
           ),

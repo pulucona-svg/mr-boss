@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../models/message.dart';
+import 'persistence_service.dart';
 
 class ChatService extends ChangeNotifier {
   final List<Message> _messages = [];
@@ -39,12 +41,27 @@ class ChatService extends ChangeNotifier {
       }
     }
     if (changed) {
+      _saveMessages();
       notifyListeners();
     }
   }
 
   ChatService() {
-    _cleanupOldMessages();
+    _restoreMessages();
+  }
+
+  Future<void> _restoreMessages() async {
+    final json = PersistenceService().getJson('chat_messages');
+    if (json != null) {
+      _messages.clear();
+      _messages.addAll(List<Message>.from((json as List).map((m) => Message.fromJson(m))));
+      _cleanupOldMessages();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveMessages() async {
+    await PersistenceService().setJson('chat_messages', _messages.map((m) => m.toJson()).toList());
   }
 
   void _playSound(String fileName) async {
@@ -72,6 +89,7 @@ class ChatService extends ChangeNotifier {
       replyIsImage: replyTo?.type == MessageType.image,
     );
     _messages.add(message);
+    _saveMessages();
     notifyListeners();
     _playSound('sent.mp3');
 
@@ -112,6 +130,7 @@ class ChatService extends ChangeNotifier {
         reaction: oldMsg.reaction,
         isDeleted: oldMsg.isDeleted,
       );
+      _saveMessages();
       notifyListeners();
     }
   }
@@ -137,13 +156,18 @@ class ChatService extends ChangeNotifier {
       type: MessageType.text,
     );
     _messages.add(message);
+    _saveMessages();
     notifyListeners();
     _playSound('received.mp3');
   }
 
   void _cleanupOldMessages() {
     final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
+    final initialCount = _messages.length;
     _messages.removeWhere((msg) => msg.timestamp.isBefore(sevenDaysAgo));
+    if (_messages.length != initialCount) {
+      _saveMessages();
+    }
   }
 
   void addReaction(String id, String emoji) {
@@ -167,6 +191,7 @@ class ChatService extends ChangeNotifier {
         reaction: emoji,
         isDeleted: oldMsg.isDeleted,
       );
+      _saveMessages();
       notifyListeners();
     }
   }
@@ -185,6 +210,7 @@ class ChatService extends ChangeNotifier {
         status: oldMsg.status,
         isDeleted: true,
       );
+      _saveMessages();
       notifyListeners();
     }
   }
@@ -208,12 +234,14 @@ class ChatService extends ChangeNotifier {
         replyIsImage: oldMsg.replyIsImage,
         reaction: oldMsg.reaction,
       );
+      _saveMessages();
       notifyListeners();
     }
   }
 
   void clearChat() {
     _messages.clear();
+    _saveMessages();
     notifyListeners();
   }
 }

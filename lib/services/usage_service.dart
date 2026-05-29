@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'persistence_service.dart';
 
 class UsageSession {
   final DateTime startTime;
@@ -38,17 +38,16 @@ class UsageService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> init() async {
     if (_isInitialized) return;
     
-    final prefs = await SharedPreferences.getInstance();
-    _totalAppSeconds = prefs.getInt('total_app_seconds') ?? 0;
-    _streak = prefs.getInt('app_streak') ?? 0;
+    _totalAppSeconds = PersistenceService().getInt('total_app_seconds') ?? 0;
+    _streak = PersistenceService().getInt('app_streak') ?? 0;
     
-    final dailyJson = prefs.getString('daily_usage_history') ?? '{}';
+    final dailyJson = PersistenceService().getString('daily_usage_history') ?? '{}';
     _dailyUsage = Map<String, int>.from(jsonDecode(dailyJson));
     
-    final materialJson = prefs.getString('material_usage_stats') ?? '{}';
+    final materialJson = PersistenceService().getString('material_usage_stats') ?? '{}';
     _materialStats = Map<String, int>.from(jsonDecode(materialJson));
 
-    final lastStreak = prefs.getString('last_streak_update');
+    final lastStreak = PersistenceService().getString('last_streak_update');
     if (lastStreak != null) _lastStreakUpdate = DateTime.parse(lastStreak);
 
     _isInitialized = true;
@@ -126,17 +125,15 @@ class UsageService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _saveStats() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('total_app_seconds', _totalAppSeconds);
-    await prefs.setString('daily_usage_history', jsonEncode(_dailyUsage));
-    await prefs.setString('material_usage_stats', jsonEncode(_materialStats));
+    await PersistenceService().setInt('total_app_seconds', _totalAppSeconds);
+    await PersistenceService().setString('daily_usage_history', jsonEncode(_dailyUsage));
+    await PersistenceService().setString('material_usage_stats', jsonEncode(_materialStats));
   }
 
   Future<void> _saveStreak() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('app_streak', _streak);
+    await PersistenceService().setInt('app_streak', _streak);
     if (_lastStreakUpdate != null) {
-      await prefs.setString('last_streak_update', _lastStreakUpdate!.toIso8601String());
+      await PersistenceService().setString('last_streak_update', _lastStreakUpdate!.toIso8601String());
     }
   }
 

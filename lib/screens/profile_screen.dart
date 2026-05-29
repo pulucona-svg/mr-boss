@@ -20,6 +20,7 @@ import '../services/subscription_service.dart';
 
 import 'analytics_screen.dart';
 import '../services/usage_service.dart';
+import '../services/persistence_service.dart';
 
 class AcademicAutocompleteField extends StatefulWidget {
   final String label;
@@ -735,12 +736,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (context) => const LoginScreen()),
-                            (route) => false,
-                          );
+                        onPressed: () async {
+                          await PersistenceService().clearSession();
+                          if (context.mounted) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => const LoginScreen()),
+                              (route) => false,
+                            );
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.redAccent.withOpacity(0.8),

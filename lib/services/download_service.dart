@@ -1,15 +1,19 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'persistence_service.dart';
 
 class DownloadService extends ChangeNotifier {
   static final DownloadService _instance = DownloadService._internal();
   factory DownloadService() => _instance;
-  DownloadService._internal();
+  DownloadService._internal() {
+    _restoreData();
+  }
 
-  final List<Map<String, String>> _pinnedResources = [];
-  final List<Map<String, String>> _unpinnedResources = [];
-  final List<Map<String, String>> _archivedResources = [];
-  final List<Map<String, dynamic>> _trashedResources = [];
+  List<Map<String, String>> _pinnedResources = [];
+  List<Map<String, String>> _unpinnedResources = [];
+  List<Map<String, String>> _archivedResources = [];
+  List<Map<String, dynamic>> _trashedResources = [];
   final Map<String, double> _downloadProgress = {};
   final Map<String, bool> _isDownloading = {};
 
@@ -26,12 +30,39 @@ class DownloadService extends ChangeNotifier {
   bool isPinned(String title) => _pinnedResources.any((r) => r['title'] == title);
   bool isDownloaded(String title) => isPinned(title) || _unpinnedResources.any((r) => r['title'] == title);
 
+  Future<void> _restoreData() async {
+    final pinned = PersistenceService().getJson('download_pinned');
+    final unpinned = PersistenceService().getJson('download_unpinned');
+    final archived = PersistenceService().getJson('download_archived');
+    final trashed = PersistenceService().getJson('download_trashed');
+
+    if (pinned != null) _pinnedResources = List<Map<String, String>>.from((pinned as List).map((item) => Map<String, String>.from(item)));
+    if (unpinned != null) _unpinnedResources = List<Map<String, String>>.from((unpinned as List).map((item) => Map<String, String>.from(item)));
+    if (archived != null) _archivedResources = List<Map<String, String>>.from((archived as List).map((item) => Map<String, String>.from(item)));
+    if (trashed != null) _trashedResources = List<Map<String, dynamic>>.from(trashed as List);
+    
+    notifyListeners();
+  }
+
+  Future<void> _saveData() async {
+    await PersistenceService().setJson('download_pinned', _pinnedResources);
+    await PersistenceService().setJson('download_unpinned', _unpinnedResources);
+    await PersistenceService().setJson('download_archived', _archivedResources);
+    await PersistenceService().setJson('download_trashed', _trashedResources);
+  }
+
   void _autoDeleteExpiredTrash() {
     final now = DateTime.now();
+    bool changed = false;
     _trashedResources.removeWhere((item) {
       final deletedAt = DateTime.parse(item['deletedAt'] as String);
-      return now.difference(deletedAt).inDays >= 30;
+      if (now.difference(deletedAt).inDays >= 30) {
+        changed = true;
+        return true;
+      }
+      return false;
     });
+    if (changed) _saveData();
   }
 
   void _enforcePinLimit() {
@@ -43,16 +74,32 @@ class DownloadService extends ChangeNotifier {
 
   Map<String, String>? _findAndRemove(String title) {
     int idx = _pinnedResources.indexWhere((r) => r['title'] == title);
-    if (idx != -1) return _pinnedResources.removeAt(idx);
+    if (idx != -1) {
+      final res = _pinnedResources.removeAt(idx);
+      _saveData();
+      return res;
+    }
     
     idx = _unpinnedResources.indexWhere((r) => r['title'] == title);
-    if (idx != -1) return _unpinnedResources.removeAt(idx);
+    if (idx != -1) {
+      final res = _unpinnedResources.removeAt(idx);
+      _saveData();
+      return res;
+    }
     
     idx = _archivedResources.indexWhere((r) => r['title'] == title);
-    if (idx != -1) return _archivedResources.removeAt(idx);
+    if (idx != -1) {
+      final res = _archivedResources.removeAt(idx);
+      _saveData();
+      return res;
+    }
 
-    idx = _trashedResources.indexWhere((r) => (r['resource'] as Map<String, String>)['title'] == title);
-    if (idx != -1) return _trashedResources.removeAt(idx)['resource'] as Map<String, String>;
+    idx = _trashedResources.indexWhere((r) => (r['resource'] as Map<String, dynamic>)['title'] == title);
+    if (idx != -1) {
+      final res = Map<String, String>.from(_trashedResources.removeAt(idx)['resource'] as Map);
+      _saveData();
+      return res;
+    }
 
     return null;
   }
@@ -62,6 +109,7 @@ class DownloadService extends ChangeNotifier {
     if (data != null) {
       _pinnedResources.insert(0, data);
       _enforcePinLimit();
+      _saveData();
       notifyListeners();
     }
   }
@@ -71,6 +119,7 @@ class DownloadService extends ChangeNotifier {
     if (idx != -1) {
       final data = _pinnedResources.removeAt(idx);
       _unpinnedResources.insert(0, data);
+      _saveData();
       notifyListeners();
     }
   }
@@ -90,6 +139,7 @@ class DownloadService extends ChangeNotifier {
       _pinnedResources.insert(0, res);
     }
     _enforcePinLimit();
+    _saveData();
     notifyListeners();
   }
 
@@ -101,6 +151,7 @@ class DownloadService extends ChangeNotifier {
         _unpinnedResources.insert(0, res);
       }
     }
+    _saveData();
     notifyListeners();
   }
 
@@ -111,6 +162,7 @@ class DownloadService extends ChangeNotifier {
         _archivedResources.insert(0, res);
       }
     }
+    _saveData();
     notifyListeners();
   }
 
@@ -125,6 +177,7 @@ class DownloadService extends ChangeNotifier {
         _trashedResources.insert(0, trashedItem);
       }
     }
+    _saveData();
     notifyListeners();
   }
 
@@ -135,11 +188,13 @@ class DownloadService extends ChangeNotifier {
         _unpinnedResources.insert(0, res);
       }
     }
+    _saveData();
     notifyListeners();
   }
 
   void permanentlyDeleteMultiple(List<String> titles) {
-    _trashedResources.removeWhere((item) => titles.contains((item['resource'] as Map<String, String>)['title']));
+    _trashedResources.removeWhere((item) => titles.contains((item['resource'] as Map<String, dynamic>)['title']));
+    _saveData();
     notifyListeners();
   }
 
@@ -169,11 +224,12 @@ class DownloadService extends ChangeNotifier {
 
     _isDownloading[title] = false;
     
-    // Add to unpinned list if not already there, inserting at the beginning (index 0)
     if (!isDownloaded(title)) {
       _unpinnedResources.insert(0, resourceData);
+      _saveData();
     }
     
     notifyListeners();
   }
 }
+

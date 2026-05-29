@@ -10,12 +10,14 @@ import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../services/resource_service.dart';
 import '../services/download_service.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/filter_modal.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
 import '../providers/theme_provider.dart';
 import '../providers/chat_provider.dart';
 import '../services/top_notification_service.dart';
+import '../providers/ui_provider.dart';
 import 'help_support_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -27,13 +29,11 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   static bool _hasLoadedBefore = false;
-  String _selectedCategory = 'All';
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _searchFocusNode = FocusNode();
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
-  Map<String, String> _activeFilters = {};
   late bool _isLoading;
   String? _lastCorrectedOriginal;
   String? _lastCorrectedResult;
@@ -43,6 +43,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    final uiState = ref.read(uiStateProvider);
+    _searchController.text = uiState.dashboardSearch;
+    _lastSearchValue = uiState.dashboardSearch;
+    
     _isLoading = !_hasLoadedBefore;
     if (_isLoading) {
       _simulateLoading();
@@ -50,6 +54,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _shuffledResources = List.from(ResourceService().allResources);
     }
     _searchFocusNode.addListener(_onSearchFocusChange);
+  }
+
+  void _onSearchFocusChange() {
+    if (_searchFocusNode.hasFocus) {
+      // Small delay to ensure the keyboard is coming up and layout is stable
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _scrollController.animateTo(
+            150, // Shift up by approximately the height of the header
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+      _showOverlay();
+    } else {
+      _hideOverlay();
+      if (mounted) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+  }
+
+  void _simulateLoading() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    _hasLoadedBefore = true;
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        _shuffledResources = List.from(ResourceService().allResources);
+      });
+    }
   }
 
   int _levenshtein(String s, String t) {
@@ -92,202 +132,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       dictionary.addAll(['Notes', 'CATs', 'Exams', 'Timetable', 'Manual', 'Supplementary']);
     }
     return dictionary;
-  }
-
-  void _handleAutocorrect(String value) {
-    if (!value.endsWith(' ')) return;
-    
-    final words = value.trim().split(RegExp(r'\s+'));
-    if (words.isEmpty) return;
-
-    final lastWord = words.last;
-    if (lastWord.length < 3 || RegExp(r'^\d+$').hasMatch(lastWord)) return;
-
-    final dictionary = _getDictionary();
-    String? bestMatch;
-    int minDistance = 2; // Allow up to 1 error for short words, 2 for longer
-
-    for (var entry in dictionary) {
-      final distance = _levenshtein(lastWord.toLowerCase(), entry.toLowerCase());
-      if (distance < minDistance) {
-        minDistance = distance;
-        bestMatch = entry;
-      }
-    }
-
-    if (bestMatch != null && bestMatch.toLowerCase() != lastWord.toLowerCase()) {
-      final newWords = List<String>.from(words);
-      newWords[newWords.length - 1] = bestMatch;
-      final newText = "${newWords.join(' ')} ";
-      
-      setState(() {
-        _lastCorrectedOriginal = lastWord;
-        _lastCorrectedResult = bestMatch;
-        _searchController.text = newText;
-        _lastSearchValue = newText;
-        _searchController.selection = TextSelection.fromPosition(TextPosition(offset: newText.length));
-      });
-    }
-  }
-
-  void _revertAutocorrect() {
-    if (_lastCorrectedOriginal == null || _lastCorrectedResult == null) return;
-    
-    final currentText = _searchController.text;
-    // Replace the result back with original
-    final revertedText = currentText.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
-    
-    setState(() {
-      _searchController.text = revertedText;
-      _lastSearchValue = revertedText;
-      _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
-      _lastCorrectedOriginal = null;
-      _lastCorrectedResult = null;
-    });
-  }
-
-  void _handleBack() {
-    if (_searchController.text.isNotEmpty) {
-      setState(() {
-        _searchController.clear();
-        _lastSearchValue = '';
-      });
-      return;
-    }
-    if (_searchFocusNode.hasFocus) {
-      _searchFocusNode.unfocus();
-      return;
-    }
-    if (_lastCorrectedOriginal != null) {
-      setState(() {
-        _lastCorrectedOriginal = null;
-        _lastCorrectedResult = null;
-      });
-      return;
-    }
-    _resetAllFilters();
-  }
-
-  void _onSearchFocusChange() {
-    if (_searchFocusNode.hasFocus) {
-      // Small delay to ensure the keyboard is coming up and layout is stable
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          _scrollController.animateTo(
-            150, // Shift up by approximately the height of the header
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-      _showOverlay();
-    } else {
-      _hideOverlay();
-      if (mounted) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    }
-  }
-
-  void _simulateLoading() async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    _hasLoadedBefore = true;
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _shuffledResources = List.from(ResourceService().allResources);
-      });
-    }
-  }
-
-  Future<void> _handleRefresh() async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() {
-        _shuffledResources = List.from(ResourceService().allResources)..shuffle();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchFocusNode.removeListener(_onSearchFocusChange);
-    _searchFocusNode.dispose();
-    _hideOverlay();
-    _searchController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _showNotifications() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const NotificationModal(),
-    );
-  }
-
-  void _showFilters() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => FilterModal(
-        initialFilters: _activeFilters,
-        onApply: (filters) {
-          setState(() {
-            _activeFilters = filters;
-          });
-        },
-      ),
-    );
-  }
-
-  void _resetAllFilters() {
-    setState(() {
-      _activeFilters = {};
-      _selectedCategory = 'All';
-      _searchController.clear();
-      _lastSearchValue = '';
-      _hideOverlay();
-    });
-  }
-
-  final List<Map<String, dynamic>> _categoryData = [
-    {'label': 'All', 'color': const Color(0xFF287BFF), 'icon': Icons.grid_view_rounded},
-    {'label': 'Notes', 'color': const Color(0xFF00A85A), 'icon': Icons.description_rounded},
-    {'label': 'CATs', 'color': const Color(0xFFFF8A00), 'icon': Icons.assignment_rounded},
-    {'label': 'Exams', 'color': const Color(0xFF7D46FF), 'icon': Icons.history_edu_rounded},
-    {'label': 'Time tables', 'color': const Color(0xFF00D1FF), 'icon': Icons.calendar_month_rounded},
-    {'label': 'Prac Manual', 'color': const Color(0xFFFF4667), 'icon': Icons.biotech_rounded},
-    {'label': 'Supplementary Exams', 'color': const Color(0xFF00B4D8), 'icon': Icons.auto_stories_rounded},
-  ];
-
-  bool _tokenMatch(String token, String target) {
-    final targetLower = target.toLowerCase();
-    if (targetLower.contains(token)) return true;
-
-    int matchCount = 0;
-    int targetIdx = 0;
-    for (int i = 0; i < token.length; i++) {
-      while (targetIdx < targetLower.length) {
-        if (token[i] == targetLower[targetIdx]) {
-          matchCount++;
-          targetIdx++;
-          break;
-        }
-        targetIdx++;
-      }
-    }
-
-    if (token.length <= 3) return matchCount == token.length;
-    if (token.length <= 5) return matchCount >= token.length - 1;
-    return matchCount >= (token.length * 0.75).floor();
   }
 
   List<String> _getSuggestions(String query) {
@@ -405,6 +249,170 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return sortedList.take(8).toList();
   }
 
+  Future<void> _handleRefresh() async {
+    if (ConnectivityService().isOffline) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Connect to the internet to refresh and load the latest content.',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      setState(() {
+        _shuffledResources = List.from(ResourceService().allResources)..shuffle();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode.removeListener(_onSearchFocusChange);
+    _searchFocusNode.dispose();
+    _hideOverlay();
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _showNotifications() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const NotificationModal(),
+    );
+  }
+
+  void _showFilters() {
+    final uiState = ref.read(uiStateProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FilterModal(
+        initialFilters: uiState.dashboardFilters,
+        onApply: (filters) {
+          ref.read(uiStateProvider.notifier).setDashboardFilters(filters);
+        },
+      ),
+    );
+  }
+
+  void _resetAllFilters() {
+    _searchController.clear();
+    _lastSearchValue = '';
+    ref.read(uiStateProvider.notifier).resetDashboardUI();
+    _hideOverlay();
+  }
+
+  final List<Map<String, dynamic>> _categoryData = [
+    {'label': 'All', 'color': const Color(0xFF287BFF), 'icon': Icons.grid_view_rounded},
+    {'label': 'Notes', 'color': const Color(0xFF00A85A), 'icon': Icons.description_rounded},
+    {'label': 'CATs', 'color': const Color(0xFFFF8A00), 'icon': Icons.assignment_rounded},
+    {'label': 'Exams', 'color': const Color(0xFF7D46FF), 'icon': Icons.history_edu_rounded},
+    {'label': 'Time tables', 'color': const Color(0xFF00D1FF), 'icon': Icons.calendar_month_rounded},
+    {'label': 'Prac Manual', 'color': const Color(0xFFFF4667), 'icon': Icons.biotech_rounded},
+    {'label': 'Supplementary Exams', 'color': const Color(0xFF00B4D8), 'icon': Icons.auto_stories_rounded},
+  ];
+
+  void _handleAutocorrect(String value) {
+    if (!value.endsWith(' ')) return;
+    
+    final words = value.trim().split(RegExp(r'\s+'));
+    if (words.isEmpty) return;
+
+    final lastWord = words.last;
+    if (lastWord.length < 3 || RegExp(r'^\d+$').hasMatch(lastWord)) return;
+
+    final dictionary = _getDictionary();
+    String? bestMatch;
+    int minDistance = 2; // Allow up to 1 error for short words, 2 for longer
+
+    for (var entry in dictionary) {
+      final distance = _levenshtein(lastWord.toLowerCase(), entry.toLowerCase());
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestMatch = entry;
+      }
+    }
+
+    if (bestMatch != null && bestMatch.toLowerCase() != lastWord.toLowerCase()) {
+      final newWords = List<String>.from(words);
+      newWords[newWords.length - 1] = bestMatch;
+      final newText = "${newWords.join(' ')} ";
+      
+      setState(() {
+        _lastCorrectedOriginal = lastWord;
+        _lastCorrectedResult = bestMatch;
+        _searchController.text = newText;
+        _lastSearchValue = newText;
+        _searchController.selection = TextSelection.fromPosition(TextPosition(offset: newText.length));
+        ref.read(uiStateProvider.notifier).setDashboardSearch(newText);
+      });
+    }
+  }
+
+  void _revertAutocorrect() {
+    if (_lastCorrectedOriginal == null || _lastCorrectedResult == null) return;
+    
+    final currentText = _searchController.text;
+    // Replace the result back with original
+    final revertedText = currentText.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
+    
+    setState(() {
+      _searchController.text = revertedText;
+      _lastSearchValue = revertedText;
+      _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
+      _lastCorrectedOriginal = null;
+      _lastCorrectedResult = null;
+      ref.read(uiStateProvider.notifier).setDashboardSearch(revertedText);
+    });
+  }
+
+  void _handleBack() {
+    if (_searchController.text.isNotEmpty) {
+      setState(() {
+        _searchController.clear();
+        _lastSearchValue = '';
+        ref.read(uiStateProvider.notifier).setDashboardSearch('');
+      });
+      return;
+    }
+    if (_searchFocusNode.hasFocus) {
+      _searchFocusNode.unfocus();
+      return;
+    }
+    if (_lastCorrectedOriginal != null) {
+      setState(() {
+        _lastCorrectedOriginal = null;
+        _lastCorrectedResult = null;
+      });
+      return;
+    }
+    _resetAllFilters();
+  }
+
   void _showOverlay() {
     _hideOverlay();
     final query = _searchController.text;
@@ -431,6 +439,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 _lastSearchValue = selection;
                 _hideOverlay();
                 _searchFocusNode.unfocus();
+                ref.read(uiStateProvider.notifier).setDashboardSearch(selection);
               });
             },
           ),
@@ -449,6 +458,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
+    final uiState = ref.watch(uiStateProvider);
     final isDark = themeMode == ThemeMode.dark;
 
     if (_isLoading) {
@@ -476,11 +486,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           if (isPinned && !isTimetableType) return false;
 
           // 2. Strict Category Match
-          final isTimetableCategory = _selectedCategory == 'All' ? false : _selectedCategory == 'Time tables';
-          final matchesCategory = _selectedCategory == 'All' || 
+          final isTimetableCategory = uiState.dashboardCategory == 'All' ? false : uiState.dashboardCategory == 'Time tables';
+          final matchesCategory = uiState.dashboardCategory == 'All' || 
               (isTimetableCategory 
                   ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
-                  : res.type == _selectedCategory);
+                  : res.type == uiState.dashboardCategory);
           if (!matchesCategory) return false;
 
           // 3. Strict Search Query Match
@@ -506,7 +516,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
           // 4. Strict AND Filter Logic
           bool matchesFilters = true;
-          _activeFilters.forEach((key, value) {
+          uiState.dashboardFilters.forEach((key, value) {
             final normalizedValue = value.toLowerCase().trim();
             if (key == 'publicationYear') {
               if (res.publicationYear.toLowerCase().trim() != normalizedValue) matchesFilters = false;
@@ -525,7 +535,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         }).toList();
 
         final isSearching = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
-        final hasOtherFilters = _activeFilters.isNotEmpty || _selectedCategory != 'All';
+        final hasOtherFilters = uiState.dashboardFilters.isNotEmpty || uiState.dashboardCategory != 'All';
 
         return PopScope(
           canPop: !isSearching && !hasOtherFilters,
@@ -669,11 +679,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                       final String label = data['label'];
                                       final Color color = data['color'];
                                       final IconData icon = data['icon'];
-                                      final isSelected = _selectedCategory == label;
+                                      final isSelected = uiState.dashboardCategory == label;
                                       return Padding(
                                         padding: const EdgeInsets.only(right: 12.0),
                                         child: GestureDetector(
-                                          onTap: () => setState(() => _selectedCategory = label),
+                                          onTap: () => ref.read(uiStateProvider.notifier).setDashboardCategory(label),
                                           child: CategoryChip(label: label, icon: icon, color: color, isActive: isSelected),
                                         ),
                                       );
@@ -702,6 +712,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                                 _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
                                                 _lastCorrectedOriginal = null;
                                                 _lastCorrectedResult = null;
+                                                ref.read(uiStateProvider.notifier).setDashboardSearch(revertedText);
                                               });
                                               _showOverlay();
                                               return;
@@ -715,6 +726,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                           }
                                           _handleAutocorrect(value);
                                           setState(() => _lastSearchValue = value);
+                                          ref.read(uiStateProvider.notifier).setDashboardSearch(value);
                                           _showOverlay();
                                         },
                                         onTap: _showOverlay,
@@ -788,9 +800,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 alignment: Alignment.centerLeft,
                                 child: TextButton.icon(
                                   onPressed: _showFilters,
-                                  icon: Icon(Icons.tune, color: _activeFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
+                                  icon: Icon(Icons.tune, color: uiState.dashboardFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
                                   label: Text(
-                                    _activeFilters.isNotEmpty ? 'Filters Active (${_activeFilters.length})' : 'Filter',
+                                    uiState.dashboardFilters.isNotEmpty ? 'Filters Active (${uiState.dashboardFilters.length})' : 'Filter',
                                     style: TextStyle(color: textColor.withValues(alpha: 0.7)),
                                   ),
                                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),

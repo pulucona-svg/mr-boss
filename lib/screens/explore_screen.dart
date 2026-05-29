@@ -13,6 +13,7 @@ import '../widgets/skeleton.dart';
 import '../widgets/inline_ad_banner.dart';
 import '../services/subscription_service.dart';
 import '../services/connectivity_service.dart';
+import '../providers/ui_provider.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
@@ -22,7 +23,6 @@ class ExploreScreen extends ConsumerStatefulWidget {
 }
 
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
-  String _selectedCategory = 'For You';
   bool _isLoading = true;
   late PageController _pageController;
 
@@ -49,7 +49,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    final uiState = ref.read(uiStateProvider);
+    final initialIndex = _categories.indexOf(uiState.exploreCategory);
+    _pageController = PageController(initialPage: initialIndex != -1 ? initialIndex : 0);
     _loadMockData();
   }
 
@@ -60,6 +62,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   void _loadMockData() async {
+    // ... rest of method ...
     // Simulate loading
     await Future.delayed(const Duration(milliseconds: 1500));
     
@@ -251,9 +254,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   void _onCategoryTap(String category) {
-    setState(() {
-      _selectedCategory = category;
-    });
+    ref.read(uiStateProvider.notifier).setExploreCategory(category);
     final index = _categories.indexOf(category);
     _pageController.animateToPage(
       index,
@@ -265,6 +266,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
+    final uiState = ref.watch(uiStateProvider);
     final isDark = themeMode == ThemeMode.dark;
     final textColor = isDark ? Colors.white : Colors.black87;
     
@@ -288,15 +290,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           child: Column(
             children: [
               _buildStaticHeader(context, textColor),
-              _buildCategoryTabs(isDark),
+              _buildCategoryTabs(isDark, uiState),
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: _categories.length,
                   onPageChanged: (index) {
-                    setState(() {
-                      _selectedCategory = _categories[index];
-                    });
+                    ref.read(uiStateProvider.notifier).setExploreCategory(_categories[index]);
                   },
                   itemBuilder: (context, index) {
                     final category = _categories[index];
@@ -315,6 +315,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Widget _buildStaticHeader(BuildContext context, Color textColor) {
+// ... rest of method ...
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -410,7 +411,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
-  Widget _buildCategoryTabs(bool isDark) {
+  Widget _buildCategoryTabs(bool isDark, UIState uiState) {
     const neonCyan = Color(0xFF00F2FF);
     return Container(
       height: 38,
@@ -439,7 +440,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             );
           }
           final category = _categories[index];
-          final isSelected = _selectedCategory == category;
+          final isSelected = uiState.exploreCategory == category;
           return GestureDetector(
             onTap: () => _onCategoryTap(category),
             child: AnimatedContainer(
@@ -550,6 +551,32 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
     return RefreshIndicator(
       onRefresh: () async {
+        if (ConnectivityService().isOffline) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  children: [
+                    Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Connect to the internet to refresh and load the latest content.',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
         setState(() => _isLoading = true);
         _loadMockData();
       },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'signup_screen.dart';
 import 'reset_password_screen.dart';
 import '../services/top_notification_service.dart';
+import '../services/persistence_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -280,14 +281,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 width: double.infinity,
                                 height: 54,
                                 child: ElevatedButton(
-                                  onPressed: () {
-                                    TopNotificationService().showNotification(context, 'Login successful');
-                                    TopNotificationService.pendingWelcome = true;
-                                    Future.delayed(const Duration(milliseconds: 1500), () {
-                                      if (mounted) {
-                                        Navigator.pushReplacementNamed(context, '/home');
-                                      }
-                                    });
+                                  onPressed: () async {
+                                    // Save session
+                                    await PersistenceService().saveSession('user_12345');
+                                    
+                                    if (mounted) {
+                                      TopNotificationService().showNotification(context, 'Login successful');
+                                      TopNotificationService.pendingWelcome = true;
+                                      Future.delayed(const Duration(milliseconds: 1500), () {
+                                        if (mounted) {
+                                          Navigator.pushReplacementNamed(context, '/home');
+                                        }
+                                      });
+                                    }
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFE31E24),

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/subscription_model.dart';
+import 'persistence_service.dart';
 
 class SubscriptionService extends ChangeNotifier {
   static final SubscriptionService _instance = SubscriptionService._internal();
@@ -41,8 +41,7 @@ class SubscriptionService extends ChangeNotifier {
     if (_isInitialized) return;
     _isInitialized = true;
     
-    final prefs = await SharedPreferences.getInstance();
-    final historyJson = prefs.getStringList('subscription_history') ?? [];
+    final historyJson = PersistenceService().getStringList('subscription_history') ?? [];
     _history = historyJson
         .map((j) => SubscriptionHistory.fromJson(jsonDecode(j)))
         .toList();
@@ -95,9 +94,8 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> _saveHistory() async {
-    final prefs = await SharedPreferences.getInstance();
     final historyJson = _history.map((s) => jsonEncode(s.toJson())).toList();
-    await prefs.setStringList('subscription_history', historyJson);
+    await PersistenceService().setStringList('subscription_history', historyJson);
   }
 
   Future<void> addSubscription(SubscriptionPackage package) async {
