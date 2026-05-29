@@ -9,6 +9,8 @@ import '../widgets/filter_modal.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../widgets/smart_ad_banner.dart';
+import '../widgets/inline_ad_banner.dart';
+import '../services/subscription_service.dart';
 import '../widgets/upload_bottom_sheet.dart';
 import '../widgets/draggable_fab.dart';
 import '../widgets/skeleton.dart';
@@ -309,6 +311,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -1116,115 +1125,167 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
       ),
       child: SafeArea(
-        child: CustomScrollView(
-          controller: controller,
-          key: PageStorageKey(isDownloads ? 'downloads_scroll' : 'uploads_scroll'),
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeader(isDownloads, textColor, subTextColor, isDark)),
-            if (isSelectionMode)
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: SelectionHeaderDelegate(
-                  child: _buildSelectionBar(isDownloads),
+        child: RefreshIndicator(
+          onRefresh: () => _handleRefresh(),
+          color: const Color(0xFF24C7FF),
+          backgroundColor: isDark ? const Color(0xFF181739) : Colors.white,
+          child: CustomScrollView(
+            controller: controller,
+            key: PageStorageKey(isDownloads ? 'downloads_scroll' : 'uploads_scroll'),
+            slivers: [
+              SliverToBoxAdapter(child: _buildHeader(isDownloads, textColor, subTextColor, isDark)),
+              if (isSelectionMode)
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: SelectionHeaderDelegate(
+                    child: _buildSelectionBar(isDownloads),
+                  ),
                 ),
+              ..._buildLibraryGridWithAds(
+                filteredResources: filteredResources,
+                isDownloads: isDownloads,
+                isSelectionMode: isSelectionMode,
+                selectedTitles: selectedTitles,
+                textColor: textColor,
               ),
-            if (filteredResources.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          isDownloads ? Icons.download_for_offline_outlined : Icons.cloud_off_rounded,
-                          color: textColor.withValues(alpha: 0.1),
-                          size: 64,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No results found',
-                          style: TextStyle(
-                            color: textColor.withValues(alpha: 0.5), 
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Try another keyword',
-                          style: TextStyle(
-                            color: textColor.withValues(alpha: 0.3), 
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.72,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final res = filteredResources[index];
-                      return ResourceCard(
-                        title: res.title,
-                        type: res.type,
-                        materialFormat: res.materialFormat,
-                        thumbnailUrl: res.thumbnailUrl,
-                        unitName: res.unitName,
-                        unitCode: res.unitCode,
-                        targetPrograms: res.targetPrograms,
-                        programCodes: res.programCodes,
-                        year: res.year,
-                        uploadYear: res.uploadYear,
-                        publicationYear: res.publicationYear,
-                        yearOfStudy: res.yearOfStudy,
-                        semester: res.semester,
-                        lecturers: res.lecturers,
-                        uploadedBy: res.uploadedBy,
-                        uploaderRole: res.uploaderRole,
-                        views: res.views.toString(),
-                        likes: res.likes.toString(),
-                        comments: res.comments.toString(),
-                        isLiked: res.isLiked,
-                        showDownload: false,
-                        status: !isDownloads ? res.status : null,
-                        declineReason: !isDownloads ? res.declineReason : null,
-                        onLikeToggle: () => ResourceService().toggleLike(res.title),
-                        onViewIncrement: () => ResourceService().incrementViews(res.title),
-                        isSelectionMode: isSelectionMode,
-                        isSelected: selectedTitles.contains(res.title),
-                        onLongPress: () {
-                          if (!isSelectionMode) {
-                            _enterSelectionMode(res.title, isDownloads);
-                          }
-                        },
-                        onTap: () {
-                          if (isSelectionMode) {
-                            _toggleSelection(res.title, isDownloads);
-                          }
-                        },
-                      );
-                    },
-                    childCount: filteredResources.length,
-                  ),
-                ),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-          ],
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  List<Widget> _buildLibraryGridWithAds({
+    required List<Resource> filteredResources,
+    required bool isDownloads,
+    required bool isSelectionMode,
+    required Set<String> selectedTitles,
+    required Color textColor,
+  }) {
+    if (filteredResources.isEmpty) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isDownloads ? Icons.download_for_offline_outlined : Icons.cloud_off_rounded,
+                    color: textColor.withValues(alpha: 0.1),
+                    size: 64,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No results found',
+                    style: TextStyle(
+                      color: textColor.withValues(alpha: 0.5), 
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Try another keyword',
+                    style: TextStyle(
+                      color: textColor.withValues(alpha: 0.3), 
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        )
+      ];
+    }
+
+    List<Widget> slivers = [];
+    const int itemsPerRow = 2;
+    const int rowsPerAd = 4;
+    const int itemsPerAd = itemsPerRow * rowsPerAd;
+
+    for (int i = 0; i < filteredResources.length; i += itemsPerAd) {
+      final end = (i + itemsPerAd < filteredResources.length) ? i + itemsPerAd : filteredResources.length;
+      final chunk = filteredResources.sublist(i, end);
+
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.72,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final res = chunk[index];
+                return ResourceCard(
+                  title: res.title,
+                  type: res.type,
+                  materialFormat: res.materialFormat,
+                  thumbnailUrl: res.thumbnailUrl,
+                  unitName: res.unitName,
+                  unitCode: res.unitCode,
+                  targetPrograms: res.targetPrograms,
+                  programCodes: res.programCodes,
+                  year: res.year,
+                  uploadYear: res.uploadYear,
+                  publicationYear: res.publicationYear,
+                  yearOfStudy: res.yearOfStudy,
+                  semester: res.semester,
+                  lecturers: res.lecturers,
+                  uploadedBy: res.uploadedBy,
+                  uploaderRole: res.uploaderRole,
+                  views: res.views.toString(),
+                  likes: res.likes.toString(),
+                  comments: res.comments.toString(),
+                  isLiked: res.isLiked,
+                  showDownload: false,
+                  status: !isDownloads ? res.status : null,
+                  declineReason: !isDownloads ? res.declineReason : null,
+                  onLikeToggle: () => ResourceService().toggleLike(res.title),
+                  onViewIncrement: () => ResourceService().incrementViews(res.title),
+                  isSelectionMode: isSelectionMode,
+                  isSelected: selectedTitles.contains(res.title),
+                  onLongPress: () {
+                    if (!isSelectionMode) {
+                      _enterSelectionMode(res.title, isDownloads);
+                    }
+                  },
+                  onTap: () {
+                    if (isSelectionMode) {
+                      _toggleSelection(res.title, isDownloads);
+                    }
+                  },
+                );
+              },
+              childCount: chunk.length,
+            ),
+          ),
+        ),
+      );
+
+      if (end < filteredResources.length && 
+          isDownloads && 
+          filteredResources.length > 4 && 
+          !SubscriptionService().isSubscribed) {
+        slivers.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+              child: InlineAdBanner(),
+            ),
+          ),
+        );
+      }
+    }
+
+    return slivers;
   }
 
   @override

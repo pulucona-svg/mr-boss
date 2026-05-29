@@ -4,6 +4,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/resource_card.dart';
 import '../widgets/smart_ad_banner.dart';
+import '../widgets/inline_ad_banner.dart';
+import '../services/subscription_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
 import '../services/resource_service.dart';
@@ -36,6 +38,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String? _lastCorrectedOriginal;
   String? _lastCorrectedResult;
   String _lastSearchValue = '';
+  List<Resource> _shuffledResources = [];
 
   @override
   void initState() {
@@ -43,6 +46,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _isLoading = !_hasLoadedBefore;
     if (_isLoading) {
       _simulateLoading();
+    } else {
+      _shuffledResources = List.from(ResourceService().allResources);
     }
     _searchFocusNode.addListener(_onSearchFocusChange);
   }
@@ -194,6 +199,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (mounted) {
       setState(() {
         _isLoading = false;
+        _shuffledResources = List.from(ResourceService().allResources);
+      });
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      setState(() {
+        _shuffledResources = List.from(ResourceService().allResources)..shuffle();
       });
     }
   }
@@ -451,7 +466,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       builder: (context, child) {
         final allResources = ResourceService().allResources;
 
-        final filteredResources = allResources.where((res) {
+        final sourceResources = _shuffledResources.isEmpty ? allResources : _shuffledResources;
+
+        final filteredResources = sourceResources.where((res) {
           // 1. Filter out pinned non-timetable items
           final isPinned = DownloadService().isPinned(res.title);
           final isTimetableType = res.type.toLowerCase().contains('timetable') || 
@@ -538,315 +555,267 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
               ),
               child: SafeArea(
-                child: CustomScrollView(
-                  controller: _scrollController,
-                  key: const PageStorageKey('dashboard_scroll'),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const SizedBox(),
-                                Row(
-                                  children: [
-                                    ListenableBuilder(
-                                      listenable: ref.watch(chatServiceProvider),
-                                      builder: (context, child) {
-                                        final unreadMessages = ref.read(chatServiceProvider).unreadCount;
-                                        return Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            IconButton(
-                                              onPressed: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
-                                                );
-                                              },
-                                              icon: SvgPicture.asset(
-                                                'assets/messenger.svg',
-                                                height: 28,
-                                                width: 28,
-                                                colorFilter: const ColorFilter.mode(
-                                                  Color(0xFF00B2FF),
-                                                  BlendMode.srcIn,
-                                                ),
-                                              ),
-                                            ),
-                                            if (unreadMessages > 0)
-                                              Positioned(
-                                                top: 8,
-                                                right: 8,
-                                                child: Container(
-                                                  padding: const EdgeInsets.all(4),
-                                                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                                  child: Text(
-                                                    unreadMessages > 9 ? '9+' : unreadMessages.toString(),
-                                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                                    textAlign: TextAlign.center,
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                    ListenableBuilder(
-                                      listenable: NotificationService(),
-                                      builder: (context, child) {
-                                        final unreadCount = NotificationService().unreadCount;
-                                        return Stack(
-                                          clipBehavior: Clip.none,
-                                          children: [
-                                            IconButton(
-                                              onPressed: _showNotifications,
-                                              icon: const Text('🔔', style: TextStyle(fontSize: 24)),
-                                            ),
-                                            if (unreadCount > 0)
-                                              Positioned(
-                                                top: 8,
-                                                right: 8,
-                                                child: Container(
-                                                  padding: const EdgeInsets.all(4),
-                                                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                                  child: Text(
-                                                    unreadCount > 9 ? '9+' : unreadCount.toString(),
-                                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                                    textAlign: TextAlign.center,
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 8),
-                            Text('Find your academic edge.', style: TextStyle(color: subTextColor)),
-                            const SizedBox(height: 20),
-                            const SmartAdBanner(),
-                            const SizedBox(height: 20),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              clipBehavior: Clip.none,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: Row(
-                                  children: _categoryData.map((data) {
-                                    final String label = data['label'];
-                                    final Color color = data['color'];
-                                    final IconData icon = data['icon'];
-                                    final isSelected = _selectedCategory == label;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 12.0),
-                                      child: GestureDetector(
-                                        onTap: () => setState(() => _selectedCategory = label),
-                                        child: CategoryChip(label: label, icon: icon, color: color, isActive: isSelected),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CompositedTransformTarget(
-                                    link: _layerLink,
-                                    child: TextField(
-                                      controller: _searchController,
-                                      focusNode: _searchFocusNode,
-                                      textCapitalization: TextCapitalization.sentences,
-                                      onChanged: (value) {
-                                        if (_lastCorrectedOriginal != null && _lastCorrectedResult != null && !value.endsWith(' ')) {
-                                          if (value.length < _lastSearchValue.length) {
-                                            // Backspaced the space -> Revert
-                                            final revertedText = value.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
-                                            setState(() {
-                                              _searchController.text = revertedText;
-                                              _lastSearchValue = revertedText;
-                                              _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
-                                              _lastCorrectedOriginal = null;
-                                              _lastCorrectedResult = null;
-                                            });
-                                            _showOverlay();
-                                            return;
-                                          } else {
-                                            // Typed forward -> Accept (hide undo)
-                                            setState(() {
-                                              _lastCorrectedOriginal = null;
-                                              _lastCorrectedResult = null;
-                                            });
-                                          }
-                                        }
-                                        _handleAutocorrect(value);
-                                        setState(() => _lastSearchValue = value);
-                                        _showOverlay();
-                                      },
-                                      onTap: _showOverlay,
-                                      style: TextStyle(color: textColor),
-                                      decoration: InputDecoration(
-                                        hintText: 'Search materials...',
-                                        hintStyle: const TextStyle(color: Colors.grey),
-                                        prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
-                                        suffixIcon: _lastCorrectedOriginal != null
-                                            ? GestureDetector(
-                                                onTap: _revertAutocorrect,
-                                                child: Container(
-                                                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                                  decoration: BoxDecoration(
-                                                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
-                                                    borderRadius: BorderRadius.circular(12),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Text(
-                                                        _lastCorrectedOriginal!,
-                                                        style: TextStyle(
-                                                          color: isDark ? Colors.white54 : Colors.black54,
-                                                          fontSize: 10,
-                                                          fontWeight: FontWeight.bold,
-                                                          decoration: TextDecoration.lineThrough,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 4),
-                                                      const Text(
-                                                        'Undo',
-                                                        style: TextStyle(
-                                                          color: Color(0xFF24C7FF),
-                                                          fontSize: 10,
-                                                          fontWeight: FontWeight.w900,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              )
-                                            : null,
-                                        filled: true,
-                                        fillColor: isDark ? const Color(0xFF181739).withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.72),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
-                                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                GestureDetector(
-                                  onTap: () {
-                                    setState(() {});
-                                    _hideOverlay();
-                                    _searchFocusNode.unfocus();
-                                  },
-                                  child: Container(
-                                    height: 56,
-                                    width: 56,
-                                    decoration: BoxDecoration(color: const Color(0xFF00A85A), borderRadius: BorderRadius.circular(16)),
-                                    child: const Center(child: Text('🔍', style: TextStyle(fontSize: 20))),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: _showFilters,
-                                icon: Icon(Icons.tune, color: _activeFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
-                                label: Text(
-                                  _activeFilters.isNotEmpty ? 'Filters Active (${_activeFilters.length})' : 'Filter',
-                                  style: TextStyle(color: textColor.withValues(alpha: 0.7)),
-                                ),
-                                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Row(
-                              children: [
-                                Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  child: Text('FOR YOU', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                                ),
-                                Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (filteredResources.isEmpty)
-                      SliverFillRemaining(
-                        child: Center(
+                child: RefreshIndicator(
+                  onRefresh: _handleRefresh,
+                  color: const Color(0xFF24C7FF),
+                  backgroundColor: isDark ? const Color(0xFF181739) : Colors.white,
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    key: const PageStorageKey('dashboard_scroll'),
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.search_off_rounded, color: textColor.withValues(alpha: 0.1), size: 64),
-                              const SizedBox(height: 16),
-                              Text('No materials match your search', style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 16)),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const SizedBox(),
+                                  Row(
+                                    children: [
+                                      ListenableBuilder(
+                                        listenable: ref.watch(chatServiceProvider),
+                                        builder: (context, child) {
+                                          final unreadMessages = ref.read(chatServiceProvider).unreadCount;
+                                          return Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              IconButton(
+                                                onPressed: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
+                                                  );
+                                                },
+                                                icon: SvgPicture.asset(
+                                                  'assets/messenger.svg',
+                                                  height: 28,
+                                                  width: 28,
+                                                  colorFilter: const ColorFilter.mode(
+                                                    Color(0xFF00B2FF),
+                                                    BlendMode.srcIn,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (unreadMessages > 0)
+                                                Positioned(
+                                                  top: 8,
+                                                  right: 8,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(4),
+                                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                                    child: Text(
+                                                      unreadMessages > 9 ? '9+' : unreadMessages.toString(),
+                                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                      textAlign: TextAlign.center,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                      ListenableBuilder(
+                                        listenable: NotificationService(),
+                                        builder: (context, child) {
+                                          final unreadCount = NotificationService().unreadCount;
+                                          return Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              IconButton(
+                                                onPressed: _showNotifications,
+                                                icon: const Text('🔔', style: TextStyle(fontSize: 24)),
+                                              ),
+                                              if (unreadCount > 0)
+                                                Positioned(
+                                                  top: 8,
+                                                  right: 8,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(4),
+                                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                                    child: Text(
+                                                      unreadCount > 9 ? '9+' : unreadCount.toString(),
+                                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                      textAlign: TextAlign.center,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 8),
-                              const TextButton(onPressed: null, child: Text('Try searching something else', style: TextStyle(color: Color(0xFF20C8FF)))),
+                              Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 8),
+                              Text('Find your academic edge.', style: TextStyle(color: subTextColor)),
+                              const SizedBox(height: 20),
+                              const SmartAdBanner(),
+                              const SizedBox(height: 20),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                clipBehavior: Clip.none,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: Row(
+                                    children: _categoryData.map((data) {
+                                      final String label = data['label'];
+                                      final Color color = data['color'];
+                                      final IconData icon = data['icon'];
+                                      final isSelected = _selectedCategory == label;
+                                      return Padding(
+                                        padding: const EdgeInsets.only(right: 12.0),
+                                        child: GestureDetector(
+                                          onTap: () => setState(() => _selectedCategory = label),
+                                          child: CategoryChip(label: label, icon: icon, color: color, isActive: isSelected),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: CompositedTransformTarget(
+                                      link: _layerLink,
+                                      child: TextField(
+                                        controller: _searchController,
+                                        focusNode: _searchFocusNode,
+                                        textCapitalization: TextCapitalization.sentences,
+                                        onChanged: (value) {
+                                          if (_lastCorrectedOriginal != null && _lastCorrectedResult != null && !value.endsWith(' ')) {
+                                            if (value.length < _lastSearchValue.length) {
+                                              // Backspaced the space -> Revert
+                                              final revertedText = value.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
+                                              setState(() {
+                                                _searchController.text = revertedText;
+                                                _lastSearchValue = revertedText;
+                                                _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
+                                                _lastCorrectedOriginal = null;
+                                                _lastCorrectedResult = null;
+                                              });
+                                              _showOverlay();
+                                              return;
+                                            } else {
+                                              // Typed forward -> Accept (hide undo)
+                                              setState(() {
+                                                _lastCorrectedOriginal = null;
+                                                _lastCorrectedResult = null;
+                                              });
+                                            }
+                                          }
+                                          _handleAutocorrect(value);
+                                          setState(() => _lastSearchValue = value);
+                                          _showOverlay();
+                                        },
+                                        onTap: _showOverlay,
+                                        style: TextStyle(color: textColor),
+                                        decoration: InputDecoration(
+                                          hintText: 'Search materials...',
+                                          hintStyle: const TextStyle(color: Colors.grey),
+                                          prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
+                                          suffixIcon: _lastCorrectedOriginal != null
+                                              ? GestureDetector(
+                                                  onTap: _revertAutocorrect,
+                                                  child: Container(
+                                                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                                    decoration: BoxDecoration(
+                                                      color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Text(
+                                                          _lastCorrectedOriginal!,
+                                                          style: TextStyle(
+                                                            color: isDark ? Colors.white54 : Colors.black54,
+                                                            fontSize: 10,
+                                                            fontWeight: FontWeight.bold,
+                                                            decoration: TextDecoration.lineThrough,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        const Text(
+                                                          'Undo',
+                                                          style: TextStyle(
+                                                            color: Color(0xFF24C7FF),
+                                                            fontSize: 10,
+                                                            fontWeight: FontWeight.w900,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                )
+                                              : null,
+                                          filled: true,
+                                          fillColor: isDark ? const Color(0xFF181739).withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.72),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
+                                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {});
+                                      _hideOverlay();
+                                      _searchFocusNode.unfocus();
+                                    },
+                                    child: Container(
+                                      height: 56,
+                                      width: 56,
+                                      decoration: BoxDecoration(color: const Color(0xFF00A85A), borderRadius: BorderRadius.circular(16)),
+                                      child: const Center(child: Text('🔍', style: TextStyle(fontSize: 20))),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed: _showFilters,
+                                  icon: Icon(Icons.tune, color: _activeFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
+                                  label: Text(
+                                    _activeFilters.isNotEmpty ? 'Filters Active (${_activeFilters.length})' : 'Filter',
+                                    style: TextStyle(color: textColor.withValues(alpha: 0.7)),
+                                  ),
+                                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Text('FOR YOU', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                                  ),
+                                  Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
                             ],
                           ),
                         ),
-                      )
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        sliver: SliverGrid(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 0.72),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final res = filteredResources[index];
-                              return ResourceCard(
-                                title: res.title,
-                                type: res.type,
-                                materialFormat: res.materialFormat,
-                                thumbnailUrl: res.thumbnailUrl,
-                                unitName: res.unitName,
-                                unitCode: res.unitCode,
-                                targetPrograms: res.targetPrograms,
-                                programCodes: res.programCodes,
-                                year: res.year,
-                                uploadYear: res.uploadYear,
-                                publicationYear: res.publicationYear,
-                                yearOfStudy: res.yearOfStudy,
-                                semester: res.semester,
-                                lecturers: res.lecturers,
-                                uploadedBy: res.uploadedBy,
-                                uploaderRole: res.uploaderRole,
-                                views: res.views.toString(),
-                                likes: res.likes.toString(),
-                                comments: res.comments.toString(),
-                                isLiked: res.isLiked,
-                                onLikeToggle: () => ResourceService().toggleLike(res.title),
-                                onViewIncrement: () => ResourceService().incrementViews(res.title),
-                                showPin: false,
-                                onTap: () {},
-                              );
-                            },
-                            childCount: filteredResources.length,
-                          ),
-                        ),
                       ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  ],
+                      ..._buildGridWithAds(filteredResources, textColor),
+                      const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -854,5 +823,90 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
       },
     );
+  }
+
+  List<Widget> _buildGridWithAds(List<Resource> filteredResources, Color textColor) {
+    if (filteredResources.isEmpty) {
+      return [
+        SliverFillRemaining(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off_rounded, color: textColor.withValues(alpha: 0.1), size: 64),
+                const SizedBox(height: 16),
+                Text('No materials match your search', style: TextStyle(color: textColor.withValues(alpha: 0.2), fontSize: 16)),
+                const SizedBox(height: 8),
+                const TextButton(onPressed: null, child: Text('Try searching something else', style: TextStyle(color: Color(0xFF20C8FF)))),
+              ],
+            ),
+          ),
+        )
+      ];
+    }
+
+    List<Widget> slivers = [];
+    const int itemsPerRow = 2;
+    const int rowsPerAd = 4;
+    const int itemsPerAd = itemsPerRow * rowsPerAd;
+
+    for (int i = 0; i < filteredResources.length; i += itemsPerAd) {
+      final end = (i + itemsPerAd < filteredResources.length) ? i + itemsPerAd : filteredResources.length;
+      final chunk = filteredResources.sublist(i, end);
+
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 0.72),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final res = chunk[index];
+                return ResourceCard(
+                  title: res.title,
+                  type: res.type,
+                  materialFormat: res.materialFormat,
+                  thumbnailUrl: res.thumbnailUrl,
+                  unitName: res.unitName,
+                  unitCode: res.unitCode,
+                  targetPrograms: res.targetPrograms,
+                  programCodes: res.programCodes,
+                  year: res.year,
+                  uploadYear: res.uploadYear,
+                  publicationYear: res.publicationYear,
+                  yearOfStudy: res.yearOfStudy,
+                  semester: res.semester,
+                  lecturers: res.lecturers,
+                  uploadedBy: res.uploadedBy,
+                  uploaderRole: res.uploaderRole,
+                  views: res.views.toString(),
+                  likes: res.likes.toString(),
+                  comments: res.comments.toString(),
+                  isLiked: res.isLiked,
+                  onLikeToggle: () => ResourceService().toggleLike(res.title),
+                  onViewIncrement: () => ResourceService().incrementViews(res.title),
+                  showPin: false,
+                  onTap: () {},
+                );
+              },
+              childCount: chunk.length,
+            ),
+          ),
+        ),
+      );
+
+      if (end < filteredResources.length && !SubscriptionService().isSubscribed) {
+        slivers.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+              child: InlineAdBanner(),
+            ),
+          ),
+        );
+      }
+    }
+
+    return slivers;
   }
 }
