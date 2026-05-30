@@ -13,6 +13,7 @@ import 'services/course_service.dart';
 import 'services/resource_service.dart';
 import 'providers/upload_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/download_service.dart';
 import 'services/top_notification_service.dart';
 
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -48,6 +49,10 @@ Future<void> _initServices() async {
       SubscriptionService().init(),
       UsageService().init(),
     ]);
+    
+    // Run retention cleanup on launch
+    DownloadService().performRetentionCleanup();
+    
     debugPrint('All services initialized successfully');
   } catch (e) {
     debugPrint('Error during service initialization: $e');

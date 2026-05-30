@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'persistence_service.dart';
+import 'subscription_service.dart';
+import 'connectivity_service.dart';
 
 class DownloadService extends ChangeNotifier {
   static final DownloadService _instance = DownloadService._internal();
@@ -27,8 +29,8 @@ class DownloadService extends ChangeNotifier {
     return _trashedResources;
   }
 
-  bool isPinned(String title) => _pinnedResources.any((r) => r['title'] == title);
-  bool isDownloaded(String title) => isPinned(title) || _unpinnedResources.any((r) => r['title'] == title);
+  bool isPinned(String title) => _pinnedResources.any((r) => r['title'] == title && r['isExpired'] != 'true');
+  bool isDownloaded(String title) => isPinned(title) || _unpinnedResources.any((r) => r['title'] == title && r['isExpired'] != 'true');
 
   Future<void> _restoreData() async {
     final pinned = PersistenceService().getJson('download_pinned');
@@ -204,6 +206,22 @@ class DownloadService extends ChangeNotifier {
 
     if (isDownloading(title)) return;
 
+    // Check subscription limits
+    final subService = SubscriptionService();
+    String source = 'rewarded_ad';
+    
+    if (subService.isSubscribed) {
+      if (!subService.canDownload()) {
+        _showLimitReachedMessages();
+        return;
+      }
+      source = subService.activeSubscription?.packageTitle ?? 'rewarded_ad';
+    } else if (!subService.isResourceUnlocked(title)) {
+      // If not subscribed and not unlocked via ad, we shouldn't be here normally 
+      // but let's default to rewarded_ad if it was triggered.
+      source = 'rewarded_ad';
+    }
+
     _isDownloading[title] = true;
     _downloadProgress[title] = 0.0;
     notifyListeners();
@@ -225,11 +243,119 @@ class DownloadService extends ChangeNotifier {
     _isDownloading[title] = false;
     
     if (!isDownloaded(title)) {
-      _unpinnedResources.insert(0, resourceData);
+      final Map<String, String> enrichedData = Map<String, String>.from(resourceData);
+      enrichedData['downloadDate'] = DateTime.now().toIso8601String();
+      enrichedData['acquisitionSource'] = source;
+      
+      _unpinnedResources.insert(0, enrichedData);
+      // Increment download count for active subscription
+      if (subService.isSubscribed) {
+        await subService.recordDownload();
+      }
       _saveData();
     }
     
     notifyListeners();
+  }
+
+  void performRetentionCleanup() {
+    final now = DateTime.now();
+    bool changed = false;
+
+    void processList(List<Map<String, String>> list) {
+      for (int i = 0; i < list.length; i++) {
+        final res = list[i];
+        if (res.containsKey('downloadDate') && res.containsKey('acquisitionSource')) {
+          final downloadDate = DateTime.parse(res['downloadDate']!);
+          final source = res['acquisitionSource']!;
+          
+          Duration retention;
+          switch (source) {
+            case 'rewarded_ad':
+              retention = const Duration(days: 14);
+              break;
+            case 'Daily Pass':
+              retention = const Duration(days: 21);
+              break;
+            case 'Weekly Pass':
+              retention = const Duration(days: 30);
+              break;
+            case 'Monthly Pass':
+              retention = const Duration(days: 90);
+              break;
+            case 'Semester Pass':
+              retention = const Duration(days: 120); // 4 months
+              break;
+            case 'Yearly Pass':
+              retention = const Duration(days: 450); // 15 months
+              break;
+            default:
+              retention = const Duration(days: 14);
+          }
+
+          if (now.difference(downloadDate) > retention) {
+            // Expired!
+            // Remove the local file reference by removing it from the download lists
+            // but we want to keep it visible in Library cards. 
+            // In this app's architecture, 'isDownloaded' is determined by presence in these lists.
+            // However, the requirement says "keep the card visible in Library".
+            // We'll mark it as expired in the metadata.
+            list[i] = Map<String, String>.from(res);
+            list[i]['isExpired'] = 'true';
+            
+            // Actually removing from these lists would hide it from "Downloads" section in Library,
+            // but the prompt says "Downloaded materials should remain visible in Library".
+            // So we keep them in the list but mark them expired.
+            // The UI (ResourceCard) should check 'isExpired' and treat it as not downloaded.
+            
+            // To "remove the local file", we should ideally remove it from cache
+            final url = res['thumbnail'] ?? res['thumbnailUrl'];
+            if (url != null) {
+              DefaultCacheManager().removeFile(url);
+            }
+            changed = true;
+          }
+        }
+      }
+    }
+
+    processList(_pinnedResources);
+    processList(_unpinnedResources);
+    processList(_archivedResources);
+
+    if (changed) {
+      _saveData();
+      notifyListeners();
+    }
+  }
+
+  void _showLimitReachedMessages() async {
+    final messenger = ConnectivityService().messengerKey.currentState;
+    if (messenger == null) return;
+
+    final messages = [
+      {'text': 'Download limit reached for your current plan.', 'color': Colors.redAccent},
+      {'text': 'You can continue reading and accessing your available materials until your plan expires.', 'color': const Color(0xFF00A85A)},
+      {'text': 'To unlock more downloads, watch a rewarded ad or activate another package.', 'color': const Color(0xFF00A85A)},
+    ];
+
+    for (var msg in messages) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            msg['text'] as String,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: (msg['color'] as Color).withValues(alpha: 0.9),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      await Future.delayed(const Duration(seconds: 5, milliseconds: 500));
+    }
   }
 }
 

@@ -712,7 +712,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         Switch(
                           value: !isDark,
                           onChanged: (val) {
-                            ref.read(themeProvider.notifier).state = val ? ThemeMode.light : ThemeMode.dark;
+                            ref.read(themeProvider.notifier).setTheme(val ? ThemeMode.light : ThemeMode.dark);
                           },
                           activeColor: const Color(0xFF20C8FF),
                         ),
@@ -911,7 +911,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     
     return GestureDetector(
       onTap: () {
-        ref.read(themeProvider.notifier).state = (label == 'Dark' ? ThemeMode.dark : ThemeMode.light);
+        ref.read(themeProvider.notifier).setTheme(label == 'Dark' ? ThemeMode.dark : ThemeMode.light);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

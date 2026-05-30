@@ -164,15 +164,14 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
 
   bool _hasFullAccess() {
     final subService = ref.read(subscriptionServiceProvider);
-    final downloadService = ref.read(downloadServiceProvider);
     final resourceService = ref.read(resourceServiceProvider);
 
     final bool isSubscribed = subService.isSubscribed;
-    final bool isDownloaded = downloadService.isDownloaded(widget.title);
     final bool isMyUpload = resourceService.userUploads.any((r) => r.title == widget.title);
-    final bool isSessionUnlocked = subService.isResourceUnlocked(widget.title);
+    final bool isPermanentlyUnlocked = subService.isResourceUnlocked(widget.title);
 
-    return isSubscribed || isDownloaded || isMyUpload || isSessionUnlocked;
+    // After plan expiry, downloaded materials require ad-unlock or new subscription
+    return isSubscribed || isMyUpload || isPermanentlyUnlocked;
   }
 
   void _setActiveResource() {

@@ -25,6 +25,7 @@ class ExploreScreen extends ConsumerStatefulWidget {
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   bool _isLoading = true;
   late PageController _pageController;
+  late ScrollController _tabScrollController;
 
   final List<String> _categories = [
     'For You',
@@ -51,14 +52,46 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     super.initState();
     final uiState = ref.read(uiStateProvider);
     final initialIndex = _categories.indexOf(uiState.exploreCategory);
-    _pageController = PageController(initialPage: initialIndex != -1 ? initialIndex : 0);
+    final validInitialIndex = initialIndex != -1 ? initialIndex : 0;
+    
+    _pageController = PageController(initialPage: validInitialIndex);
+    _tabScrollController = ScrollController();
+    
     _loadMockData();
+
+    // Initial scroll sync
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToCategory(validInitialIndex);
+    });
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _tabScrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToCategory(int index) {
+    if (!_tabScrollController.hasClients) return;
+
+    // Estimate button width (padding + text + margin)
+    // Most buttons are around 80-120px wide
+    const double approxButtonWidth = 100.0;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    
+    // Target position to center the button
+    final double targetScroll = (index * approxButtonWidth) - (screenWidth / 2) + (approxButtonWidth / 2);
+    
+    // Clamp the scroll position
+    final double maxScroll = _tabScrollController.position.maxScrollExtent;
+    final double clampedScroll = targetScroll.clamp(0.0, maxScroll);
+
+    _tabScrollController.animateTo(
+      clampedScroll,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _loadMockData() async {
@@ -297,6 +330,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   itemCount: _categories.length,
                   onPageChanged: (index) {
                     ref.read(uiStateProvider.notifier).setExploreCategory(_categories[index]);
+                    _scrollToCategory(index);
                   },
                   itemBuilder: (context, index) {
                     final category = _categories[index];
@@ -417,6 +451,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       height: 38,
       margin: const EdgeInsets.only(top: 4, bottom: 8),
       child: ListView.builder(
+        controller: _tabScrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: _categories.length + 1,

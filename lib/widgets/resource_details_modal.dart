@@ -81,15 +81,14 @@ class ResourceDetailsModal extends ConsumerWidget {
 
   bool _hasFullAccess(WidgetRef ref) {
     final subService = ref.read(subscriptionServiceProvider);
-    final downloadService = ref.read(downloadServiceProvider);
     final resourceService = ref.read(resourceServiceProvider);
 
     final bool isSubscribed = subService.isSubscribed;
-    final bool isDownloaded = downloadService.isDownloaded(title);
     final bool isMyUpload = resourceService.userUploads.any((r) => r.title == title);
-    final bool isSessionUnlocked = subService.isResourceUnlocked(title);
+    final bool isPermanentlyUnlocked = subService.isResourceUnlocked(title);
 
-    return isSubscribed || isDownloaded || isMyUpload || isSessionUnlocked;
+    // After plan expiry, downloaded materials require ad-unlock or new subscription
+    return isSubscribed || isMyUpload || isPermanentlyUnlocked;
   }
 
   void _handleMaterialAction(BuildContext context, WidgetRef ref, List<String> displayPrograms, List<String> displayLecturers, bool isDownload) async {

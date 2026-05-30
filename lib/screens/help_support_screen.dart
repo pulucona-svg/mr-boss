@@ -402,16 +402,42 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
             child: Image.asset(
               'assets/chat_wallpaper.jpeg',
               fit: BoxFit.cover,
+              color: Colors.black.withOpacity(0.6),
+              colorBlendMode: BlendMode.darken,
             ),
           ),
           Column(
             children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF182229).withOpacity(0.8) : Colors.white.withOpacity(0.8),
+                ),
+                child: const Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.timer_outlined, size: 14, color: Colors.amber),
+                      SizedBox(width: 8),
+                      Text(
+                        'Messages will be deleted after 7 days',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               Expanded(
                 child: ListView.builder(
                 reverse: true,
                 controller: _scrollController,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                itemCount: messages.length + (chatService.isAdminTyping ? 2 : 1),
+                itemCount: messages.length + (chatService.isAdminTyping ? 1 : 0),
                 itemBuilder: (context, index) {
                   // Typing Indicator
                   if (chatService.isAdminTyping && index == 0) {
@@ -419,24 +445,6 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
                   }
 
                   final actualIndex = chatService.isAdminTyping ? index - 1 : index;
-
-                  // Disappearing Message Header (Top of Chat)
-                  if (actualIndex == messages.length) {
-                    return Center(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 16, top: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF182229) : Colors.black12,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'Messages are deleted after 7 days',
-                          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 12),
-                        ),
-                      ),
-                    );
-                  }
                   
                   final messageIndex = messages.length - 1 - actualIndex;
                   final message = messages[messageIndex];

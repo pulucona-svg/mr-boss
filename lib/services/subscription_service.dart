@@ -10,7 +10,7 @@ class SubscriptionService extends ChangeNotifier {
   SubscriptionService._internal();
 
   List<SubscriptionHistory> _history = [];
-  final Set<String> _unlockedResources = {}; // Track items unlocked via ads in this session
+  final Set<String> _unlockedResources = {}; 
   bool _isInitialized = false;
   RewardedAd? _rewardedAd;
   bool _isAdLoading = false;
@@ -21,6 +21,7 @@ class SubscriptionService extends ChangeNotifier {
 
   void unlockResource(String title) {
     _unlockedResources.add(title);
+    _saveUnlockedResources();
     notifyListeners();
   }
 
@@ -45,10 +46,58 @@ class SubscriptionService extends ChangeNotifier {
     _history = historyJson
         .map((j) => SubscriptionHistory.fromJson(jsonDecode(j)))
         .toList();
+
+    final unlocked = PersistenceService().getStringList('unlocked_resources') ?? [];
+    _unlockedResources.addAll(unlocked);
     
     _updateSubscriptionStates();
     _loadRewardedAd();
     notifyListeners();
+  }
+
+  Future<void> _saveUnlockedResources() async {
+    await PersistenceService().setStringList('unlocked_resources', _unlockedResources.toList());
+  }
+
+  int getDownloadLimit(String packageTitle) {
+    switch (packageTitle) {
+      case 'Daily Pass':
+        return 10;
+      case 'Weekly Pass':
+        return 30;
+      case 'Monthly Pass':
+        return 50;
+      case 'Semester Pass':
+        return 150;
+      case 'Yearly Pass':
+        return -1; // Unlimited
+      default:
+        return 0;
+    }
+  }
+
+  bool canDownload() {
+    final active = activeSubscription;
+    if (active == null) return false;
+    
+    final limit = getDownloadLimit(active.packageTitle);
+    if (limit == -1) return true;
+    
+    return active.downloadCount < limit;
+  }
+
+  Future<void> recordDownload() async {
+    final active = activeSubscription;
+    if (active != null) {
+      for (int i = 0; i < _history.length; i++) {
+        if (_history[i].id == active.id) {
+          _history[i] = _history[i].copyWith(downloadCount: _history[i].downloadCount + 1);
+          break;
+        }
+      }
+      await _saveHistory();
+      notifyListeners();
+    }
   }
 
   void _updateSubscriptionStates() {

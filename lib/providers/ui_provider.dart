@@ -50,7 +50,6 @@ class UIState {
 
   Map<String, dynamic> toJson() {
     return {
-      'mainNavigationIndex': mainNavigationIndex,
       'dashboardCategory': dashboardCategory,
       'libraryCategory': libraryCategory,
       'exploreCategory': exploreCategory,
@@ -64,7 +63,7 @@ class UIState {
 
   factory UIState.fromJson(Map<String, dynamic> json) {
     return UIState(
-      mainNavigationIndex: json['mainNavigationIndex'] ?? 0,
+      mainNavigationIndex: 0, // Always default to Home on fresh launch
       dashboardCategory: json['dashboardCategory'] ?? 'All',
       libraryCategory: json['libraryCategory'] ?? 'All',
       exploreCategory: json['exploreCategory'] ?? 'For You',

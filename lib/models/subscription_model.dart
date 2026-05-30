@@ -28,6 +28,7 @@ class SubscriptionHistory {
   final DateTime activationDate;
   final DateTime expiryDate;
   final SubscriptionStatus status;
+  final int downloadCount;
 
   SubscriptionHistory({
     required this.id,
@@ -38,12 +39,14 @@ class SubscriptionHistory {
     required this.activationDate,
     required this.expiryDate,
     required this.status,
+    this.downloadCount = 0,
   });
 
   SubscriptionHistory copyWith({
     SubscriptionStatus? status,
     DateTime? activationDate,
     DateTime? expiryDate,
+    int? downloadCount,
   }) {
     return SubscriptionHistory(
       id: id,
@@ -54,6 +57,7 @@ class SubscriptionHistory {
       activationDate: activationDate ?? this.activationDate,
       expiryDate: expiryDate ?? this.expiryDate,
       status: status ?? this.status,
+      downloadCount: downloadCount ?? this.downloadCount,
     );
   }
 
@@ -66,6 +70,7 @@ class SubscriptionHistory {
     'activationDate': activationDate.toIso8601String(),
     'expiryDate': expiryDate.toIso8601String(),
     'status': status.name,
+    'downloadCount': downloadCount,
   };
 
   factory SubscriptionHistory.fromJson(Map<String, dynamic> json) => SubscriptionHistory(
@@ -77,5 +82,6 @@ class SubscriptionHistory {
     activationDate: DateTime.parse(json['activationDate']),
     expiryDate: DateTime.parse(json['expiryDate']),
     status: SubscriptionStatus.values.byName(json['status'] ?? 'active'),
+    downloadCount: json['downloadCount'] ?? 0,
   );
 }
