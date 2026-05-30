@@ -14,6 +14,7 @@ import '../widgets/inline_ad_banner.dart';
 import '../services/subscription_service.dart';
 import '../services/connectivity_service.dart';
 import '../providers/ui_provider.dart';
+import 'more_options_screen.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
@@ -457,19 +458,27 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         itemCount: _categories.length + 1,
         itemBuilder: (context, index) {
           if (index == _categories.length) {
-            return Container(
-              width: 44,
-              margin: const EdgeInsets.only(left: 4),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF181739) : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.menu_rounded,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                  size: 20,
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MoreOptionsScreen()),
+                );
+              },
+              child: Container(
+                width: 44,
+                margin: const EdgeInsets.only(left: 4),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF181739) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.menu_rounded,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    size: 20,
+                  ),
                 ),
               ),
             );
