@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "386198984140",
+    "project_id": "mirror-laikipia",
+    "storage_bucket": "mirror-laikipia.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:386198984140:android:d16ebe33c2cc43ba41f969",
+        "android_client_info": {
+          "package_name": "com.example.mirror_laikipia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD44DX6hgaOnztSacVP-bhJC523zTpOc-I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
