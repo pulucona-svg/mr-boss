@@ -217,7 +217,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     child: _buildSocialButton(
                       icon: const FaIcon(FontAwesomeIcons.apple, size: 24),
                       label: "Continue with Apple",
-                      onPressed: () {},
+                      onPressed: () {
+                        TopNotificationService().showNotification(context, "Apple Sign-In coming soon");
+                      },
                     ),
                   ),
 
@@ -309,20 +311,31 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     return SizedBox(
       width: double.infinity,
       height: 56,
-      child: ElevatedButton.icon(
+      child: ElevatedButton(
         onPressed: _isLoading ? null : _handleGoogleSignup,
-        icon: Image.network(
-          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
-          height: 24,
-        ),
-        label: const Text(
-          "Continue with Google",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const FaIcon(
+              FontAwesomeIcons.google,
+              color: Color(0xFFEA4335), // Google Red
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            const Flexible(
+              child: Text(
+                "Continue with Google",
+                style: TextStyle(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

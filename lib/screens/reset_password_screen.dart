@@ -160,7 +160,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) {
           final profile = ref.read(userProfileProvider);
-          if (widget.isSignup || !profile.onboardingComplete) {
+          if (widget.isSignup) {
+            // After signup, we go to home because personalization/profile pic were done before this screen
+            Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+          } else if (!profile.onboardingComplete) {
             Navigator.pushNamedAndRemoveUntil(
               context, 
               '/personalization',

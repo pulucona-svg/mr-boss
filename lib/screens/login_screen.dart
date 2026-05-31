@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'signup_screen.dart';
 import 'reset_password_screen.dart';
 import 'academic_personalization_screen.dart';
@@ -240,19 +241,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             icon: Icons.lock,
                           ),
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
 
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Checkbox(
-                                value: _rememberMe,
-                                onChanged: (v) =>
-                                    setState(() => _rememberMe = v ?? false),
-                                activeColor: const Color(0xFF20C8FF),
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: Checkbox(
+                                      value: _rememberMe,
+                                      onChanged: (v) =>
+                                          setState(() => _rememberMe = v ?? false),
+                                      activeColor: const Color(0xFF20C8FF),
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text("Remember me",
+                                      style: TextStyle(color: Colors.white, fontSize: 13)),
+                                ],
                               ),
-                              const Text("Remember me",
-                                  style: TextStyle(color: Colors.white)),
-                              const Spacer(),
                               Flexible(
                                 child: TextButton(
                                   onPressed: () {
@@ -274,6 +286,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     "Forgot Password?",
                                     style: TextStyle(
                                       color: Color(0xFF20C8FF),
+                                      fontSize: 13,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -292,6 +305,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF20C8FF),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
                               child: _isLoading
                                   ? const CircularProgressIndicator(
@@ -305,34 +321,72 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
 
-                    // GOOGLE BUTTON
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: OutlinedButton.icon(
-                        onPressed: _isLoading ? null : _handleGoogleLogin,
-                        icon: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
-                          height: 24,
-                        ),
-                        label: const Text(
-                          "Continue with Google",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                          const SizedBox(height: 16),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                  child: Divider(
+                                      color: Colors.white.withOpacity(0.3))),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(
+                                  "OR",
+                                  style: TextStyle(
+                                      color: Colors.white.withOpacity(0.5),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              Expanded(
+                                  child: Divider(
+                                      color: Colors.white.withOpacity(0.3))),
+                            ],
                           ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.white24),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+
+                          const SizedBox(height: 16),
+
+                          // GOOGLE BUTTON
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: OutlinedButton(
+                              onPressed: _isLoading ? null : _handleGoogleLogin,
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.white24),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const FaIcon(
+                                    FontAwesomeIcons.google,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Flexible(
+                                    child: Text(
+                                      "Continue with Google",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
 
@@ -341,9 +395,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text("Don't have an account? "),
+                        const Text("Don't have an account? ",
+                            style: TextStyle(color: Colors.white70)),
                         GestureDetector(
-                          onTap: () => Navigator.pop(context), // Back to Signup
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SignupScreen(),
+                            ),
+                          ),
                           child: const Text(
                             "Create Account",
                             style: TextStyle(
