@@ -73,44 +73,58 @@ class AuthService {
     debugPrint('AuthService: [DEBUG] Starting signInWithGoogle flow...');
     
     try {
+      debugPrint('AuthService: [DEBUG] Step 1: Ensuring GoogleSignIn is initialized...');
       await _ensureInitialized();
+      debugPrint('AuthService: [DEBUG] Step 1: Initialization complete.');
 
       // Force account picker by disconnecting and signing out first
       try {
-        await _googleSignIn.disconnect().catchError((_) => null);
-        await _googleSignIn.signOut().catchError((_) => null);
+        debugPrint('AuthService: [DEBUG] Step 2: Prep - Disconnecting existing Google account...');
+        await _googleSignIn.disconnect().catchError((e) {
+          debugPrint('AuthService: [DEBUG] Disconnect failed (normal if first time): $e');
+          return null;
+        });
+        debugPrint('AuthService: [DEBUG] Step 2: Signing out from Google...');
+        await _googleSignIn.signOut().catchError((e) {
+          debugPrint('AuthService: [DEBUG] SignOut failed (normal): $e');
+          return null;
+        });
       } catch (e) {
         debugPrint('AuthService: [DEBUG] Prep error (safe to ignore): $e');
       }
 
       // Authenticate
-      debugPrint('AuthService: [DEBUG] Calling authenticate()...');
+      debugPrint('AuthService: [DEBUG] Step 3: Triggering account picker via authenticate()...');
       // In 7.2.0, authenticate() replaces signIn()
       final googleUser = await _googleSignIn.authenticate();
-      debugPrint('AuthService: [DEBUG] Google User authenticated: ${googleUser.email}');
+      debugPrint('AuthService: [DEBUG] Step 3: Google User authenticated: ${googleUser.email}');
 
       // Get tokens
-      debugPrint('AuthService: [DEBUG] Retrieving authentication details...');
+      debugPrint('AuthService: [DEBUG] Step 4: Retrieving authentication details (idToken)...');
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+      debugPrint('AuthService: [DEBUG] Step 4: idToken available: ${googleAuth.idToken != null}');
       
       // Optionally retrieve access token for scopes if needed (often required by Firebase)
+      debugPrint('AuthService: [DEBUG] Step 5: Requesting authorization for scopes...');
       final authz = await googleUser.authorizationClient.authorizationForScopes(['openid', 'email', 'profile']);
-      debugPrint('AuthService: [DEBUG] Tokens retrieved.');
+      debugPrint('AuthService: [DEBUG] Step 5: Authorization for scopes retrieved: ${authz != null}');
 
       // Create Firebase Credential
-      debugPrint('AuthService: [DEBUG] Creating Firebase GoogleAuthProvider credential...');
+      debugPrint('AuthService: [DEBUG] Step 6: Creating Firebase GoogleAuthProvider credential...');
       final credential = GoogleAuthProvider.credential(
         accessToken: authz?.accessToken,
         idToken: googleAuth.idToken,
       );
 
       // Sign in to Firebase
-      debugPrint('AuthService: [DEBUG] Calling signInWithCredential on FirebaseAuth...');
+      debugPrint('AuthService: [DEBUG] Step 7: Calling signInWithCredential on FirebaseAuth...');
       final userCredential = await _auth.signInWithCredential(credential);
-      debugPrint('AuthService: [DEBUG] FirebaseAuth sign-in successful. UID: ${userCredential.user?.uid}');
+      debugPrint('AuthService: [DEBUG] Step 7: FirebaseAuth sign-in successful. UID: ${userCredential.user?.uid}');
       
       if (userCredential.user != null) {
+        debugPrint('AuthService: [DEBUG] Step 8: Syncing user with UserService...');
         await _userService.syncUser(userCredential.user!);
+        debugPrint('AuthService: [DEBUG] Step 8: Sync complete.');
       }
 
       return userCredential;
@@ -119,8 +133,12 @@ class AuthService {
         debugPrint('AuthService: [DEBUG] User cancelled the Google Sign-In picker.');
         return null;
       }
-      debugPrint('AuthService: [FATAL ERROR] Google Sign-In failed: $e');
+      debugPrint('AuthService: [FATAL ERROR] Google Sign-In failed (GoogleSignInException): $e');
+      debugPrint('AuthService: [DEBUG] Code: ${e.code}');
       throw Exception("Google Sign-In failed: $e");
+    } on FirebaseAuthException catch (e) {
+      debugPrint('AuthService: [FATAL ERROR] FirebaseAuthException: ${e.code} - ${e.message}');
+      throw Exception("Firebase Auth Error: ${e.message}");
     } catch (e, stackTrace) {
       debugPrint('AuthService: [FATAL ERROR] Unexpected error during Google Sign-In: $e');
       debugPrint('AuthService: [STACK TRACE]: $stackTrace');

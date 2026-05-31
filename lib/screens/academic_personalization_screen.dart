@@ -350,9 +350,10 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                             onboardingComplete: true,
                                           );
 
-                                          // Only sync to Firestore if we have a UID (logged in Google user)
-                                          if (userProfile.uid.isNotEmpty) {
-                                            await UserService().completeOnboarding(userProfile.uid, profileData);
+                                          // Only sync to Firestore if we have a UID (logged in user)
+                                          final currentProfile = ref.read(userProfileProvider);
+                                          if (currentProfile.uid.isNotEmpty) {
+                                            await UserService().completeOnboarding(currentProfile.uid, currentProfile.toJson());
                                           }
 
                                           if (widget.isOnboarding) {

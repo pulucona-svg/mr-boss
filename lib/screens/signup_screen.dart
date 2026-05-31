@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'academic_personalization_screen.dart';
+import 'verification_password_screen.dart';
 import '../services/top_notification_service.dart';
 import '../providers/firebase_auth_provider.dart';
 import '../providers/user_provider.dart';
@@ -19,27 +21,49 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final TextEditingController _emailController = TextEditingController();
   bool _isLoading = false;
 
+  static const String _googleSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571	c0.001-0.001,0.002-0.001,0.002-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+''';
+
   void _handleGoogleSignup() async {
+    debugPrint('SignupScreen: [DEBUG] Google Signup button pressed.');
     try {
       setState(() => _isLoading = true);
 
       final authService = ref.read(authServiceProvider);
+      debugPrint('SignupScreen: [DEBUG] Calling authService.signInWithGoogle()...');
       final userCredential = await authService.signInWithGoogle();
 
       if (userCredential != null && mounted) {
         final user = userCredential.user!;
+        debugPrint('SignupScreen: [DEBUG] Google Sign-In success. UID: ${user.uid}');
         
+        debugPrint('SignupScreen: [DEBUG] Saving session to persistence...');
         await PersistenceService().saveSession(user.uid);
         
+        // Sync profile to Firestore
+        debugPrint('SignupScreen: [DEBUG] Fetching profile from Firestore to check existence...');
         await ref
             .read(userProfileProvider.notifier)
             .fetchProfileFromFirestore(user.uid);
             
         final profile = ref.read(userProfileProvider);
+        debugPrint('SignupScreen: [DEBUG] Profile state after fetch: onboardingComplete=${profile.onboardingComplete}');
+
+        // Update local profile with Google info
+        debugPrint('SignupScreen: [DEBUG] Updating local profile with Google info...');
+        ref.read(userProfileProvider.notifier).updateProfile(
+          uid: user.uid,
+          email: user.email ?? '',
+          username: user.displayName ?? '',
+          photoURL: user.photoURL,
+        );
 
         if (profile.onboardingComplete) {
+          debugPrint('SignupScreen: [DEBUG] Navigating to /home');
           Navigator.pushReplacementNamed(context, '/home');
         } else {
+          debugPrint('SignupScreen: [DEBUG] Navigating to AcademicPersonalizationScreen');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -50,8 +74,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ),
           );
         }
+      } else {
+        debugPrint('SignupScreen: [DEBUG] Google Sign-In returned null (user cancelled).');
       }
     } catch (e) {
+      debugPrint('SignupScreen: [FATAL ERROR] Google Sign-In failed in catch block: $e');
       if (mounted) {
         TopNotificationService().showNotification(context, "Google Sign-In failed: $e");
       }
@@ -91,6 +118,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             const SizedBox(height: 24),
             TextField(
               controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Email address',
@@ -109,15 +137,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               child: ElevatedButton(
                 onPressed: () {
                   final email = _emailController.text.trim();
-                  if (!email.contains('@')) return;
+                  if (!email.contains('@')) {
+                    TopNotificationService().showNotification(context, "Please enter a valid email");
+                    return;
+                  }
 
                   Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => AcademicPersonalizationScreen(
+                      builder: (context) => VerificationPasswordScreen(
                         email: email,
-                        isOnboarding: true,
                       ),
                     ),
                   );
@@ -322,10 +352,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const FaIcon(
-              FontAwesomeIcons.google,
-              color: Color(0xFFEA4335), // Google Red
-              size: 24,
+            SvgPicture.string(
+              _googleSvg,
+              width: 24,
+              height: 24,
             ),
             const SizedBox(width: 12),
             const Flexible(

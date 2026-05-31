@@ -69,16 +69,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                       ),
                       TextButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ResetPasswordScreen(
-                                email: widget.email,
-                                isSignup: true,
-                                showInitialSuccess: true,
-                              ),
-                            ),
-                          );
+                          Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
                         },
                         child: const Text(
                           'Skip',
@@ -166,21 +157,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                           child: ElevatedButton(
                             onPressed: (userProfile.profileImagePath != null || userProfile.photoURL != null)
                                 ? () {
-                                    final bool isAlreadyLoggedIn = userProfile.uid.isNotEmpty;
-                                    if (isAlreadyLoggedIn) {
-                                      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-                                    } else {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => ResetPasswordScreen(
-                                            email: widget.email,
-                                            isSignup: true,
-                                            showInitialSuccess: true,
-                                          ),
-                                        ),
-                                      );
-                                    }
+                                    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
                                   }
                                 : null,
                             style: ElevatedButton.styleFrom(

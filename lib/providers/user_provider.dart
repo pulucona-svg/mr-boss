@@ -1,6 +1,5 @@
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/persistence_service.dart';
 import '../services/user_service.dart';
 
@@ -146,10 +145,15 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
   }
 
   Future<void> fetchProfileFromFirestore(String uid) async {
+    debugPrint('UserProfileNotifier: [DEBUG] Fetching profile from Firestore for UID: $uid');
     final Map<String, dynamic>? data = await UserService().getUserProfile(uid);
     if (data != null) {
+      debugPrint('UserProfileNotifier: [DEBUG] Profile data received. Updating state...');
       state = UserProfile.fromJson(data);
       await _saveProfile();
+      debugPrint('UserProfileNotifier: [DEBUG] Local state updated and saved to persistence.');
+    } else {
+      debugPrint('UserProfileNotifier: [DEBUG] No profile data received from Firestore (data is null).');
     }
   }
 
@@ -184,8 +188,10 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
   }
 
   void updateProfile({
+    String? uid,
     String? username,
     String? profileImagePath,
+    String? photoURL,
     String? institution,
     String? universityLocation,
     String? program,
@@ -197,8 +203,10 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     bool? onboardingComplete,
   }) {
     state = state.copyWith(
+      uid: uid,
       username: username,
       profileImagePath: profileImagePath,
+      photoURL: photoURL,
       institution: institution,
       universityLocation: universityLocation,
       program: program,
