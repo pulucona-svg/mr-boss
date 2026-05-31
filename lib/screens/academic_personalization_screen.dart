@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/user_provider.dart';
 import '../services/course_service.dart';
-import 'profile_screen.dart'; // To reuse widgets if needed, but they are private there.
+import '../services/user_service.dart';
+import '../widgets/academic_fields.dart';
 import 'profile_picture_upload_screen.dart';
 
 class AcademicPersonalizationScreen extends ConsumerStatefulWidget {
@@ -35,8 +36,6 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
     super.initState();
     final userProfile = ref.read(userProfileProvider);
     
-    // During onboarding, fields (except semester) start empty.
-    // When editing from profile, they load existing data.
     _nameController = TextEditingController(
       text: widget.isOnboarding ? '' : userProfile.username
     );
@@ -58,8 +57,6 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
       final courseService = ref.read(courseServiceProvider);
       _instLocation = courseService.getUniversityLocation(userProfile.institution);
       _progCode = courseService.getProgramCode(userProfile.program);
-      // For editing mode, we should also validate the phone number initially
-      // but SmartPhoneField handles its own validation in its initState.
     }
   }
 
@@ -77,7 +74,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
   @override
   Widget build(BuildContext context) {
     final courseService = ref.watch(courseServiceProvider);
-    const isDark = true; // Signup flow uses dark themed cards over the image
+    const isDark = true; 
 
     final bool isInstValid = courseService.universityNames.contains(_instController.text);
     final bool isProgValid = courseService.programsList.contains(_progController.text);
@@ -129,7 +126,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                           ),
                         ),
                       ),
-                      const SizedBox(width: 48), // Spacer
+                      const SizedBox(width: 48), 
                     ],
                   ),
                 ),
@@ -158,7 +155,6 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                               ),
                               const SizedBox(height: 24),
                               
-                              // Username field
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -321,26 +317,52 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                 width: double.infinity,
                                 height: 55,
                                 child: ElevatedButton(
-                                  onPressed: isFormValid
-                                      ? () {
-                                          // Dismiss keyboard to prevent overflow during transition
+                                      onPressed: isFormValid
+                                      ? () async {
                                           FocusScope.of(context).unfocus();
                                           
-                                          ref.read(userProfileProvider.notifier).updateProfile(
-                                                username: _nameController.text,
-                                                institution: _instController.text,
-                                                program: _progController.text,
-                                                year: _yearController.text,
-                                                semester: _semController.text,
-                                                phone: _phoneController.text,
-                                                email: widget.email,
-                                              );
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => ProfilePictureUploadScreen(email: widget.email),
-                                            ),
+                                          final userProfile = ref.read(userProfileProvider);
+                                          final notifier = ref.read(userProfileProvider.notifier);
+                                          
+                                          final Map<String, dynamic> profileData = {
+                                            'username': _nameController.text,
+                                            'institution': _instController.text,
+                                            'universityLocation': _instLocation ?? 'Main Campus',
+                                            'program': _progController.text,
+                                            'programCode': _progCode ?? 'C001',
+                                            'year': _yearController.text,
+                                            'semester': _semController.text,
+                                            'phone': _phoneController.text,
+                                            'email': widget.email,
+                                          };
+
+                                          notifier.updateProfile(
+                                            username: _nameController.text,
+                                            institution: _instController.text,
+                                            universityLocation: _instLocation,
+                                            program: _progController.text,
+                                            programCode: _progCode,
+                                            year: _yearController.text,
+                                            semester: _semController.text,
+                                            phone: _phoneController.text,
+                                            email: widget.email,
+                                            onboardingComplete: true,
                                           );
+
+                                          await UserService().completeOnboarding(userProfile.uid, profileData);
+
+                                          if (widget.isOnboarding) {
+                                            if (context.mounted) {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => ProfilePictureUploadScreen(email: widget.email),
+                                                ),
+                                              );
+                                            }
+                                          } else {
+                                            if (context.mounted) Navigator.pop(context);
+                                          }
                                         }
                                       : null,
                                   style: ElevatedButton.styleFrom(
@@ -360,7 +382,6 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                           ),
                         ),
                         const SizedBox(height: 32),
-                        // Unified Footer Section moved outside the card
                         const Column(
                           children: [
                             Text(

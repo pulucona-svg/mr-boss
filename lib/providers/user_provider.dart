@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/persistence_service.dart';
+import '../services/user_service.dart';
 
 class UserProfile {
   final String uid;
   final String username;
   final String? profileImagePath;
+  final String? photoURL; 
   final String institution;
   final String universityLocation;
   final String program;
@@ -15,11 +18,13 @@ class UserProfile {
   final String phone;
   final String email;
   final DateTime? joinDate;
+  final bool onboardingComplete;
 
   UserProfile({
     required this.uid,
     required this.username,
     this.profileImagePath,
+    this.photoURL,
     required this.institution,
     required this.universityLocation,
     required this.program,
@@ -29,12 +34,14 @@ class UserProfile {
     required this.phone,
     required this.email,
     this.joinDate,
+    this.onboardingComplete = false,
   });
 
   UserProfile copyWith({
     String? uid,
     String? username,
     String? profileImagePath,
+    String? photoURL,
     String? institution,
     String? universityLocation,
     String? program,
@@ -44,12 +51,14 @@ class UserProfile {
     String? phone,
     String? email,
     DateTime? joinDate,
+    bool? onboardingComplete,
     bool clearImagePath = false,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
       username: username ?? this.username,
       profileImagePath: clearImagePath ? null : (profileImagePath ?? this.profileImagePath),
+      photoURL: photoURL ?? this.photoURL,
       institution: institution ?? this.institution,
       universityLocation: universityLocation ?? this.universityLocation,
       program: program ?? this.program,
@@ -59,6 +68,7 @@ class UserProfile {
       phone: phone ?? this.phone,
       email: email ?? this.email,
       joinDate: joinDate ?? this.joinDate,
+      onboardingComplete: onboardingComplete ?? this.onboardingComplete,
     );
   }
 
@@ -67,6 +77,7 @@ class UserProfile {
       'uid': uid,
       'username': username,
       'profileImagePath': profileImagePath,
+      'photoURL': photoURL,
       'institution': institution,
       'universityLocation': universityLocation,
       'program': program,
@@ -76,23 +87,28 @@ class UserProfile {
       'phone': phone,
       'email': email,
       'joinDate': joinDate?.toIso8601String(),
+      'onboardingComplete': onboardingComplete,
     };
   }
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
-      uid: json['uid'],
-      username: json['username'],
+      uid: json['uid'] ?? '',
+      username: json['username'] ?? '',
       profileImagePath: json['profileImagePath'],
-      institution: json['institution'],
+      photoURL: json['photoURL'],
+      institution: json['institution'] ?? '',
       universityLocation: json['universityLocation'] ?? 'Main Campus',
-      program: json['program'],
+      program: json['program'] ?? '',
       programCode: json['programCode'] ?? 'C001',
-      year: json['year'],
-      semester: json['semester'],
-      phone: json['phone'],
-      email: json['email'],
-      joinDate: json['joinDate'] != null ? DateTime.parse(json['joinDate']) : null,
+      year: json['year'] ?? 'Year 1',
+      semester: json['semester'] ?? 'Sem 1',
+      phone: json['phone'] ?? '',
+      email: json['email'] ?? '',
+      joinDate: json['joinDate'] != null 
+          ? (json['joinDate'] is String ? DateTime.parse(json['joinDate']) : (json['joinDate'] as dynamic).toDate()) 
+          : null,
+      onboardingComplete: json['onboardingComplete'] ?? false,
     );
   }
 }
@@ -100,17 +116,17 @@ class UserProfile {
 class UserProfileNotifier extends StateNotifier<UserProfile> {
   UserProfileNotifier()
       : super(UserProfile(
-          uid: 'user_12345',
-          username: 'Cona Pulu',
-          institution: 'University of Nairobi',
-          universityLocation: 'Main Campus',
-          program: 'Bachelor of Computer Science',
-          programCode: 'COM_CS_2024',
+          uid: '',
+          username: '',
+          institution: '',
+          universityLocation: '',
+          program: '',
+          programCode: '',
           year: 'Year 1',
           semester: 'Sem 1',
-          phone: '0714072724',
-          email: 'pulucona@gmail.com',
-          joinDate: DateTime(2025, 1, 1),
+          phone: '',
+          email: '',
+          onboardingComplete: false,
         )) {
     _restoreProfile();
   }
@@ -120,7 +136,21 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     if (json != null) {
       state = UserProfile.fromJson(json);
     }
+    
+    final userId = PersistenceService().getSessionUserId();
+    if (userId != null) {
+      await fetchProfileFromFirestore(userId);
+    }
+    
     _autoUpdateAcademicDetails();
+  }
+
+  Future<void> fetchProfileFromFirestore(String uid) async {
+    final Map<String, dynamic>? data = await UserService().getUserProfile(uid);
+    if (data != null) {
+      state = UserProfile.fromJson(data);
+      await _saveProfile();
+    }
   }
 
   Future<void> _saveProfile() async {
@@ -164,6 +194,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     String? semester,
     String? phone,
     String? email,
+    bool? onboardingComplete,
   }) {
     state = state.copyWith(
       username: username,
@@ -176,6 +207,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
       semester: semester,
       phone: phone,
       email: email,
+      onboardingComplete: onboardingComplete,
     );
     _saveProfile();
   }

@@ -129,8 +129,10 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                                 backgroundColor: Colors.white10,
                                 backgroundImage: userProfile.profileImagePath != null
                                     ? FileImage(File(userProfile.profileImagePath!))
-                                    : null,
-                                child: userProfile.profileImagePath == null
+                                    : (userProfile.photoURL != null 
+                                        ? NetworkImage(userProfile.photoURL!) 
+                                        : null),
+                                child: (userProfile.profileImagePath == null && userProfile.photoURL == null)
                                     ? const Icon(Icons.person, size: 80, color: Colors.white54)
                                     : null,
                               ),
@@ -162,29 +164,34 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                           width: double.infinity,
                           height: 55,
                           child: ElevatedButton(
-                            onPressed: userProfile.profileImagePath != null
+                            onPressed: (userProfile.profileImagePath != null || userProfile.photoURL != null)
                                 ? () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => ResetPasswordScreen(
-                                          email: widget.email,
-                                          isSignup: true,
-                                          showInitialSuccess: true,
+                                    final bool isAlreadyLoggedIn = userProfile.uid.isNotEmpty;
+                                    if (isAlreadyLoggedIn) {
+                                      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+                                    } else {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => ResetPasswordScreen(
+                                            email: widget.email,
+                                            isSignup: true,
+                                            showInitialSuccess: true,
+                                          ),
                                         ),
-                                      ),
-                                    );
+                                      );
+                                    }
                                   }
                                 : null,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: userProfile.profileImagePath != null
+                              backgroundColor: (userProfile.profileImagePath != null || userProfile.photoURL != null)
                                   ? const Color(0xFF20C8FF)
                                   : Colors.grey.withOpacity(0.5),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              elevation: userProfile.profileImagePath != null ? 4 : 0,
+                              elevation: (userProfile.profileImagePath != null || userProfile.photoURL != null) ? 4 : 0,
                             ),
                             child: const Text(
                               'CONTINUE',

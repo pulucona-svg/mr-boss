@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "386198984140",
+    "project_id": "mirror-laikipia",
+    "storage_bucket": "mirror-laikipia.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:386198984140:android:d16ebe33c2cc43ba41f969",
+        "android_client_info": {
+          "package_name": "com.example.mirror_laikipia"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "386198984140-ge7e8bhns4e7po9f9jhpop10b72o2585.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mirror_laikipia",
+            "certificate_hash": "55a53f46d69e1a84bfbc8aaf5be0e52c3c4d808f"
+          }
+        },
+        {
+          "client_id": "386198984140-4d8s7o98rdds643i18ico294tcco0paj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD44DX6hgaOnztSacVP-bhJC523zTpOc-I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "386198984140-4d8s7o98rdds643i18ico294tcco0paj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "386198984140-75101pil4llcqrlad9gctpmf1u4smdv8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mirrorLaikipia"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'firebase_options.dart';
+
 import 'screens/dashboard_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/explore_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/academic_personalization_screen.dart';
 import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
@@ -15,8 +20,6 @@ import 'providers/upload_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/download_service.dart';
 import 'services/top_notification_service.dart';
-
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'services/persistence_service.dart';
 import 'services/usage_service.dart';
 import 'services/subscription_service.dart';
@@ -25,10 +28,12 @@ import 'providers/ui_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize persistence first as others might depend on it
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   await PersistenceService().init();
 
-  // Start heavy initialization in background without blocking runApp
   _initServices();
 
   final bool isLoggedIn = PersistenceService().getSessionUserId() != null;
@@ -42,7 +47,6 @@ void main() async {
 
 Future<void> _initServices() async {
   try {
-    // Initialize in background to prevent splash screen freeze
     await Future.wait([
       MobileAds.instance.initialize(),
       CourseService().init(),
@@ -50,7 +54,6 @@ Future<void> _initServices() async {
       UsageService().init(),
     ]);
     
-    // Run retention cleanup on launch
     DownloadService().performRetentionCleanup();
     
     debugPrint('All services initialized successfully');
@@ -58,6 +61,7 @@ Future<void> _initServices() async {
     debugPrint('Error during service initialization: $e');
   }
 }
+
 class MirrorApp extends ConsumerStatefulWidget {
   final bool isLoggedIn;
   const MirrorApp({super.key, required this.isLoggedIn});
@@ -67,11 +71,6 @@ class MirrorApp extends ConsumerStatefulWidget {
 }
 
 class _MirrorAppState extends ConsumerState<MirrorApp> {
-  @override
-  void initState() {
-    super.initState();
-  }
-
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
@@ -85,10 +84,6 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
         primaryColor: const Color(0xFF20C8FF),
         scaffoldBackgroundColor: Colors.white,
         useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-        ),
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
@@ -102,6 +97,13 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
         '/': (context) => const LoginScreen(),
         '/home': (context) => const MainNavigation(),
         '/login': (context) => const LoginScreen(),
+        '/personalization': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+          return AcademicPersonalizationScreen(
+            email: args?['email'] ?? '',
+            isOnboarding: args?['isOnboarding'] ?? false,
+          );
+        },
       },
     );
   }
@@ -124,41 +126,18 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     _pageController = PageController(initialPage: uiState.mainNavigationIndex);
     ConnectivityService().initialize();
 
-    // Synchronize resources with the course pool for accurate details
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final courseService = ref.read(courseServiceProvider);
       ResourceService().synchronizeWithPool(courseService);
 
-      // Welcome messages trigger
       if (!mounted) return;
-      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      final bool isFirstLogin = (args != null && args['isFirstLogin'] == true) || TopNotificationService.pendingWelcome;
+      final bool isFirstLogin = TopNotificationService.pendingWelcome;
 
       if (isFirstLogin) {
-        // Determine the customized welcome message based on navigation source
-        String welcomeMessage = 'Welcome back to Mirror Laikipia';
-        if (args != null) {
-          if (args['source'] == 'signup') {
-            welcomeMessage = 'Welcome to Mirror Laikipia — built to support your academic journey.';
-          } else if (args['source'] == 'password_change') {
-            welcomeMessage = 'Your account is now secure — enjoy learning with confidence.';
-          }
-        }
-
-        // Clear the flags so they don't trigger again on rebuilds within this route
-        if (args != null) {
-          try {
-            args['isFirstLogin'] = false;
-          } catch (_) {
-            // Arguments might be immutable
-          }
-        }
         TopNotificationService.pendingWelcome = false;
-
-        // Slight delay to ensure screen is visible and stable
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
-            TopNotificationService().showNotification(context, welcomeMessage);
+            TopNotificationService().showNotification(context, 'Welcome back to Mirror Laikipia');
             TopNotificationService().showNotification(context, 'Where should we start from today');
           }
         });
@@ -191,8 +170,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeProvider);
     final uiState = ref.watch(uiStateProvider);
+    final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
 
     return Scaffold(
@@ -244,4 +223,3 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     );
   }
 }
-

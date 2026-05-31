@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/firebase_auth_provider.dart';
+import '../providers/user_provider.dart';
 import '../services/top_notification_service.dart';
 import '../services/persistence_service.dart';
+import 'academic_personalization_screen.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   final bool showInitialSuccess;
@@ -29,7 +32,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
-  // Validation checks
   bool _hasMinLength = false;
   bool _hasLetter = false;
   bool _hasNumber = false;
@@ -44,13 +46,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     _passwordController.addListener(_onFieldChanged);
     _confirmPasswordController.addListener(_onFieldChanged);
 
-    // Move provider initialization to post-frame to avoid build cycle issues
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       
       final authState = ref.read(authStateProvider);
       
-      // If it's a new email or OTP hasn't been sent yet, start timer and show notification
       if (authState.lastSentEmail != widget.email || !authState.otpSent) {
         ref.read(authStateProvider.notifier).startTimer(widget.email);
         
@@ -94,7 +94,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   void _handleResendCode() {
     ref.read(authStateProvider.notifier).startTimer(widget.email);
     
-    // Clear relevant fields on resend
     _codeController.clear();
     _passwordController.clear();
     _confirmPasswordController.clear();
@@ -107,7 +106,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     );
   }
 
-  void _handleReset() {
+  Future<void> _handleReset() async {
     if (_codeController.text.trim().length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid 6-digit code')),
@@ -129,32 +128,51 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       return;
     }
 
-    // Success simulation
-    TopNotificationService().showNotification(
-      context, 
-      widget.isSignup ? 'Account created successfully' : 'Password changed successfully'
-    );
-    TopNotificationService.pendingWelcome = true;
-    
-    // Clear auth state on success
-    ref.read(authStateProvider.notifier).reset();
-    
-    // Save session so user is logged in automatically next time
-    PersistenceService().saveSession('user_12345');
-    
-    Future.delayed(const Duration(milliseconds: 2000), () {
+    try {
+      final authService = ref.read(authServiceProvider);
+
+      if (widget.isSignup) {
+        final userCredential = await authService.registerWithEmailAndPassword(
+          widget.email, 
+          _passwordController.text
+        );
+
+        if (userCredential != null) {
+          final user = userCredential.user!;
+          await PersistenceService().saveSession(user.uid);
+          await ref.read(userProfileProvider.notifier).fetchProfileFromFirestore(user.uid);
+          TopNotificationService().showNotification(context, 'Account created successfully');
+        }
+      } else {
+        await authService.sendPasswordResetEmail(widget.email);
+        TopNotificationService().showNotification(context, 'Password reset link sent to your email');
+      }
+
+      TopNotificationService.pendingWelcome = true;
+      ref.read(authStateProvider.notifier).reset();
+
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        if (mounted) {
+          final profile = ref.read(userProfileProvider);
+          if (widget.isSignup || !profile.onboardingComplete) {
+            Navigator.pushNamedAndRemoveUntil(
+              context, 
+              '/personalization',
+              (route) => false,
+              arguments: {'email': widget.email, 'isOnboarding': true},
+            );
+          } else {
+            Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+          }
+        }
+      });
+    } catch (e) {
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context, 
-          '/home', 
-          (route) => false,
-          arguments: {
-            'isFirstLogin': true,
-            'source': widget.isSignup ? 'signup' : 'password_change',
-          },
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
-    });
+    }
   }
 
   @override
@@ -163,9 +181,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     final authState = ref.watch(authStateProvider);
     
     final isDark = themeMode == ThemeMode.dark;
-    final textColor = Colors.white; // Using white for better contrast on background image
+    final textColor = Colors.white;
     final subTextColor = Colors.white70;
-    final bgColor = const Color(0xFF070716);
     final fieldBgColor = Colors.white.withOpacity(0.05);
 
     final isFormValid = _isOtpValid && _hasMinLength && _hasLetter && _hasNumber && _passwordsMatch;
@@ -173,7 +190,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background Image (Matched with SignupScreen)
           Positioned.fill(
             child: Image.asset(
               'assets/login_bg.jpeg',
@@ -181,8 +197,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               alignment: const Alignment(0, -0.2),
             ),
           ),
-          
-          // Gradient Overlay (Matched with SignupScreen)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -200,11 +214,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               ),
             ),
           ),
-          
           SafeArea(
             child: Column(
               children: [
-                // Top Navigation / Title
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
@@ -228,15 +240,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                     ],
                   ),
                 ),
-                
                 Expanded(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Column(
                         children: [
-                          // Glass-like container for content
                           Container(
                             padding: const EdgeInsets.all(24),
                             decoration: BoxDecoration(
@@ -269,8 +278,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 40),
-                                
-                                // Reset Code Field
                                 _buildTextField(
                                   controller: _codeController,
                                   hint: widget.isSignup ? 'Verification Code (6 digits)' : 'Reset Code (6 digits)',
@@ -300,8 +307,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                
-                                // OTP Code Validation Tracker
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                                   child: _buildRuleRow(
@@ -310,8 +315,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 24),
-
-                                // New Password Field
                                 _buildTextField(
                                   controller: _passwordController,
                                   hint: widget.isSignup ? 'Password' : 'New Password',
@@ -324,8 +327,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   disableCopyPaste: true,
                                 ),
                                 const SizedBox(height: 12),
-
-                                // Live Password Rule Tracker
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                                   child: Column(
@@ -339,8 +340,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 20),
-
-                                // Confirm Password Field
                                 _buildTextField(
                                   controller: _confirmPasswordController,
                                   hint: 'Confirm Password',
@@ -353,8 +352,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   disableCopyPaste: true,
                                 ),
                                 const SizedBox(height: 12),
-
-                                // Confirm Password Match Tracker
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                                   child: _buildRuleRow(
@@ -363,8 +360,6 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 40),
-
-                                // Reset Button
                                 SizedBox(
                                   width: double.infinity,
                                   height: 55,
@@ -391,10 +386,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                               ],
                             ),
                           ),
-                          
                           const SizedBox(height: 48),
-                          
-                          // Copyright Info (Matched with SignupScreen)
                           const Column(
                             children: [
                               Text(
@@ -487,7 +479,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           hintText: hint,
           hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
           prefixIcon: Icon(icon, color: Colors.grey, size: 22),
-          counterText: '', // Hide default counter
+          counterText: '', 
           suffixIcon: suffixWidget ?? (isPassword
               ? IconButton(
                   icon: Icon(
