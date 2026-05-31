@@ -37,7 +37,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
     final userProfile = ref.read(userProfileProvider);
     
     _nameController = TextEditingController(
-      text: widget.isOnboarding ? '' : userProfile.username
+      text: userProfile.username
     );
     _instController = TextEditingController(
       text: widget.isOnboarding ? '' : userProfile.institution
@@ -334,6 +334,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                             'semester': _semController.text,
                                             'phone': _phoneController.text,
                                             'email': widget.email,
+                                            'onboardingComplete': true,
                                           };
 
                                           notifier.updateProfile(
@@ -349,7 +350,10 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                             onboardingComplete: true,
                                           );
 
-                                          await UserService().completeOnboarding(userProfile.uid, profileData);
+                                          // Only sync to Firestore if we have a UID (logged in Google user)
+                                          if (userProfile.uid.isNotEmpty) {
+                                            await UserService().completeOnboarding(userProfile.uid, profileData);
+                                          }
 
                                           if (widget.isOnboarding) {
                                             if (context.mounted) {

@@ -7,6 +7,7 @@ import '../providers/firebase_auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/top_notification_service.dart';
 import '../services/persistence_service.dart';
+import '../services/user_service.dart';
 import 'academic_personalization_screen.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
@@ -140,6 +141,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         if (userCredential != null) {
           final user = userCredential.user!;
           await PersistenceService().saveSession(user.uid);
+          
+          // Sync profile to Firestore
+          final profile = ref.read(userProfileProvider);
+          await UserService().completeOnboarding(user.uid, profile.toJson());
+          
           await ref.read(userProfileProvider.notifier).fetchProfileFromFirestore(user.uid);
           TopNotificationService().showNotification(context, 'Account created successfully');
         }

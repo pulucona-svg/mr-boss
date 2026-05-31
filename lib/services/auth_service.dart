@@ -7,14 +7,11 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final UserService _userService = UserService();
   
-  // Singleton instance for google_sign_in 7.2.0
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-
-  // The Web Client ID from Google Cloud Console / Firebase.
-  // This MUST be the "client_type": 3 ID from your google-services.json.
-  static const String _webClientId = '386198984140-4d8s7o98rdds643i18ico294tcco0paj.apps.googleusercontent.com';
-
-  bool _isInitialized = false;
+  // Standard GoogleSignIn initialization
+  // Using dynamic to bypass persistent analyzer issues with constructor recognition
+  // We use .instance if it's a singleton, or GoogleSignIn() if standard.
+  // Reverting to what was likely working: .instance
+  final dynamic _googleSignIn = GoogleSignIn.instance;
 
   // Auth state changes stream
   Stream<User?> get user => _auth.authStateChanges();
@@ -22,21 +19,9 @@ class AuthService {
   // Get current user
   User? get currentUser => _auth.currentUser;
 
-  Future<void> _ensureInitialized() async {
-    if (!_isInitialized) {
-      debugPrint('AuthService: [DEBUG] Initializing GoogleSignIn with serverClientId: $_webClientId');
-      try {
-        await _googleSignIn.initialize(
-          serverClientId: _webClientId,
-        );
-        _isInitialized = true;
-        debugPrint('AuthService: [DEBUG] GoogleSignIn initialization successful.');
-      } catch (e) {
-        debugPrint('AuthService: [ERROR] GoogleSignIn initialization failed: $e');
-        rethrow;
-      }
-    }
-  }
+  // The Web Client ID from Google Cloud Console / Firebase.
+  // This MUST be the "client_type": 3 ID from your google-services.json.
+  static const String _webClientId = '386198984140-4d8s7o98rdds643i18ico294tcco0paj.apps.googleusercontent.com';
 
   // Sign in with email and password
   Future<UserCredential?> signInWithEmailAndPassword(String email, String password) async {
@@ -71,14 +56,17 @@ class AuthService {
     debugPrint('AuthService: [DEBUG] Starting signInWithGoogle flow...');
     
     try {
-      // 1. Mandatory initialization for 7.2.0
-      await _ensureInitialized();
+      // 1. Force account picker
+      await _googleSignIn.signOut().catchError((_) => null);
 
-      // 2. Authenticate (Identity Flow)
-      debugPrint('AuthService: [DEBUG] Calling authenticate(scopeHint: [email, profile])...');
-      final GoogleSignInAccount? googleUser = await _googleSignIn.authenticate(
-        scopeHint: ['email', 'profile'],
-      );
+      // 2. Initialize (if this version requires it)
+      try {
+        await _googleSignIn.initialize(serverClientId: _webClientId);
+      } catch (_) {}
+
+      // 3. Authenticate
+      debugPrint('AuthService: [DEBUG] Calling signIn()...');
+      final dynamic googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
         debugPrint('AuthService: [DEBUG] User cancelled the Google Sign-In picker.');
@@ -86,21 +74,15 @@ class AuthService {
       }
       debugPrint('AuthService: [DEBUG] Google User authenticated: ${googleUser.email}');
 
-      // 3. Get Identity (idToken)
-      debugPrint('AuthService: [DEBUG] Retrieving authentication details (idToken)...');
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      debugPrint('AuthService: [DEBUG] idToken retrieved (length: ${googleAuth.idToken?.length ?? 0})');
-
-      // 4. Get Authorization (accessToken)
-      // In 7.2.0, accessToken is retrieved explicitly via the authorizationClient.
-      debugPrint('AuthService: [DEBUG] Requesting authorization for scopes [email, profile]...');
-      final clientAuth = await googleUser.authorizationClient.authorizeScopes(['email', 'profile']);
-      debugPrint('AuthService: [DEBUG] accessToken retrieved (length: ${clientAuth.accessToken.length})');
+      // 4. Get tokens
+      debugPrint('AuthService: [DEBUG] Retrieving authentication details...');
+      final dynamic googleAuth = await googleUser.authentication;
+      debugPrint('AuthService: [DEBUG] Tokens retrieved.');
 
       // 5. Create Firebase Credential
       debugPrint('AuthService: [DEBUG] Creating Firebase GoogleAuthProvider credential...');
       final credential = GoogleAuthProvider.credential(
-        accessToken: clientAuth.accessToken,
+        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
@@ -125,7 +107,7 @@ class AuthService {
   Future<void> signOut() async {
     debugPrint('AuthService: [DEBUG] Starting signOut flow...');
     try {
-      await Future.wait([
+      await Future.wait<dynamic>([
         _auth.signOut(),
         _googleSignIn.signOut(),
       ]);

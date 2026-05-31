@@ -12,7 +12,7 @@ import 'package:mirror_laikipia/main.dart';
 
 void main() {
   testWidgets('App shows dashboard content', (WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: MirrorApp()));
+    await tester.pumpWidget(const ProviderScope(child: MirrorApp(isLoggedIn: false)));
 
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Start Learning'), findsOneWidget);
