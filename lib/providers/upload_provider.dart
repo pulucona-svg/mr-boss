@@ -354,20 +354,27 @@ class UploadNotifier extends StateNotifier<UploadState> {
       // Generate a thematic thumbnail URL based on the unit name
       final thumbnailUrl = _getThematicThumbnail(state.material.unitName, state.material.unitCode);
 
-      await _uploadService.uploadMaterial(
+      // Perform the upload and get ImageKit data
+      final uploadResult = await _uploadService.uploadMaterial(
         state.material,
         (progress) {
           state = state.copyWith(uploadProgress: progress);
         },
       );
 
+      final String finalFileUrl = uploadResult['fileUrl'] ?? '';
+      final String finalFileId = uploadResult['fileId'] ?? '';
+      final String finalThumbUrl = uploadResult['thumbnailUrl'] ?? thumbnailUrl;
+      final String finalThumbId = uploadResult['thumbnailId'] ?? '';
+
       // Create a Resource object and add to ResourceService
       final resource = Resource(
         title: resourceTitle,
         type: state.material.materialType,
-        thumbnailUrl: state.uploadMode == 'timetable' && state.material.thumbnail != null 
-            ? state.material.thumbnail!.path 
-            : thumbnailUrl,
+        thumbnailUrl: finalThumbUrl,
+        fileUrl: finalFileUrl,
+        fileId: finalFileId,
+        thumbnailId: finalThumbId,
         unitName: state.material.unitName,
         unitCode: state.material.unitCode,
         year: state.material.yearOfUpload.toString(),
@@ -387,7 +394,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
         programCodes: state.material.programCodes,
       );
 
-      ResourceService().addUpload(resource, _courseService);
+      await ResourceService().addUpload(resource, _courseService);
 
       // Reset fields after successful upload
       reset();

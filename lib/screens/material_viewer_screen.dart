@@ -4,8 +4,9 @@ import '../services/usage_service.dart';
 
 class MaterialViewerScreen extends StatefulWidget {
   final String title;
+  final String fileUrl;
 
-  const MaterialViewerScreen({super.key, required this.title});
+  const MaterialViewerScreen({super.key, required this.title, required this.fileUrl});
 
   @override
   State<MaterialViewerScreen> createState() => _MaterialViewerScreenState();
@@ -93,6 +94,12 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                     'Reading Mode Active',
                     style: TextStyle(color: Color(0xFF20C8FF), fontSize: 24, fontWeight: FontWeight.bold),
                   ),
+                  const SizedBox(height: 10),
+                  if (widget.fileUrl.isNotEmpty)
+                    Text(
+                      'Loading from ImageKit: ${widget.fileUrl}',
+                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
                   const SizedBox(height: 20),
                   Text(
                     'Scrolling tracks your progress automatically. Your highest reached point is saved.\n\n' * 50,

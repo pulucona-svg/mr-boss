@@ -1,0 +1,408 @@
+warning: in the working copy of 'firebase.json', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/firebase.json b/firebase.json[m
+[1mindex 04fdf7e..18776b0 100644[m
+[1m--- a/firebase.json[m
+[1m+++ b/firebase.json[m
+[36m@@ -1 +1,43 @@[m
+[31m-{"flutter":{"platforms":{"android":{"default":{"projectId":"mirror-laikipia","appId":"1:386198984140:android:d16ebe33c2cc43ba41f969","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"mirror-laikipia","configurations":{"android":"1:386198984140:android:d16ebe33c2cc43ba41f969","ios":"1:386198984140:ios:7cc96a8d919bc59241f969","macos":"1:386198984140:ios:7cc96a8d919bc59241f969","web":"1:386198984140:web:2c45f6368f5358c641f969","windows":"1:386198984140:web:5161843222ddd43141f969"}}}}}}[m
+\ No newline at end of file[m
+[32m+[m[32m{[m
+[32m+[m[32m  "flutter": {[m
+[32m+[m[32m    "platforms": {[m
+[32m+[m[32m      "android": {[m
+[32m+[m[32m        "default": {[m
+[32m+[m[32m          "projectId": "mirror-laikipia",[m
+[32m+[m[32m          "appId": "1:386198984140:android:d16ebe33c2cc43ba41f969",[m
+[32m+[m[32m          "fileOutput": "android/app/google-services.json"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "dart": {[m
+[32m+[m[32m        "lib/firebase_options.dart": {[m
+[32m+[m[32m          "projectId": "mirror-laikipia",[m
+[32m+[m[32m          "configurations": {[m
+[32m+[m[32m            "android": "1:386198984140:android:d16ebe33c2cc43ba41f969",[m
+[32m+[m[32m            "ios": "1:386198984140:ios:7cc96a8d919bc59241f969",[m
+[32m+[m[32m            "macos": "1:386198984140:ios:7cc96a8d919bc59241f969",[m
+[32m+[m[32m            "web": "1:386198984140:web:2c45f6368f5358c641f969",[m
+[32m+[m[32m            "windows": "1:386198984140:web:5161843222ddd43141f969"[m
+[32m+[m[32m          }[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m[32m  },[m
+[32m+[m[32m  "functions": [[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "source": "functions",[m
+[32m+[m[32m      "codebase": "default",[m
+[32m+[m[32m      "disallowLegacyRuntimeConfig": true,[m
+[32m+[m[32m      "ignore": [[m
+[32m+[m[32m        "node_modules",[m
+[32m+[m[32m        ".git",[m
+[32m+[m[32m        "firebase-debug.log",[m
+[32m+[m[32m        "firebase-debug.*.log",[m
+[32m+[m[32m        "*.local"[m
+[32m+[m[32m      ],[m
+[32m+[m[32m      "predeploy": [[m
+[32m+[m[32m        "npm --prefix \"$RESOURCE_DIR\" run lint",[m
+[32m+[m[32m        "npm --prefix \"$RESOURCE_DIR\" run build"[m
+[32m+[m[32m      ][m
+[32m+[m[32m    }[m
+[32m+[m[32m  ][m
+[32m+[m[32m}[m
+[1mdiff --git a/lib/main.dart b/lib/main.dart[m
+[1mindex 1e50bdf..397b368 100644[m
+[1m--- a/lib/main.dart[m
+[1m+++ b/lib/main.dart[m
+[36m@@ -133,59 +133,75 @@[m [mclass _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {[m
+   @override[m
+   void initState() {[m
+     super.initState();[m
+[31m-    _checkSession();[m
+[32m+[m[32m    // Use a post-frame callback to navigate immediately without blocking build[m
+[32m+[m[32m    WidgetsBinding.instance.addPostFrameCallback((_) {[m
+[32m+[m[32m      _checkSession();[m
+[32m+[m[32m    });[m
+   }[m
+ [m
+[31m-  Future<void> _checkSession() async {[m
+[32m+[m[32m  void _checkSession() {[m
+     final uid = PersistenceService().getSessionUserId();[m
+[32m+[m[32m    final localProfileJson = PersistenceService().getJson('user_profile');[m
+[32m+[m[41m    [m
+     debugPrint('InitialSessionCheck: [DEBUG] session_user_id=$uid');[m
+     [m
+     if (uid != null) {[m
+[31m-      final user = FirebaseAuth.instance.currentUser;[m
+[31m-      debugPrint('InitialSessionCheck: [DEBUG] FirebaseAuth.currentUser=${user?.email}, verified=${user?.emailVerified}');[m
+[32m+[m[32m      if (localProfileJson != null) {[m
+[32m+[m[32m        final profile = UserProfile.fromJson(localProfileJson);[m
+[32m+[m[32m        debugPrint('InitialSessionCheck: [DEBUG] Local profile found. onboardingComplete=${profile.onboardingComplete}');[m
+[32m+[m[41m        [m
+[32m+[m[32m        if (profile.onboardingComplete) {[m
+[32m+[m[32m          debugPrint('InitialSessionCheck: [DEBUG] Navigating to /home (Immediate)');[m
+[32m+[m[32m          Navigator.pushReplacementNamed(context, '/home');[m
+[32m+[m[32m          return;[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[41m      [m
+[32m+[m[32m      // If we are here, it means we have a UID but either no local profile[m[41m [m
+[32m+[m[32m      // or onboarding is not complete. In this case, we might need a fetch,[m
+[32m+[m[32m      // but we should still handle it gracefully if offline.[m
+[32m+[m[32m      _performFullCheck(uid);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m      debugPrint('InitialSessionCheck: [DEBUG] No session found. Navigating to /login');[m
+[32m+[m[32m      Navigator.pushReplacementNamed(context, '/login');[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+ [m
+[32m+[m[32m  Future<void> _performFullCheck(String uid) async {[m
+[32m+[m[32m    // This is the fallback path if local data is missing or incomplete[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      final user = FirebaseAuth.instance.currentUser;[m
+       await ref.read(userProfileProvider.notifier).fetchProfileFromFirestore(uid);[m
+       final profile = ref.read(userProfileProvider);[m
+[31m-      debugPrint('InitialSessionCheck: [DEBUG] Profile onboardingComplete=${profile.onboardingComplete}');[m
+[31m-      [m
+[31m-      // Update sessionId in Firestore for single session enforcement (last one wins)[m
+[31m-      final sessionId = ref.read(userProfileProvider.notifier).instanceSessionId;[m
+[31m-      await UserService().updateSessionId(uid, sessionId);[m
+[31m-      debugPrint('InitialSessionCheck: [DEBUG] Session synced to Firestore: $sessionId');[m
+ [m
+       if (mounted) {[m
+         if (profile.onboardingComplete) {[m
+[31m-          debugPrint('InitialSessionCheck: [DEBUG] Navigating to /home');[m
+           Navigator.pushReplacementNamed(context, '/home');[m
+         } else {[m
+[31m-          // If not verified, go to verification screen[m
+           if (user != null && !user.emailVerified && user.providerData.any((p) => p.providerId == 'password')) {[m
+[31m-            debugPrint('InitialSessionCheck: [DEBUG] User not verified. Navigating to EmailVerificationScreen');[m
+             Navigator.pushReplacement([m
+               context,[m
+               MaterialPageRoute([m
+[31m-                builder: (context) => EmailVerificationScreen([m
+[31m-                  email: user.email ?? profile.email,[m
+[32m+[m[32m                builder: (context) => EmailVerificationScreen(email: user.email ?? profile.email),[m
+[32m+[m[32m              ),[m
+[32m+[m[32m            );[m
+[32m+[m[32m          } else {[m
+[32m+[m[32m            Navigator.pushReplacement([m
+[32m+[m[32m              context,[m
+[32m+[m[32m              MaterialPageRoute([m
+[32m+[m[32m                builder: (context) => AcademicPersonalizationScreen([m
+[32m+[m[32m                  email: profile.email.isNotEmpty ? profile.email : (user?.email ?? ''),[m
+[32m+[m[32m                  isOnboarding: true,[m
+                 ),[m
+               ),[m
+             );[m
+[31m-            return;[m
+           }[m
+[31m-[m
+[31m-          debugPrint('InitialSessionCheck: [DEBUG] Navigating to AcademicPersonalizationScreen');[m
+[31m-          Navigator.pushReplacement([m
+[31m-            context,[m
+[31m-            MaterialPageRoute([m
+[31m-              builder: (context) => AcademicPersonalizationScreen([m
+[31m-                email: profile.email.isNotEmpty ? profile.email : (user?.email ?? ''),[m
+[31m-                isOnboarding: true,[m
+[31m-              ),[m
+[31m-            ),[m
+[31m-          );[m
+         }[m
+       }[m
+[31m-    } else {[m
+[31m-      debugPrint('InitialSessionCheck: [DEBUG] No session found. Navigating to /login');[m
+[32m+[m[32m    } catch (e) {[m
+[32m+[m[32m      debugPrint('InitialSessionCheck: [ERROR] Full check failed: $e');[m
+[32m+[m[32m      // If offline and check fails, we might be stuck, but if we have ANY profile data,[m[41m [m
+[32m+[m[32m      // let's try to let them in or show login[m
+       if (mounted) Navigator.pushReplacementNamed(context, '/login');[m
+     }[m
+   }[m
+[36m@@ -247,31 +263,64 @@[m [mclass _MainNavigationState extends ConsumerState<MainNavigation> {[m
+     if (userProfile.uid.isNotEmpty) {[m
+       debugPrint('MainNavigation: [DEBUG] Starting session monitoring for UID: ${userProfile.uid}');[m
+       [m
+[31m-      // We add a 2-second delay before actually reacting to mismatches.[m
+[31m-      // This gives Firestore enough time to propagate the update from InitialSessionCheck/Login[m
+[31m-      // and prevents the "login loop" caused by reading a stale snapshot.[m
+[31m-      final startTime = DateTime.now();[m
+[32m+[m[32m      // 1. Initial background sync/check[m
+[32m+[m[32m      _checkAndSyncSession(userProfile.uid, instanceSessionId);[m
+[32m+[m
+[32m+[m[32m      // 2. Listen for connectivity changes to re-verify session[m
+[32m+[m[32m      ConnectivityService().addListener(_onConnectivityChanged);[m
+ [m
+[32m+[m[32m      // 3. Listen to Firestore stream for real-time mismatches[m
+[32m+[m[32m      final startTime = DateTime.now();[m
+       _sessionSubscription = UserService().streamUserSessionId(userProfile.uid).listen((remoteSessionId) {[m
+[31m-        // Ignore events for the first 2 seconds to allow sync[m
+[31m-        if (DateTime.now().difference(startTime).inSeconds < 2) {[m
+[31m-          debugPrint('MainNavigation: [DEBUG] Ignoring session snapshot during sync grace period.');[m
+[31m-          return;[m
+[31m-        }[m
+[32m+[m[32m        // Ignore events for the first 3 seconds to allow initial sync to propagate[m
+[32m+[m[32m        if (DateTime.now().difference(startTime).inSeconds < 3) return;[m
+ [m
+[31m-        debugPrint('MainNavigation: [DEBUG] Remote SessionID: $remoteSessionId, Local: $instanceSessionId');[m
+[31m-        [m
+[31m-        // If remote sessionId exists and doesn't match local instance ID, log out[m
+         if (remoteSessionId != null && remoteSessionId.isNotEmpty && remoteSessionId != instanceSessionId) {[m
+[31m-          debugPrint('MainNavigation: [DEBUG] Session mismatch detected! Logging out...');[m
+[32m+[m[32m          debugPrint('MainNavigation: [DEBUG] Session mismatch detected via Stream! Remote: $remoteSessionId, Local: $instanceSessionId');[m
+           _handleAutoLogout();[m
+         }[m
+       });[m
+     }[m
+   }[m
+ [m
+[32m+[m[32m  void _onConnectivityChanged() {[m
+[32m+[m[32m    if (!ConnectivityService().isOffline) {[m
+[32m+[m[32m      final userProfile = ref.read(userProfileProvider);[m
+[32m+[m[32m      final instanceSessionId = ref.read(userProfileProvider.notifier).instanceSessionId;[m
+[32m+[m[32m      if (userProfile.uid.isNotEmpty) {[m
+[32m+[m[32m        debugPrint('MainNavigation: [DEBUG] Connectivity restored. Re-verifying session...');[m
+[32m+[m[32m        _checkAndSyncSession(userProfile.uid, instanceSessionId);[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  Future<void> _checkAndSyncSession(String uid, String instanceId) async {[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      // First, get the current remote session ID without updating it[m
+[32m+[m[32m      final profile = await UserService().getUserProfile(uid);[m
+[32m+[m[32m      final remoteId = profile?['sessionId'] as String?;[m
+[32m+[m[41m      [m
+[32m+[m[32m      debugPrint('MainNavigation: [DEBUG] Background Check - Remote: $remoteId, Local: $instanceId');[m
+[32m+[m
+[32m+[m[32m      if (remoteId == null || remoteId.isEmpty) {[m
+[32m+[m[32m        // If no session exists in Firestore, claim it[m
+[32m+[m[32m        debugPrint('MainNavigation: [DEBUG] No remote session found. Claiming session...');[m
+[32m+[m[32m        await UserService().updateSessionId(uid, instanceId);[m
+[32m+[m[32m      } else if (remoteId != instanceId) {[m
+[32m+[m[32m        // Mismatch! Someone else is logged in.[m
+[32m+[m[32m        debugPrint('MainNavigation: [DEBUG] Session mismatch detected in background check!');[m
+[32m+[m[32m        _handleAutoLogout();[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        debugPrint('MainNavigation: [DEBUG] Session validated successfully.');[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } catch (e) {[m
+[32m+[m[32m      debugPrint('MainNavigation: [DEBUG] Background session check failed (likely offline): $e');[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+   void _handleAutoLogout() async {[m
+     _sessionSubscription?.cancel();[m
+[32m+[m[32m    ConnectivityService().removeListener(_onConnectivityChanged);[m
+     final authService = ref.read(authServiceProvider);[m
+     await authService.signOut();[m
+     await PersistenceService().clearSession();[m
+[36m@@ -288,6 +337,7 @@[m [mclass _MainNavigationState extends ConsumerState<MainNavigation> {[m
+   @override[m
+   void dispose() {[m
+     _sessionSubscription?.cancel();[m
+[32m+[m[32m    ConnectivityService().removeListener(_onConnectivityChanged);[m
+     _pageController.dispose();[m
+     ConnectivityService().dispose();[m
+     super.dispose();[m
+[1mdiff --git a/lib/providers/user_provider.dart b/lib/providers/user_provider.dart[m
+[1mindex b12024c..9b8ea42 100644[m
+[1m--- a/lib/providers/user_provider.dart[m
+[1m+++ b/lib/providers/user_provider.dart[m
+[36m@@ -239,8 +239,10 @@[m [mclass UserProfileNotifier extends StateNotifier<UserProfile> {[m
+     if (state.uid.isNotEmpty) {[m
+       final downloadUrl = await UserService().uploadProfilePicture(state.uid, path);[m
+       if (downloadUrl != null) {[m
+[31m-        state = state.copyWith(photoURL: downloadUrl);[m
+[32m+[m[32m        // Clear local path and use download URL to ensure consistency[m
+[32m+[m[32m        state = state.copyWith(photoURL: downloadUrl, clearImagePath: true);[m
+         await _saveProfile();[m
+[32m+[m[32m        debugPrint('UserProfileNotifier: [DEBUG] Profile image synced. Local path cleared, using photoURL: $downloadUrl');[m
+       }[m
+     }[m
+   }[m
+[1mdiff --git a/lib/screens/help_support_screen.dart b/lib/screens/help_support_screen.dart[m
+[1mindex 6de745e..310fcf4 100644[m
+[1m--- a/lib/screens/help_support_screen.dart[m
+[1m+++ b/lib/screens/help_support_screen.dart[m
+[36m@@ -5,6 +5,7 @@[m [mimport 'package:flutter_riverpod/flutter_riverpod.dart';[m
+ import 'package:flutter_svg/flutter_svg.dart';[m
+ import 'package:image_picker/image_picker.dart';[m
+ import 'package:intl/intl.dart';[m
+[32m+[m[32mimport 'package:cached_network_image/cached_network_image.dart';[m
+ import '../providers/chat_provider.dart';[m
+ import '../models/message.dart';[m
+ import '../providers/theme_provider.dart';[m
+[36m@@ -796,7 +797,7 @@[m [mclass _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing[m
+                   backgroundImage: userProfile.profileImagePath != null[m
+                       ? FileImage(File(userProfile.profileImagePath!))[m
+                       : (userProfile.photoURL != null [m
+[31m-                          ? NetworkImage(userProfile.photoURL!) [m
+[32m+[m[32m                          ? CachedNetworkImageProvider(userProfile.photoURL!) as ImageProvider[m
+                           : null),[m
+                   child: (userProfile.profileImagePath == null && userProfile.photoURL == null)[m
+                       ? Text([m
+[1mdiff --git a/lib/screens/login_screen.dart b/lib/screens/login_screen.dart[m
+[1mindex fcc702d..bdf6a7d 100644[m
+[1m--- a/lib/screens/login_screen.dart[m
+[1m+++ b/lib/screens/login_screen.dart[m
+[36m@@ -150,6 +150,10 @@[m [mclass _LoginScreenState extends ConsumerState<LoginScreen> {[m
+ [m
+         await PersistenceService().saveSession(user.uid);[m
+ [m
+[32m+[m[32m        // Update sessionId in Firestore for single session enforcement[m
+[32m+[m[32m        final sessionId = ref.read(userProfileProvider.notifier).instanceSessionId;[m
+[32m+[m[32m        await UserService().updateSessionId(user.uid, sessionId);[m
+[32m+[m
+         await ref[m
+             .read(userProfileProvider.notifier)[m
+             .fetchProfileFromFirestore(user.uid);[m
+[1mdiff --git a/lib/screens/profile_picture_upload_screen.dart b/lib/screens/profile_picture_upload_screen.dart[m
+[1mindex 9de7910..6ec8c91 100644[m
+[1m--- a/lib/screens/profile_picture_upload_screen.dart[m
+[1m+++ b/lib/screens/profile_picture_upload_screen.dart[m
+[36m@@ -2,6 +2,7 @@[m [mimport 'dart:io';[m
+ import 'package:flutter/material.dart';[m
+ import 'package:flutter_riverpod/flutter_riverpod.dart';[m
+ import 'package:image_picker/image_picker.dart';[m
+[32m+[m[32mimport 'package:cached_network_image/cached_network_image.dart';[m
+ import '../providers/user_provider.dart';[m
+ import 'reset_password_screen.dart';[m
+ [m
+[36m@@ -125,7 +126,7 @@[m [mclass _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa[m
+                                 backgroundImage: userProfile.profileImagePath != null[m
+                                     ? FileImage(File(userProfile.profileImagePath!))[m
+                                     : (userProfile.photoURL != null [m
+[31m-                                        ? NetworkImage(userProfile.photoURL!) [m
+[32m+[m[32m                                        ? CachedNetworkImageProvider(userProfile.photoURL!) as ImageProvider[m
+                                         : null),[m
+                                 child: (userProfile.profileImagePath == null && userProfile.photoURL == null && !_isUploading)[m
+                                     ? const Icon(Icons.person, size: 80, color: Colors.white54)[m
+[1mdiff --git a/lib/screens/profile_screen.dart b/lib/screens/profile_screen.dart[m
+[1mindex 6c950a4..eecf38a 100644[m
+[1m--- a/lib/screens/profile_screen.dart[m
+[1m+++ b/lib/screens/profile_screen.dart[m
+[36m@@ -1,4 +1,5 @@[m
+ import 'dart:io';[m
+[32m+[m[32mimport 'package:cached_network_image/cached_network_image.dart';[m
+ import 'package:flutter/material.dart';[m
+ import 'package:flutter/services.dart';[m
+ import 'package:flutter_riverpod/flutter_riverpod.dart';[m
+[36m@@ -157,7 +158,7 @@[m [mclass _ProfileScreenState extends ConsumerState<ProfileScreen> {[m
+                                 backgroundImage: userProfile.profileImagePath != null[m
+                                     ? FileImage(File(userProfile.profileImagePath!))[m
+                                     : (userProfile.photoURL != null [m
+[31m-                                        ? NetworkImage(userProfile.photoURL!) [m
+[32m+[m[32m                                        ? CachedNetworkImageProvider(userProfile.photoURL!) as ImageProvider[m
+                                         : null),[m
+                                 child: (userProfile.profileImagePath == null && userProfile.photoURL == null)[m
+                                     ? Icon(Icons.person, size: 50, color: isDark ? Colors.white54 : Colors.grey)[m
+[36m@@ -1208,7 +1209,15 @@[m [mclass _ProfileScreenState extends ConsumerState<ProfileScreen> {[m
+                       userProfile.profileImagePath != null[m
+                           ? Image.file(File(userProfile.profileImagePath!), fit: BoxFit.cover)[m
+                           : (userProfile.photoURL != null [m
+[31m-                              ? Image.network(userProfile.photoURL!, fit: BoxFit.cover)[m
+[32m+[m[32m                              ? CachedNetworkImage([m
+[32m+[m[32m                                  imageUrl: userProfile.photoURL!,[m
+[32m+[m[32m                                  fit: BoxFit.cover,[m
+[32m+[m[32m                                  placeholder: (context, url) => Container([m
+[32m+[m[32m                                    color: Colors.black26,[m
+[32m+[m[32m                                    child: const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF))),[m
+[32m+[m[32m                                  ),[m
+[32m+[m[32m                                  errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.white24),[m
+[32m+[m[32m                                )[m
+                               : Container([m
+                                   color: isDark ? const Color(0xFF1A1A3F) : Colors.grey.shade200,[m
+                                   child: Center([m
+[1mdiff --git a/lib/services/user_service.dart b/lib/services/user_service.dart[m
+[1mindex b8d1a3e..c3f3297 100644[m
+[1m--- a/lib/services/user_service.dart[m
+[1m+++ b/lib/services/user_service.dart[m
+[36m@@ -11,19 +11,43 @@[m [mclass UserService {[m
+   // Upload profile picture to Firebase Storage[m
+   Future<String?> uploadProfilePicture(String uid, String localPath) async {[m
+     try {[m
+[31m-      debugPrint('UserService: [DEBUG] Starting upload to Storage for UID: $uid');[m
+[32m+[m[32m      debugPrint('UserService: [DEBUG] Profile picture upload process started for UID: $uid');[m
+[32m+[m[41m      [m
+[32m+[m[32m      // 1. Read old photo URL from Firestore[m
+[32m+[m[32m      final userDoc = await _firestore.collection('users').doc(uid).get();[m
+[32m+[m[32m      final oldPhotoUrl = userDoc.data()?['photoURL'] as String?;[m
+[32m+[m[32m      debugPrint('UserService: [DEBUG] Old photo URL: ${oldPhotoUrl ?? "None"}');[m
+[32m+[m
+[32m+[m[32m      // 2. Delete old image from Firebase Storage if it exists[m
+[32m+[m[32m      if (oldPhotoUrl != null && oldPhotoUrl.isNotEmpty) {[m
+[32m+[m[32m        try {[m
+[32m+[m[32m          // Extract path from URL if it's a firebase storage URL[m
+[32m+[m[32m          if (oldPhotoUrl.contains('firebasestorage.googleapis.com')) {[m
+[32m+[m[32m            final oldRef = _storage.refFromURL(oldPhotoUrl);[m
+[32m+[m[32m            await oldRef.delete();[m
+[32m+[m[32m            debugPrint('UserService: [DEBUG] Old image deleted successfully from Storage.');[m
+[32m+[m[32m          }[m
+[32m+[m[32m        } catch (e) {[m
+[32m+[m[32m          debugPrint('UserService: [WARNING] Failed to delete old image: $e');[m
+[32m+[m[32m          // We continue even if deletion fails (e.g., file doesn't exist anymore)[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      // 3. Upload new image with unique name to avoid caching issues[m
+       final file = File(localPath);[m
+[31m-      final ref = _storage.ref().child('users').child(uid).child('profile_pic.jpg');[m
+[32m+[m[32m      final fileName = 'profile_pic_${DateTime.now().millisecondsSinceEpoch}.jpg';[m
+[32m+[m[32m      final ref = _storage.ref().child('users').child(uid).child(fileName);[m
+       [m
+[32m+[m[32m      debugPrint('UserService: [DEBUG] Uploading new image: $fileName');[m
+       final uploadTask = await ref.putFile(file);[m
+       final downloadUrl = await uploadTask.ref.getDownloadURL();[m
+[32m+[m[32m      debugPrint('UserService: [DEBUG] New upload URL: $downloadUrl');[m
+       [m
+[31m-      debugPrint('UserService: [DEBUG] Upload SUCCESS. URL: $downloadUrl');[m
+[31m-      [m
+[31m-      // Also update Firestore immediately[m
+[32m+[m[32m      // 4. Save new download URL to Firestore[m
+       await _firestore.collection('users').doc(uid).update({[m
+         'photoURL': downloadUrl,[m
+       });[m
+[32m+[m[32m      debugPrint('UserService: [DEBUG] Firestore update result: SUCCESS');[m
+       [m
+       return downloadUrl;[m
+     } catch (e) {[m

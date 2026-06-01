@@ -138,11 +138,14 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   void _handleRead() async {
+    final resource = ref.read(resourceServiceProvider).findResourceByTitle(widget.title);
+    final String fileUrl = resource?.fileUrl ?? '';
+
     if (_hasFullAccess()) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => MaterialViewerScreen(title: widget.title),
+          builder: (context) => MaterialViewerScreen(title: widget.title, fileUrl: fileUrl),
         ),
       );
     } else {

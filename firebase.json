@@ -1,1 +1,42 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"mirror-laikipia","appId":"1:386198984140:android:d16ebe33c2cc43ba41f969","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"mirror-laikipia","configurations":{"android":"1:386198984140:android:d16ebe33c2cc43ba41f969","ios":"1:386198984140:ios:7cc96a8d919bc59241f969","macos":"1:386198984140:ios:7cc96a8d919bc59241f969","web":"1:386198984140:web:2c45f6368f5358c641f969","windows":"1:386198984140:web:5161843222ddd43141f969"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "mirror-laikipia",
+          "appId": "1:386198984140:android:d16ebe33c2cc43ba41f969",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "mirror-laikipia",
+          "configurations": {
+            "android": "1:386198984140:android:d16ebe33c2cc43ba41f969",
+            "ios": "1:386198984140:ios:7cc96a8d919bc59241f969",
+            "macos": "1:386198984140:ios:7cc96a8d919bc59241f969",
+            "web": "1:386198984140:web:2c45f6368f5358c641f969",
+            "windows": "1:386198984140:web:5161843222ddd43141f969"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix functions run build"
+      ]
+    }
+  ]
+}

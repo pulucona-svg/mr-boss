@@ -30,6 +30,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
   String? _instLocation;
   String? _progCode;
   bool _isPhoneValid = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -317,67 +318,82 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                 width: double.infinity,
                                 height: 55,
                                 child: ElevatedButton(
-                                      onPressed: isFormValid
+                                      onPressed: (isFormValid && !_isLoading)
                                       ? () async {
                                           FocusScope.of(context).unfocus();
+                                          setState(() => _isLoading = true);
                                           
-                                          final userProfile = ref.read(userProfileProvider);
-                                          final notifier = ref.read(userProfileProvider.notifier);
-                                          
-                                          // Check username uniqueness
-                                          final isUnique = await UserService().isUsernameUnique(_nameController.text);
-                                          if (!isUnique) {
+                                          debugPrint('AcademicPersonalization: [DEBUG] SAVE button pressed.');
+                                          try {
+                                            final currentProfile = ref.read(userProfileProvider);
+                                            final notifier = ref.read(userProfileProvider.notifier);
+                                            
+                                            debugPrint('AcademicPersonalization: [DEBUG] Checking username uniqueness for "${_nameController.text}", excluding UID: ${currentProfile.uid}');
+                                            // Check username uniqueness (exclude current user UID)
+                                            final isUnique = await UserService().isUsernameUnique(
+                                              _nameController.text,
+                                              excludeUid: currentProfile.uid.isNotEmpty ? currentProfile.uid : null,
+                                            );
+                                            
+                                            if (!isUnique) {
+                                              debugPrint('AcademicPersonalization: [DEBUG] Username is NOT unique.');
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Username already taken. Please choose another.')),
+                                                );
+                                              }
+                                              setState(() => _isLoading = false);
+                                              return;
+                                            }
+
+                                            debugPrint('AcademicPersonalization: [DEBUG] Updating local profile state...');
+                                            notifier.updateProfile(
+                                              username: _nameController.text,
+                                              institution: _instController.text,
+                                              universityLocation: _instLocation,
+                                              program: _progController.text,
+                                              programCode: _progCode,
+                                              year: _yearController.text,
+                                              semester: _semController.text,
+                                              phone: _phoneController.text,
+                                              email: widget.email,
+                                              onboardingComplete: true,
+                                            );
+
+                                            final updatedProfile = ref.read(userProfileProvider);
+                                            if (updatedProfile.uid.isNotEmpty) {
+                                              debugPrint('AcademicPersonalization: [DEBUG] Syncing to Firestore for UID: ${updatedProfile.uid}');
+                                              await UserService().completeOnboarding(updatedProfile.uid, updatedProfile.toJson());
+                                              debugPrint('AcademicPersonalization: [DEBUG] Firestore sync SUCCESS.');
+                                            } else {
+                                              debugPrint('AcademicPersonalization: [DEBUG] WARNING: Profile UID is empty. Skipping Firestore sync.');
+                                            }
+
+                                            if (widget.isOnboarding) {
+                                              if (mounted) {
+                                                debugPrint('AcademicPersonalization: [DEBUG] Navigating to ProfilePictureUploadScreen');
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) => ProfilePictureUploadScreen(email: widget.email),
+                                                  ),
+                                                );
+                                              }
+                                            } else {
+                                              if (mounted) {
+                                                debugPrint('AcademicPersonalization: [DEBUG] Onboarding complete. Popping screen.');
+                                                Navigator.pop(context);
+                                              }
+                                            }
+                                          } catch (e) {
+                                            debugPrint('AcademicPersonalization: [FATAL ERROR] Save failed: $e');
                                             if (mounted) {
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('Username already taken. Please choose another.')),
+                                                SnackBar(content: Text('Failed to save profile: ${e.toString()}')),
                                               );
                                             }
-                                            return;
-                                          }
-
-                                          final Map<String, dynamic> profileData = {
-                                            'username': _nameController.text,
-                                            'institution': _instController.text,
-                                            'universityLocation': _instLocation ?? 'Main Campus',
-                                            'program': _progController.text,
-                                            'programCode': _progCode ?? 'C001',
-                                            'year': _yearController.text,
-                                            'semester': _semController.text,
-                                            'phone': _phoneController.text,
-                                            'email': widget.email,
-                                            'onboardingComplete': true,
-                                          };
-
-                                          notifier.updateProfile(
-                                            username: _nameController.text,
-                                            institution: _instController.text,
-                                            universityLocation: _instLocation,
-                                            program: _progController.text,
-                                            programCode: _progCode,
-                                            year: _yearController.text,
-                                            semester: _semController.text,
-                                            phone: _phoneController.text,
-                                            email: widget.email,
-                                            onboardingComplete: true,
-                                          );
-
-                                          // Only sync to Firestore if we have a UID (logged in user)
-                                          final currentProfile = ref.read(userProfileProvider);
-                                          if (currentProfile.uid.isNotEmpty) {
-                                            await UserService().completeOnboarding(currentProfile.uid, currentProfile.toJson());
-                                          }
-
-                                          if (widget.isOnboarding) {
-                                            if (context.mounted) {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (context) => ProfilePictureUploadScreen(email: widget.email),
-                                                ),
-                                              );
-                                            }
-                                          } else {
-                                            if (context.mounted) Navigator.pop(context);
+                                          } finally {
+                                            if (mounted) setState(() => _isLoading = false);
                                           }
                                         }
                                       : null,
@@ -388,10 +404,12 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'SAVE',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
+                                  child: _isLoading 
+                                    ? const CircularProgressIndicator(color: Colors.white)
+                                    : const Text(
+                                        'SAVE',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                      ),
                                 ),
                               ),
                             ],

@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/persistence_service.dart';
 import '../services/user_service.dart';
+import '../services/resource_service.dart';
+
+import 'package:uuid/uuid.dart';
 
 class UserProfile {
   final String uid;
@@ -18,6 +21,7 @@ class UserProfile {
   final String email;
   final DateTime? joinDate;
   final bool onboardingComplete;
+  final String? sessionId;
 
   UserProfile({
     required this.uid,
@@ -34,6 +38,7 @@ class UserProfile {
     required this.email,
     this.joinDate,
     this.onboardingComplete = false,
+    this.sessionId,
   });
 
   UserProfile copyWith({
@@ -51,6 +56,7 @@ class UserProfile {
     String? email,
     DateTime? joinDate,
     bool? onboardingComplete,
+    String? sessionId,
     bool clearImagePath = false,
   }) {
     return UserProfile(
@@ -68,6 +74,7 @@ class UserProfile {
       email: email ?? this.email,
       joinDate: joinDate ?? this.joinDate,
       onboardingComplete: onboardingComplete ?? this.onboardingComplete,
+      sessionId: sessionId ?? this.sessionId,
     );
   }
 
@@ -87,6 +94,7 @@ class UserProfile {
       'email': email,
       'joinDate': joinDate?.toIso8601String(),
       'onboardingComplete': onboardingComplete,
+      'sessionId': sessionId,
     };
   }
 
@@ -108,11 +116,14 @@ class UserProfile {
           ? (json['joinDate'] is String ? DateTime.parse(json['joinDate']) : (json['joinDate'] as dynamic).toDate()) 
           : null,
       onboardingComplete: json['onboardingComplete'] ?? false,
+      sessionId: json['sessionId'],
     );
   }
 }
 
 class UserProfileNotifier extends StateNotifier<UserProfile> {
+  final String _instanceSessionId = const Uuid().v4();
+
   UserProfileNotifier()
       : super(UserProfile(
           uid: '',
@@ -130,6 +141,8 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     _restoreProfile();
   }
 
+  String get instanceSessionId => _instanceSessionId;
+
   Future<void> _restoreProfile() async {
     final json = PersistenceService().getJson('user_profile');
     if (json != null) {
@@ -138,6 +151,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     
     final userId = PersistenceService().getSessionUserId();
     if (userId != null) {
+      ResourceService().initialize(userId);
       await fetchProfileFromFirestore(userId);
     }
     
@@ -220,9 +234,19 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     _saveProfile();
   }
 
-  void setProfileImage(String path) {
+  Future<void> setProfileImage(String path) async {
     state = state.copyWith(profileImagePath: path);
-    _saveProfile();
+    await _saveProfile();
+    
+    if (state.uid.isNotEmpty) {
+      final downloadUrl = await UserService().uploadProfilePicture(state.uid, path);
+      if (downloadUrl != null) {
+        // Clear local path and use download URL to ensure consistency
+        state = state.copyWith(photoURL: downloadUrl, clearImagePath: true);
+        await _saveProfile();
+        debugPrint('UserProfileNotifier: [DEBUG] Profile image synced. Local path cleared, using photoURL: $downloadUrl');
+      }
+    }
   }
 
   void clearProfileImage() {

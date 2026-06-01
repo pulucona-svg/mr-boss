@@ -147,7 +147,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  'Please check your email and click the link to reset your password. After resetting, you can return to the login screen.',
+                                  'Please check your email and click the link to reset your password. If you don\'t see it, check your spam folder. After resetting, you can return to the login screen.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: subTextColor,

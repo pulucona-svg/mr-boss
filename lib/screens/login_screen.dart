@@ -7,6 +7,7 @@ import 'reset_password_screen.dart';
 import 'academic_personalization_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import '../services/user_service.dart';
 import '../providers/auth_provider.dart';
 import '../providers/firebase_auth_provider.dart';
 import '../providers/user_provider.dart';
@@ -72,6 +73,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         debugPrint('LoginScreen: [DEBUG] Google Sign-In success. UID: ${user.uid}');
         
         await PersistenceService().saveSession(user.uid);
+
+        // Update sessionId in Firestore for single session enforcement
+        final sessionId = ref.read(userProfileProvider.notifier).instanceSessionId;
+        await UserService().updateSessionId(user.uid, sessionId);
         
         await ref
             .read(userProfileProvider.notifier)
@@ -144,6 +149,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final user = userCredential.user!;
 
         await PersistenceService().saveSession(user.uid);
+
+        // Update sessionId in Firestore for single session enforcement
+        final sessionId = ref.read(userProfileProvider.notifier).instanceSessionId;
+        await UserService().updateSessionId(user.uid, sessionId);
 
         await ref
             .read(userProfileProvider.notifier)

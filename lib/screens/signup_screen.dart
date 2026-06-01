@@ -9,6 +9,7 @@ import '../services/top_notification_service.dart';
 import '../providers/firebase_auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/persistence_service.dart';
+import '../services/user_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -52,13 +53,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final profile = ref.read(userProfileProvider);
         debugPrint('SignupScreen: [DEBUG] Profile state after fetch: onboardingComplete=${profile.onboardingComplete}');
 
-        // Update local profile with Google info
-        debugPrint('SignupScreen: [DEBUG] Updating local profile with Google info...');
+        // Update local profile with Google info ONLY if fields are currently empty
+        // This prevents overwriting manually updated info (like profile pic) with Google defaults
+        debugPrint('SignupScreen: [DEBUG] Merging local profile with Google info (non-destructive)...');
         ref.read(userProfileProvider.notifier).updateProfile(
           uid: user.uid,
-          email: user.email ?? '',
-          username: user.displayName ?? '',
-          photoURL: user.photoURL,
+          email: profile.email.isEmpty ? (user.email ?? '') : profile.email,
+          username: profile.username.isEmpty ? (user.displayName ?? '') : profile.username,
+          photoURL: (profile.photoURL == null || profile.photoURL!.isEmpty) ? user.photoURL : profile.photoURL,
         );
 
         if (profile.onboardingComplete) {
@@ -160,6 +162,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     if (userCredential != null) {
                       await PersistenceService().saveSession(userCredential.user!.uid);
                       debugPrint('SignupScreen: [DEBUG] Session saved: ${userCredential.user!.uid}');
+                      
+                      debugPrint('SignupScreen: [DEBUG] Syncing user to Firestore...');
+                      await UserService().syncUser(userCredential.user!);
+                      debugPrint('SignupScreen: [DEBUG] Firestore sync complete.');
                     }
 
                     debugPrint('SignupScreen: [DEBUG] Calling sendEmailVerification...');

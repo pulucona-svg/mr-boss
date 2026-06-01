@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/user_provider.dart';
 import 'reset_password_screen.dart';
 
@@ -15,15 +16,19 @@ class ProfilePictureUploadScreen extends ConsumerStatefulWidget {
 
 class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploadScreen> {
   final ImagePicker _picker = ImagePicker();
+  bool _isUploading = false;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
       final pickedFile = await _picker.pickImage(source: source);
       if (pickedFile != null) {
-        ref.read(userProfileProvider.notifier).setProfileImage(pickedFile.path);
+        setState(() => _isUploading = true);
+        await ref.read(userProfileProvider.notifier).setProfileImage(pickedFile.path);
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -68,12 +73,12 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                         ),
                       ),
                       TextButton(
-                        onPressed: () {
+                        onPressed: _isUploading ? null : () {
                           Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
                         },
-                        child: const Text(
+                        child: Text(
                           'Skip',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                          style: TextStyle(color: _isUploading ? Colors.grey : Colors.white70, fontSize: 14),
                         ),
                       ),
                     ],
@@ -121,13 +126,25 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                                 backgroundImage: userProfile.profileImagePath != null
                                     ? FileImage(File(userProfile.profileImagePath!))
                                     : (userProfile.photoURL != null 
-                                        ? NetworkImage(userProfile.photoURL!) 
+                                        ? CachedNetworkImageProvider(userProfile.photoURL!) as ImageProvider
                                         : null),
-                                child: (userProfile.profileImagePath == null && userProfile.photoURL == null)
+                                child: (userProfile.profileImagePath == null && userProfile.photoURL == null && !_isUploading)
                                     ? const Icon(Icons.person, size: 80, color: Colors.white54)
                                     : null,
                               ),
                             ),
+                            if (_isUploading)
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black45,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 40),
@@ -137,7 +154,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                               child: _buildUploadOption(
                                 icon: Icons.camera_alt_rounded,
                                 label: 'Camera',
-                                onTap: () => _pickImage(ImageSource.camera),
+                                onTap: _isUploading ? () {} : () => _pickImage(ImageSource.camera),
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -145,7 +162,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                               child: _buildUploadOption(
                                 icon: Icons.image_rounded,
                                 label: 'Gallery',
-                                onTap: () => _pickImage(ImageSource.gallery),
+                                onTap: _isUploading ? () {} : () => _pickImage(ImageSource.gallery),
                               ),
                             ),
                           ],
@@ -155,7 +172,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                           width: double.infinity,
                           height: 55,
                           child: ElevatedButton(
-                            onPressed: (userProfile.profileImagePath != null || userProfile.photoURL != null)
+                            onPressed: (userProfile.profileImagePath != null || userProfile.photoURL != null) && !_isUploading
                                 ? () {
                                     Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
                                   }
@@ -170,10 +187,12 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                               ),
                               elevation: (userProfile.profileImagePath != null || userProfile.photoURL != null) ? 4 : 0,
                             ),
-                            child: const Text(
-                              'CONTINUE',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
+                            child: _isUploading 
+                              ? const CircularProgressIndicator(color: Colors.white)
+                              : const Text(
+                                  'CONTINUE',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
                           ),
                         ),
                       ],

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +35,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   static bool _hasLoadedBefore = false;
   late bool _isLoading;
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -156,7 +158,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 backgroundImage: userProfile.profileImagePath != null
                                     ? FileImage(File(userProfile.profileImagePath!))
                                     : (userProfile.photoURL != null 
-                                        ? NetworkImage(userProfile.photoURL!) 
+                                        ? CachedNetworkImageProvider(userProfile.photoURL!) as ImageProvider
                                         : null),
                                 child: (userProfile.profileImagePath == null && userProfile.photoURL == null)
                                     ? Icon(Icons.person, size: 50, color: isDark ? Colors.white54 : Colors.grey)
@@ -1162,11 +1164,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final pickedFile = await picker.pickImage(source: source);
       if (pickedFile != null) {
-        ref.read(userProfileProvider.notifier).setProfileImage(pickedFile.path);
+        setState(() => _isUploading = true);
+        await ref.read(userProfileProvider.notifier).setProfileImage(pickedFile.path);
         if (mounted) Navigator.pop(context);
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -1203,16 +1208,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       userProfile.profileImagePath != null
                           ? Image.file(File(userProfile.profileImagePath!), fit: BoxFit.cover)
-                          : Container(
-                              color: isDark ? const Color(0xFF1A1A3F) : Colors.grey.shade200,
-                              child: Center(
-                                child: Icon(
-                                  Icons.person,
-                                  size: 150,
-                                  color: isDark ? Colors.white10 : Colors.white70,
-                                ),
-                              ),
-                            ),
+                          : (userProfile.photoURL != null 
+                              ? CachedNetworkImage(
+                                  imageUrl: userProfile.photoURL!,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    color: Colors.black26,
+                                    child: const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF))),
+                                  ),
+                                  errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.white24),
+                                )
+                              : Container(
+                                  color: isDark ? const Color(0xFF1A1A3F) : Colors.grey.shade200,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.person,
+                                      size: 150,
+                                      color: isDark ? Colors.white10 : Colors.white70,
+                                    ),
+                                  ),
+                                )),
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(

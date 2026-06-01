@@ -895,8 +895,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   likes: res.likes.toString(),
                   comments: res.comments.toString(),
                   isLiked: res.isLiked,
-                  onLikeToggle: () => ResourceService().toggleLike(res.title),
-                  onViewIncrement: () => ResourceService().incrementViews(res.title),
+                  onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
+                  onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
                   showPin: false,
                   onTap: () {},
                 );

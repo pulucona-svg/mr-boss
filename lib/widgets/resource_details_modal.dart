@@ -381,7 +381,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                         'Uploaded By', 
                         '$displayUploadedBy ($uploaderRole)',
                         isLast: true,
-                        customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath),                  ),
+                        customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath, userProfile.photoURL),                  ),
                     ] : [
                       _buildDetailRow(isDark, Icons.book_outlined, 'Unit Name', unitName),
                       _buildDetailRow(isDark, Icons.code_rounded, 'Unit Code', unitCode),
@@ -427,7 +427,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                         Icons.cloud_upload_outlined, 
                         'Uploaded By', 
                         '$displayUploadedBy ($uploaderRole)',
-                        customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath),                  ),
+                        customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath, userProfile.photoURL),                  ),
                       
                       Builder(
                         builder: (context) {
@@ -623,8 +623,8 @@ class ResourceDetailsModal extends ConsumerWidget {
     );
   }
 
-  Widget _buildUploaderProfilePic(WidgetRef ref, bool isMe, String? myProfilePic) {
-    final String? profilePic = isMe ? myProfilePic : uploaderProfilePic;
+  Widget _buildUploaderProfilePic(WidgetRef ref, bool isMe, String? myProfilePic, String? myPhotoUrl) {
+    final String? profilePic = isMe ? (myProfilePic ?? myPhotoUrl) : uploaderProfilePic;
     
     return Container(
       width: 32,

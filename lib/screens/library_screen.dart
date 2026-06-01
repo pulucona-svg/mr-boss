@@ -1302,8 +1302,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   showDownload: false,
                   status: !isDownloads ? res.status : null,
                   declineReason: !isDownloads ? res.declineReason : null,
-                  onLikeToggle: () => ResourceService().toggleLike(res.title),
-                  onViewIncrement: () => ResourceService().incrementViews(res.title),
+                  onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
+                  onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
                   isSelectionMode: isSelectionMode,
                   isSelected: selectedTitles.contains(res.title),
                   onLongPress: () {

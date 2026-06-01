@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/chat_provider.dart';
 import '../models/message.dart';
 import '../providers/theme_provider.dart';
@@ -795,8 +796,10 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
                   backgroundColor: Colors.white24,
                   backgroundImage: userProfile.profileImagePath != null
                       ? FileImage(File(userProfile.profileImagePath!))
-                      : null,
-                  child: userProfile.profileImagePath == null
+                      : (userProfile.photoURL != null 
+                          ? CachedNetworkImageProvider(userProfile.photoURL!) as ImageProvider
+                          : null),
+                  child: (userProfile.profileImagePath == null && userProfile.photoURL == null)
                       ? Text(
                           userProfile.username.isNotEmpty ? userProfile.username[0] : '?',
                           style: const TextStyle(color: Colors.white, fontSize: 10),

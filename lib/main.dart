@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -23,10 +24,12 @@ import 'providers/theme_provider.dart';
 import 'services/download_service.dart';
 import 'services/top_notification_service.dart';
 import 'services/persistence_service.dart';
+import 'services/user_service.dart';
 import 'services/usage_service.dart';
 import 'services/subscription_service.dart';
 import 'providers/ui_provider.dart';
 import 'providers/user_provider.dart';
+import 'providers/firebase_auth_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -130,54 +133,75 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
   @override
   void initState() {
     super.initState();
-    _checkSession();
+    // Use a post-frame callback to navigate immediately without blocking build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkSession();
+    });
   }
 
-  Future<void> _checkSession() async {
+  void _checkSession() {
     final uid = PersistenceService().getSessionUserId();
+    final localProfileJson = PersistenceService().getJson('user_profile');
+    
     debugPrint('InitialSessionCheck: [DEBUG] session_user_id=$uid');
     
     if (uid != null) {
-      final user = FirebaseAuth.instance.currentUser;
-      debugPrint('InitialSessionCheck: [DEBUG] FirebaseAuth.currentUser=${user?.email}, verified=${user?.emailVerified}');
+      if (localProfileJson != null) {
+        final profile = UserProfile.fromJson(localProfileJson);
+        debugPrint('InitialSessionCheck: [DEBUG] Local profile found. onboardingComplete=${profile.onboardingComplete}');
+        
+        if (profile.onboardingComplete) {
+          debugPrint('InitialSessionCheck: [DEBUG] Navigating to /home (Immediate)');
+          Navigator.pushReplacementNamed(context, '/home');
+          return;
+        }
+      }
+      
+      // If we are here, it means we have a UID but either no local profile 
+      // or onboarding is not complete. In this case, we might need a fetch,
+      // but we should still handle it gracefully if offline.
+      _performFullCheck(uid);
+    } else {
+      debugPrint('InitialSessionCheck: [DEBUG] No session found. Navigating to /login');
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
 
+  Future<void> _performFullCheck(String uid) async {
+    // This is the fallback path if local data is missing or incomplete
+    try {
+      final user = FirebaseAuth.instance.currentUser;
       await ref.read(userProfileProvider.notifier).fetchProfileFromFirestore(uid);
       final profile = ref.read(userProfileProvider);
-      debugPrint('InitialSessionCheck: [DEBUG] Profile onboardingComplete=${profile.onboardingComplete}');
-      
+
       if (mounted) {
         if (profile.onboardingComplete) {
-          debugPrint('InitialSessionCheck: [DEBUG] Navigating to /home');
           Navigator.pushReplacementNamed(context, '/home');
         } else {
-          // If not verified, go to verification screen
           if (user != null && !user.emailVerified && user.providerData.any((p) => p.providerId == 'password')) {
-            debugPrint('InitialSessionCheck: [DEBUG] User not verified. Navigating to EmailVerificationScreen');
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => EmailVerificationScreen(
-                  email: user.email ?? profile.email,
+                builder: (context) => EmailVerificationScreen(email: user.email ?? profile.email),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => AcademicPersonalizationScreen(
+                  email: profile.email.isNotEmpty ? profile.email : (user?.email ?? ''),
+                  isOnboarding: true,
                 ),
               ),
             );
-            return;
           }
-
-          debugPrint('InitialSessionCheck: [DEBUG] Navigating to AcademicPersonalizationScreen');
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AcademicPersonalizationScreen(
-                email: profile.email.isNotEmpty ? profile.email : (user?.email ?? ''),
-                isOnboarding: true,
-              ),
-            ),
-          );
         }
       }
-    } else {
-      debugPrint('InitialSessionCheck: [DEBUG] No session found. Navigating to /login');
+    } catch (e) {
+      debugPrint('InitialSessionCheck: [ERROR] Full check failed: $e');
+      // If offline and check fails, we might be stuck, but if we have ANY profile data, 
+      // let's try to let them in or show login
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
     }
   }
@@ -201,6 +225,7 @@ class MainNavigation extends ConsumerStatefulWidget {
 
 class _MainNavigationState extends ConsumerState<MainNavigation> {
   late final PageController _pageController;
+  StreamSubscription<String?>? _sessionSubscription;
 
   @override
   void initState() {
@@ -212,6 +237,9 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final courseService = ref.read(courseServiceProvider);
       ResourceService().synchronizeWithPool(courseService);
+
+      // Start session monitoring
+      _startSessionMonitoring();
 
       if (!mounted) return;
       final bool isFirstLogin = TopNotificationService.pendingWelcome;
@@ -228,8 +256,88 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     });
   }
 
+  void _startSessionMonitoring() {
+    final userProfile = ref.read(userProfileProvider);
+    final instanceSessionId = ref.read(userProfileProvider.notifier).instanceSessionId;
+    
+    if (userProfile.uid.isNotEmpty) {
+      debugPrint('MainNavigation: [DEBUG] Starting session monitoring for UID: ${userProfile.uid}');
+      
+      // 1. Initial background sync/check
+      _checkAndSyncSession(userProfile.uid, instanceSessionId);
+
+      // 2. Listen for connectivity changes to re-verify session
+      ConnectivityService().addListener(_onConnectivityChanged);
+
+      // 3. Listen to Firestore stream for real-time mismatches
+      final startTime = DateTime.now();
+      _sessionSubscription = UserService().streamUserSessionId(userProfile.uid).listen((remoteSessionId) {
+        // Ignore events for the first 3 seconds to allow initial sync to propagate
+        if (DateTime.now().difference(startTime).inSeconds < 3) return;
+
+        if (remoteSessionId != null && remoteSessionId.isNotEmpty && remoteSessionId != instanceSessionId) {
+          debugPrint('MainNavigation: [DEBUG] Session mismatch detected via Stream! Remote: $remoteSessionId, Local: $instanceSessionId');
+          _handleAutoLogout();
+        }
+      });
+    }
+  }
+
+  void _onConnectivityChanged() {
+    if (!ConnectivityService().isOffline) {
+      final userProfile = ref.read(userProfileProvider);
+      final instanceSessionId = ref.read(userProfileProvider.notifier).instanceSessionId;
+      if (userProfile.uid.isNotEmpty) {
+        debugPrint('MainNavigation: [DEBUG] Connectivity restored. Re-verifying session...');
+        _checkAndSyncSession(userProfile.uid, instanceSessionId);
+      }
+    }
+  }
+
+  Future<void> _checkAndSyncSession(String uid, String instanceId) async {
+    try {
+      // First, get the current remote session ID without updating it
+      final profile = await UserService().getUserProfile(uid);
+      final remoteId = profile?['sessionId'] as String?;
+      
+      debugPrint('MainNavigation: [DEBUG] Background Check - Remote: $remoteId, Local: $instanceId');
+
+      if (remoteId == null || remoteId.isEmpty) {
+        // If no session exists in Firestore, claim it
+        debugPrint('MainNavigation: [DEBUG] No remote session found. Claiming session...');
+        await UserService().updateSessionId(uid, instanceId);
+      } else if (remoteId != instanceId) {
+        // Mismatch! Someone else is logged in.
+        debugPrint('MainNavigation: [DEBUG] Session mismatch detected in background check!');
+        _handleAutoLogout();
+      } else {
+        debugPrint('MainNavigation: [DEBUG] Session validated successfully.');
+      }
+    } catch (e) {
+      debugPrint('MainNavigation: [DEBUG] Background session check failed (likely offline): $e');
+    }
+  }
+
+  void _handleAutoLogout() async {
+    _sessionSubscription?.cancel();
+    ConnectivityService().removeListener(_onConnectivityChanged);
+    final authService = ref.read(authServiceProvider);
+    await authService.signOut();
+    await PersistenceService().clearSession();
+    
+    if (mounted) {
+      TopNotificationService().showNotification(
+        context, 
+        'Logged out: Your account is being used on another device.'
+      );
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    }
+  }
+
   @override
   void dispose() {
+    _sessionSubscription?.cancel();
+    ConnectivityService().removeListener(_onConnectivityChanged);
     _pageController.dispose();
     ConnectivityService().dispose();
     super.dispose();

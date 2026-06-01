@@ -180,7 +180,11 @@ class _CommentModalState extends ConsumerState<CommentModal> {
     // If it's the current user's comment, use dynamic profile data
     final bool isMe = comment.authorId == userProfile.uid;
     final String displayAuthor = isMe ? userProfile.username : comment.author;
-    final String? displayImage = isMe ? userProfile.profileImagePath : comment.authorProfileImage;
+    
+    // For "Me", priority is local path then network URL
+    final String? displayImage = isMe 
+        ? (userProfile.profileImagePath ?? userProfile.photoURL) 
+        : comment.authorProfileImage;
 
     return Dismissible(
       key: Key('comment_${comment.id}'),
@@ -211,7 +215,9 @@ class _CommentModalState extends ConsumerState<CommentModal> {
                     radius: isReply ? 12 : 16,
                     backgroundColor: Colors.white12,
                     backgroundImage: displayImage != null
-                        ? FileImage(File(displayImage))
+                        ? (displayImage.startsWith('http') 
+                            ? NetworkImage(displayImage) as ImageProvider
+                            : FileImage(File(displayImage)))
                         : null,
                     child: displayImage == null
                         ? Text(
