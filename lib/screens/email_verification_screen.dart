@@ -5,22 +5,21 @@ import '../providers/auth_provider.dart';
 import '../providers/firebase_auth_provider.dart';
 import '../services/top_notification_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'verification_password_screen.dart';
 
-class ResetPasswordScreen extends ConsumerStatefulWidget {
-  final bool showInitialSuccess;
+class EmailVerificationScreen extends ConsumerStatefulWidget {
   final String email;
 
-  const ResetPasswordScreen({
+  const EmailVerificationScreen({
     super.key, 
-    this.showInitialSuccess = false,
     required this.email,
   });
 
   @override
-  ConsumerState<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+  ConsumerState<EmailVerificationScreen> createState() => _EmailVerificationScreenState();
 }
 
-class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
+class _EmailVerificationScreenState extends ConsumerState<EmailVerificationScreen> {
   bool _isLoading = false;
 
   @override
@@ -28,28 +27,59 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     super.initState();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.showInitialSuccess && mounted) {
-        TopNotificationService().showNotification(
-          context, 
-          'Password reset link sent to ${widget.email}'
-        );
-        ref.read(authStateProvider.notifier).startTimer(widget.email);
-      }
+      if (!mounted) return;
+      ref.read(authStateProvider.notifier).startTimer(widget.email);
     });
   }
 
-  Future<void> _handleResendReset() async {
+  Future<void> _handleResendVerification() async {
     setState(() => _isLoading = true);
     try {
       final authService = ref.read(authServiceProvider);
-      await authService.sendPasswordResetEmail(widget.email);
+      await authService.sendEmailVerification();
       ref.read(authStateProvider.notifier).startTimer(widget.email);
       
       if (mounted) {
         TopNotificationService().showNotification(
           context, 
-          'Password reset link resent successfully'
+          'Verification link resent successfully'
         );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleVerified() async {
+    setState(() => _isLoading = true);
+    try {
+      final authService = ref.read(authServiceProvider);
+      await authService.reloadUser();
+      
+      final user = authService.currentUser;
+      if (user != null && user.emailVerified) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => VerificationPasswordScreen(
+                email: widget.email,
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Your email has not been verified yet.')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -97,7 +127,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                       ),
                       Expanded(
                         child: Text(
-                          'Reset Password',
+                          'Verify Email',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: textColor,
@@ -127,7 +157,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                               children: [
                                 const SizedBox(height: 8),
                                 Text(
-                                  'We have sent a reset link to',
+                                  'We have sent a verification link to',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: textColor,
@@ -147,7 +177,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  'Please check your email and click the link to reset your password. After resetting, you can return to the login screen.',
+                                  'Please click the link in the email to verify your account. If you don\'t see it, check your spam folder.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: subTextColor,
@@ -160,7 +190,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                   width: double.infinity,
                                   height: 55,
                                   child: ElevatedButton(
-                                    onPressed: () => Navigator.pop(context),
+                                    onPressed: _isLoading ? null : _handleVerified,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF20C8FF),
                                       foregroundColor: Colors.white,
@@ -168,21 +198,23 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
-                                    child: const Text(
-                                      'BACK TO LOGIN',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    child: _isLoading 
+                                      ? const CircularProgressIndicator(color: Colors.white)
+                                      : const Text(
+                                          'I\'ve Verified My Email',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                   ),
                                 ),
                                 const SizedBox(height: 20),
                                 TextButton(
-                                  onPressed: (authState.canResend && !_isLoading) ? _handleResendReset : null,
+                                  onPressed: (authState.canResend && !_isLoading) ? _handleResendVerification : null,
                                   child: Text(
                                     authState.canResend 
-                                      ? 'Resend Reset Link' 
+                                      ? 'Resend Verification Link' 
                                       : 'Resend in ${authState.remainingSeconds}s',
                                     style: TextStyle(
                                       color: authState.canResend ? const Color(0xFF20C8FF) : Colors.grey,

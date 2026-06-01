@@ -324,6 +324,17 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                           final userProfile = ref.read(userProfileProvider);
                                           final notifier = ref.read(userProfileProvider.notifier);
                                           
+                                          // Check username uniqueness
+                                          final isUnique = await UserService().isUsernameUnique(_nameController.text);
+                                          if (!isUnique) {
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Username already taken. Please choose another.')),
+                                              );
+                                            }
+                                            return;
+                                          }
+
                                           final Map<String, dynamic> profileData = {
                                             'username': _nameController.text,
                                             'institution': _instController.text,

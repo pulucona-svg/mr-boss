@@ -8,6 +8,7 @@ import '../providers/user_provider.dart';
 import '../services/top_notification_service.dart';
 import '../services/persistence_service.dart';
 import '../services/user_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'academic_personalization_screen.dart';
 
 class VerificationPasswordScreen extends ConsumerStatefulWidget {
@@ -23,7 +24,6 @@ class VerificationPasswordScreen extends ConsumerStatefulWidget {
 }
 
 class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswordScreen> {
-  final TextEditingController _codeController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
@@ -34,40 +34,21 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
   bool _hasLetter = false;
   bool _hasNumber = false;
   bool _passwordsMatch = false;
-  bool _isOtpValid = false;
 
   @override
   void initState() {
     super.initState();
     
-    _codeController.addListener(_onFieldChanged);
     _passwordController.addListener(_onFieldChanged);
     _confirmPasswordController.addListener(_onFieldChanged);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      
-      final authState = ref.read(authStateProvider);
-      
-      if (authState.lastSentEmail != widget.email || !authState.otpSent) {
-        ref.read(authStateProvider.notifier).startTimer(widget.email);
-        
-        TopNotificationService().showNotification(
-          context, 
-          'Signup code sent to ${widget.email}'
-        );
-      }
-    });
   }
 
   void _onFieldChanged() {
-    final code = _codeController.text.trim();
     final password = _passwordController.text;
     final confirm = _confirmPasswordController.text;
     
     setState(() {
-      _isOtpValid = code.length == 6;
-      _hasMinLength = password.length > 6;
+      _hasMinLength = password.length >= 8;
       _hasLetter = password.contains(RegExp(r'[a-zA-Z]'));
       _hasNumber = password.contains(RegExp(r'[0-9]'));
       _passwordsMatch = password.isNotEmpty && password == confirm;
@@ -76,36 +57,14 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
 
   @override
   void dispose() {
-    _codeController.removeListener(_onFieldChanged);
     _passwordController.removeListener(_onFieldChanged);
     _confirmPasswordController.removeListener(_onFieldChanged);
-    _codeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  void _handleResendCode() {
-    ref.read(authStateProvider.notifier).startTimer(widget.email);
-    
-    _codeController.clear();
-    _passwordController.clear();
-    _confirmPasswordController.clear();
-    
-    TopNotificationService().showNotification(
-      context, 
-      'Signup code resent successfully'
-    );
-  }
-
   Future<void> _handleContinue() async {
-    if (_codeController.text.trim().length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid 6-digit code')),
-      );
-      return;
-    }
-
     if (!_hasMinLength || !_hasLetter || !_hasNumber) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please satisfy all password validation requirements')),
@@ -125,22 +84,19 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
     try {
       final authService = ref.read(authServiceProvider);
 
-      final userCredential = await authService.registerWithEmailAndPassword(
-        widget.email, 
-        _passwordController.text
-      );
+      await authService.updatePassword(_passwordController.text);
 
-      if (userCredential != null && mounted) {
-        final user = userCredential.user!;
-        await PersistenceService().saveSession(user.uid);
-        
-        // Update local profile with UID and Email
-        ref.read(userProfileProvider.notifier).updateProfile(
-          uid: user.uid,
-          email: widget.email,
-        );
-        
-        TopNotificationService().showNotification(context, 'Account created successfully');
+      final user = authService.currentUser!;
+      await PersistenceService().saveSession(user.uid);
+      
+      // Update local profile with UID and Email
+      ref.read(userProfileProvider.notifier).updateProfile(
+        uid: user.uid,
+        email: widget.email,
+      );
+      
+      if (mounted) {
+        TopNotificationService().showNotification(context, 'Password set successfully');
         ref.read(authStateProvider.notifier).reset();
 
         Navigator.pushReplacement(
@@ -166,13 +122,11 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authStateProvider);
-    
     final textColor = Colors.white;
     final subTextColor = Colors.white70;
     final fieldBgColor = Colors.white.withOpacity(0.05);
 
-    final isFormValid = _isOtpValid && _hasMinLength && _hasLetter && _hasNumber && _passwordsMatch;
+    final isFormValid = _hasMinLength && _hasLetter && _hasNumber && _passwordsMatch;
 
     return Scaffold(
       body: Stack(
@@ -202,7 +156,7 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
                       ),
                       Expanded(
                         child: Text(
-                          'Set Password',
+                          'Create Password',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: textColor,
@@ -232,7 +186,7 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
                               children: [
                                 const SizedBox(height: 8),
                                 Text(
-                                  'We have sent a code to ${widget.email}',
+                                  'Set Your Password',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: textColor,
@@ -242,7 +196,7 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  'Enter it below to set your account password.',
+                                  'Please create a strong password for your account.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: subTextColor,
@@ -251,43 +205,6 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
                                   ),
                                 ),
                                 const SizedBox(height: 40),
-                                _buildTextField(
-                                  controller: _codeController,
-                                  hint: 'Verification Code (6 digits)',
-                                  icon: Icons.tag,
-                                  keyboardType: TextInputType.number,
-                                  isDark: true,
-                                  fieldBgColor: fieldBgColor,
-                                  maxLength: 6,
-                                  suffixWidget: Container(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: TextButton(
-                                      onPressed: authState.canResend ? _handleResendCode : null,
-                                      style: TextButton.styleFrom(
-                                        backgroundColor: authState.canResend ? Colors.green.withOpacity(0.1) : Colors.transparent,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                      ),
-                                      child: Text(
-                                        authState.canResend ? 'Resend Code' : '${authState.remainingSeconds}s',
-                                        style: TextStyle(
-                                          color: authState.canResend ? Colors.green : Colors.grey,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                                  child: _buildRuleRow(
-                                    _isOtpValid ? 'Valid verification code' : 'Enter 6-digit verification code',
-                                    _isOtpValid,
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
                                 _buildTextField(
                                   controller: _passwordController,
                                   hint: 'Password',
@@ -304,7 +221,7 @@ class _VerificationPasswordScreenState extends ConsumerState<VerificationPasswor
                                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                                   child: Column(
                                     children: [
-                                      _buildRuleRow('More than 6 characters', _hasMinLength),
+                                      _buildRuleRow('At least 8 characters', _hasMinLength),
                                       const SizedBox(height: 4),
                                       _buildRuleRow('Contains a letter', _hasLetter),
                                       const SizedBox(height: 4),

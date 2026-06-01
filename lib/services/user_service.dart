@@ -24,6 +24,12 @@ class UserService {
 
       if (!docSnap.exists) {
         debugPrint('FIRESTORE DEBUG: profile not found. Attempting creation (set) for collection=users, docId=${user.uid}');
+        
+        String authProvider = 'email';
+        if (user.providerData.any((p) => p.providerId == 'google.com')) {
+          authProvider = 'google';
+        }
+
         // Create new user document
         final userData = {
           'uid': user.uid,
@@ -32,6 +38,7 @@ class UserService {
           'photoURL': user.photoURL,
           'onboardingComplete': false,
           'joinDate': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
           'institution': '',
           'universityLocation': 'Main Campus',
           'program': '',
@@ -39,6 +46,8 @@ class UserService {
           'year': 'Year 1',
           'semester': 'Sem 1',
           'phone': '',
+          'authProvider': authProvider,
+          'emailVerified': user.emailVerified,
         };
         
         try {
@@ -104,6 +113,21 @@ class UserService {
     } catch (e) {
       debugPrint('UserService: [FATAL ERROR] getUserProfile failed: $e');
       return null;
+    }
+  }
+
+  // Check if username is unique
+  Future<bool> isUsernameUnique(String username) async {
+    try {
+      final query = await _firestore
+          .collection('users')
+          .where('username', isEqualTo: username)
+          .limit(1)
+          .get();
+      return query.docs.isEmpty;
+    } catch (e) {
+      debugPrint('UserService: isUsernameUnique error: $e');
+      return true; // Default to true or handle error
     }
   }
 }

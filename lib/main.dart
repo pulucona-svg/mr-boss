@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 
 import 'screens/dashboard_screen.dart';
@@ -11,6 +12,7 @@ import 'screens/library_screen.dart';
 import 'screens/explore_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/academic_personalization_screen.dart';
+import 'screens/email_verification_screen.dart';
 import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
@@ -24,6 +26,7 @@ import 'services/persistence_service.dart';
 import 'services/usage_service.dart';
 import 'services/subscription_service.dart';
 import 'providers/ui_provider.dart';
+import 'providers/user_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +74,14 @@ class MirrorApp extends ConsumerStatefulWidget {
 }
 
 class _MirrorAppState extends ConsumerState<MirrorApp> {
+  Widget _getInitialScreen() {
+    if (!widget.isLoggedIn) {
+      return const LoginScreen();
+    }
+    
+    return const InitialSessionCheck();
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
@@ -92,9 +103,8 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
         useMaterial3: true,
       ),
       themeMode: themeMode,
-      initialRoute: widget.isLoggedIn ? '/home' : '/',
+      home: _getInitialScreen(),
       routes: {
-        '/': (context) => const LoginScreen(),
         '/home': (context) => const MainNavigation(),
         '/login': (context) => const LoginScreen(),
         '/personalization': (context) {
@@ -105,6 +115,79 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
           );
         },
       },
+    );
+  }
+}
+
+class InitialSessionCheck extends ConsumerStatefulWidget {
+  const InitialSessionCheck({super.key});
+
+  @override
+  ConsumerState<InitialSessionCheck> createState() => _InitialSessionCheckState();
+}
+
+class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    final uid = PersistenceService().getSessionUserId();
+    debugPrint('InitialSessionCheck: [DEBUG] session_user_id=$uid');
+    
+    if (uid != null) {
+      final user = FirebaseAuth.instance.currentUser;
+      debugPrint('InitialSessionCheck: [DEBUG] FirebaseAuth.currentUser=${user?.email}, verified=${user?.emailVerified}');
+
+      await ref.read(userProfileProvider.notifier).fetchProfileFromFirestore(uid);
+      final profile = ref.read(userProfileProvider);
+      debugPrint('InitialSessionCheck: [DEBUG] Profile onboardingComplete=${profile.onboardingComplete}');
+      
+      if (mounted) {
+        if (profile.onboardingComplete) {
+          debugPrint('InitialSessionCheck: [DEBUG] Navigating to /home');
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          // If not verified, go to verification screen
+          if (user != null && !user.emailVerified && user.providerData.any((p) => p.providerId == 'password')) {
+            debugPrint('InitialSessionCheck: [DEBUG] User not verified. Navigating to EmailVerificationScreen');
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EmailVerificationScreen(
+                  email: user.email ?? profile.email,
+                ),
+              ),
+            );
+            return;
+          }
+
+          debugPrint('InitialSessionCheck: [DEBUG] Navigating to AcademicPersonalizationScreen');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AcademicPersonalizationScreen(
+                email: profile.email.isNotEmpty ? profile.email : (user?.email ?? ''),
+                isOnboarding: true,
+              ),
+            ),
+          );
+        }
+      }
+    } else {
+      debugPrint('InitialSessionCheck: [DEBUG] No session found. Navigating to /login');
+      if (mounted) Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
+      ),
     );
   }
 }

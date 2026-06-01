@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'signup_screen.dart';
 import 'reset_password_screen.dart';
 import 'academic_personalization_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../providers/auth_provider.dart';
 import '../providers/firebase_auth_provider.dart';
@@ -27,7 +28,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _isLoading = false;
-  String? _identifierError;
 
   static const String _googleSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#fbc02d" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12	s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20	s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#e53935" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039	l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4caf50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36	c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1565c0" d="M43.611,20.083L43.595,20L42,20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571	c0.001-0.001,0.002-0.001,0.002-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
@@ -54,6 +54,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _identifierController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -69,22 +71,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final user = userCredential.user!;
         debugPrint('LoginScreen: [DEBUG] Google Sign-In success. UID: ${user.uid}');
         
-        debugPrint('LoginScreen: [DEBUG] Saving session to persistence...');
         await PersistenceService().saveSession(user.uid);
         
-        debugPrint('LoginScreen: [DEBUG] Fetching user profile from Firestore...');
         await ref
             .read(userProfileProvider.notifier)
             .fetchProfileFromFirestore(user.uid);
 
         final profile = ref.read(userProfileProvider);
-        debugPrint('LoginScreen: [DEBUG] Profile fetch complete. OnboardingComplete: ${profile.onboardingComplete}');
 
         if (profile.onboardingComplete) {
-          debugPrint('LoginScreen: [DEBUG] Navigating to /home');
           Navigator.pushReplacementNamed(context, '/home');
         } else {
-          debugPrint('LoginScreen: [DEBUG] Navigating to AcademicPersonalizationScreen');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -95,11 +92,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           );
         }
-      } else {
-        debugPrint('LoginScreen: [DEBUG] Google Sign-In returned null (user cancelled).');
       }
     } catch (e) {
-      debugPrint('LoginScreen: [FATAL ERROR] Google Sign-In failed in catch block: $e');
+      debugPrint('LoginScreen: [FATAL ERROR] Google Sign-In failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Google Login failed: $e')),
@@ -111,12 +106,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _handleLogin() async {
-    final email = _identifierController.text.trim();
+    final identifier = _identifierController.text.trim();
     final password = _passwordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
+    if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter both email and password')),
+        const SnackBar(content: Text('Please enter both identifier and password')),
       );
       return;
     }
@@ -125,6 +120,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       final authService = ref.read(authServiceProvider);
+      String email = identifier;
+
+      // If it doesn't look like an email, treat as username
+      if (!identifier.contains('@')) {
+        final resolvedEmail = await authService.resolveEmailFromUsername(identifier);
+        if (resolvedEmail == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Username not found')),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
+        email = resolvedEmail;
+      }
+
       final userCredential =
           await authService.signInWithEmailAndPassword(email, password);
 
@@ -143,7 +155,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             .showNotification(context, 'Login successful');
         TopNotificationService.pendingWelcome = true;
 
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        Future.delayed(const Duration(milliseconds: 1000), () {
           if (!mounted) return;
 
           if (profile.onboardingComplete) {
@@ -161,10 +173,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           }
         });
       }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
+      if (e.code == 'user-not-found') {
+        message = 'No user found with this identifier';
+      } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        message = 'Incorrect password';
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address';
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: $e')),
+          SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
     } finally {
@@ -267,7 +291,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         children: [
                           _buildTextField(
                             controller: _identifierController,
-                            label: "Username",
+                            label: "Identifier",
                             hint: "Username / Email",
                             obscure: false,
                             toggle: null,
@@ -311,15 +335,55 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                               Flexible(
                                 child: TextButton(
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => ResetPasswordScreen(
-                                            email:
-                                                _identifierController.text),
-                                      ),
-                                    );
+                                  onPressed: () async {
+                                    final identifier = _identifierController.text.trim();
+                                    if (identifier.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Please enter your email or username first')),
+                                      );
+                                      return;
+                                    }
+
+                                    setState(() => _isLoading = true);
+                                    try {
+                                      final authService = ref.read(authServiceProvider);
+                                      String email = identifier;
+                                      if (!identifier.contains('@')) {
+                                        final resolvedEmail = await authService.resolveEmailFromUsername(identifier);
+                                        if (resolvedEmail == null) {
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Username not found')),
+                                            );
+                                          }
+                                          setState(() => _isLoading = false);
+                                          return;
+                                        }
+                                        email = resolvedEmail;
+                                      }
+
+                                      await authService.sendPasswordResetEmail(email);
+                                      
+                                      if (mounted) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => ResetPasswordScreen(
+                                              email: email,
+                                              showInitialSuccess: true,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: ${e.toString()}')),
+                                        );
+                                      }
+                                    } finally {
+                                      if (mounted) setState(() => _isLoading = false);
+                                    }
                                   },
                                   style: TextButton.styleFrom(
                                     padding: EdgeInsets.zero,

@@ -4,10 +4,12 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'academic_personalization_screen.dart';
 import 'verification_password_screen.dart';
+import 'email_verification_screen.dart';
 import '../services/top_notification_service.dart';
 import '../providers/firebase_auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/persistence_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -135,22 +137,71 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   final email = _emailController.text.trim();
                   if (!email.contains('@')) {
                     TopNotificationService().showNotification(context, "Please enter a valid email");
                     return;
                   }
 
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => VerificationPasswordScreen(
-                        email: email,
-                      ),
-                    ),
-                  );
+                  setState(() => _isLoading = true);
+                  
+                  debugPrint('SignupScreen: [DEBUG] Starting signup flow for $email');
+                  try {
+                    final authService = ref.read(authServiceProvider);
+                    
+                    // Create account with a temporary password
+                    const dummyPassword = "TemporaryPassword123!";
+                    
+                    debugPrint('SignupScreen: [DEBUG] Calling registerWithEmailAndPassword...');
+                    final userCredential = await authService.registerWithEmailAndPassword(email, dummyPassword);
+                    debugPrint('SignupScreen: [DEBUG] Account creation successful.');
+                    
+                    if (userCredential != null) {
+                      await PersistenceService().saveSession(userCredential.user!.uid);
+                      debugPrint('SignupScreen: [DEBUG] Session saved: ${userCredential.user!.uid}');
+                    }
+
+                    debugPrint('SignupScreen: [DEBUG] Calling sendEmailVerification...');
+                    await authService.sendEmailVerification();
+                    debugPrint('SignupScreen: [DEBUG] Verification email sent successfully.');
+
+                    if (mounted) {
+                      debugPrint('SignupScreen: [DEBUG] Navigating to EmailVerificationScreen');
+                      // Close the modal before navigating
+                      Navigator.pop(context);
+                      
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EmailVerificationScreen(
+                            email: email,
+                          ),
+                        ),
+                      );
+                    }
+                  } on FirebaseAuthException catch (e) {
+                    debugPrint('SignupScreen: [DEBUG] FirebaseAuthException: Code=${e.code}, Message=${e.message}');
+                    String message = e.message ?? 'An error occurred during signup';
+                    if (e.code == 'email-already-in-use') {
+                      message = 'This email is already registered. Please login instead.';
+                    } else if (e.code == 'invalid-email') {
+                      message = 'The email address is invalid.';
+                    } else if (e.code == 'weak-password') {
+                      message = 'The password is too weak.';
+                    }
+                    
+                    if (mounted) {
+                      TopNotificationService().showNotification(context, message);
+                    }
+                  } catch (e) {
+                    debugPrint('SignupScreen: [DEBUG] Unknown error: $e');
+                    if (mounted) {
+                      TopNotificationService().showNotification(context, "Signup failed: ${e.toString()}");
+                    }
+                  } finally {
+                    if (mounted) setState(() => _isLoading = false);
+                  }
                 },
                 child: const Text('CONTINUE'),
               ),

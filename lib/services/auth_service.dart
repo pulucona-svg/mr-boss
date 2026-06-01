@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'user_service.dart';
@@ -44,26 +45,78 @@ class AuthService {
   Future<UserCredential?> signInWithEmailAndPassword(String email, String password) async {
     try {
       final userCredential = await _auth.signInWithEmailAndPassword(email: email, password: password);
-      if (userCredential.user != null) {
-        await _userService.syncUser(userCredential.user!);
-      }
       return userCredential;
     } on FirebaseAuthException catch (e) {
-      debugPrint('AuthService: signInWithEmailAndPassword error: ${e.message}');
+      debugPrint('AuthService: signInWithEmailAndPassword error: ${e.code}');
       rethrow;
+    }
+  }
+
+  // Resolve username to email
+  Future<String?> resolveEmailFromUsername(String username) async {
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .where('username', isEqualTo: username)
+          .limit(1)
+          .get();
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.data()['email'] as String?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('AuthService: resolveEmailFromUsername error: $e');
+      return null;
     }
   }
 
   // Register with email and password
   Future<UserCredential?> registerWithEmailAndPassword(String email, String password) async {
+    debugPrint('AuthService: [DEBUG] createUserWithEmailAndPassword() starting for $email');
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
-      if (userCredential.user != null) {
-        await _userService.syncUser(userCredential.user!);
-      }
+      debugPrint('AuthService: [DEBUG] createUserWithEmailAndPassword() SUCCESS');
       return userCredential;
     } on FirebaseAuthException catch (e) {
-      debugPrint('AuthService: registerWithEmailAndPassword error: ${e.message}');
+      debugPrint('AuthService: [DEBUG] createUserWithEmailAndPassword() FAILED: Code=${e.code}, Message=${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('AuthService: [DEBUG] createUserWithEmailAndPassword() UNKNOWN ERROR: $e');
+      rethrow;
+    }
+  }
+
+  // Send email verification
+  Future<void> sendEmailVerification() async {
+    final user = _auth.currentUser;
+    debugPrint('AuthService: [DEBUG] sendEmailVerification() starting for ${user?.email}');
+    if (user == null) {
+      debugPrint('AuthService: [DEBUG] sendEmailVerification() FAILED: Current user is NULL');
+      throw Exception('User not logged in');
+    }
+    try {
+      await user.sendEmailVerification();
+      debugPrint('AuthService: [DEBUG] sendEmailVerification() SUCCESS');
+    } on FirebaseAuthException catch (e) {
+      debugPrint('AuthService: [DEBUG] sendEmailVerification() FAILED: Code=${e.code}, Message=${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('AuthService: [DEBUG] sendEmailVerification() UNKNOWN ERROR: $e');
+      rethrow;
+    }
+  }
+
+  // Reload current user to refresh emailVerified status
+  Future<void> reloadUser() async {
+    await _auth.currentUser?.reload();
+  }
+
+  // Update password
+  Future<void> updatePassword(String newPassword) async {
+    try {
+      await _auth.currentUser?.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('AuthService: updatePassword error: ${e.message}');
       rethrow;
     }
   }
