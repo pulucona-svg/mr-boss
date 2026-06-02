@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'notification_service.dart';
@@ -48,12 +49,11 @@ class ResourceService extends ChangeNotifier {
     // 3. Attach fresh listeners
     _allResourcesSub = _firestore
         .collection('resources')
-        .where('status', isEqualTo: 'approved')
         .orderBy('uploadDate', descending: true)
         .snapshots()
         .listen((snapshot) {
       _allResources = snapshot.docs
-          .map((doc) => Resource.fromMap(doc.data(), doc.id))
+          .map((doc) => Resource.fromMap(doc.data(), doc.id, currentUserId: userId))
           .toList();
       notifyListeners();
     }, onError: (e) => debugPrint('ResourceService: [ERROR] allResources listener failed: $e'));
@@ -65,7 +65,7 @@ class ResourceService extends ChangeNotifier {
         .snapshots()
         .listen((snapshot) {
       _userUploads = snapshot.docs
-          .map((doc) => Resource.fromMap(doc.data(), doc.id))
+          .map((doc) => Resource.fromMap(doc.data(), doc.id, currentUserId: userId))
           .toList();
       notifyListeners();
     }, onError: (e) => debugPrint('ResourceService: [ERROR] userUploads listener failed: $e'));
@@ -94,8 +94,7 @@ class ResourceService extends ChangeNotifier {
 
   List<Resource> get allResources {
     // Single source of truth from Firestore snapshots
-    final approvedFromUploads = _userUploads.where((r) => r.status == 'approved');
-    final combined = [..._allResources, ...approvedFromUploads];
+    final combined = [..._allResources, ..._userUploads];
     
     // Remove duplicates based on document ID
     final seen = <String>{};
@@ -146,7 +145,7 @@ class ResourceService extends ChangeNotifier {
           .get();
       
       _userUploads = snapshot.docs
-          .map((doc) => Resource.fromMap(doc.data(), doc.id))
+          .map((doc) => Resource.fromMap(doc.data(), doc.id, currentUserId: userId))
           .toList();
       notifyListeners();
     } catch (e) {
@@ -156,14 +155,14 @@ class ResourceService extends ChangeNotifier {
 
   Future<void> fetchAllResourcesOnce() async {
     try {
+      final String? userId = FirebaseAuth.instance.currentUser?.uid;
       final snapshot = await _firestore
           .collection('resources')
-          .where('status', isEqualTo: 'approved')
           .orderBy('uploadDate', descending: true)
           .get();
       
       _allResources = snapshot.docs
-          .map((doc) => Resource.fromMap(doc.data(), doc.id))
+          .map((doc) => Resource.fromMap(doc.data(), doc.id, currentUserId: userId))
           .toList();
       notifyListeners();
     } catch (e) {
@@ -189,12 +188,34 @@ class ResourceService extends ChangeNotifier {
   }
 
   Future<void> toggleLike(String docId, bool currentIsLiked) async {
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final docRef = _firestore.collection('resources').doc(docId);
     try {
-      await _firestore.collection('resources').doc(docId).update({
-        'likes': FieldValue.increment(currentIsLiked ? -1 : 1),
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) return;
+
+        final data = snapshot.data() ?? {};
+        final likedByList = List<String>.from(data['likedBy'] ?? []);
+        
+        int likesCount = data['likes'] ?? 0;
+        if (likedByList.contains(userId)) {
+          likedByList.remove(userId);
+          likesCount = (likesCount - 1).clamp(0, 999999).toInt();
+        } else {
+          likedByList.add(userId);
+          likesCount += 1;
+        }
+
+        transaction.update(docRef, {
+          'likedBy': likedByList,
+          'likes': likesCount,
+        });
       });
     } catch (e) {
-      debugPrint('ResourceService: [ERROR] Failed to toggle like: $e');
+      debugPrint('ResourceService: [ERROR] Failed to toggle like transaction: $e');
     }
   }
 

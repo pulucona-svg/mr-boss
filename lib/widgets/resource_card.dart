@@ -9,7 +9,6 @@ import '../utils/feedback_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/material_model.dart'; // Import Resource type from models
 import '../providers/providers.dart';
-import '../services/usage_service.dart';
 
 import '../screens/material_viewer_screen.dart';
 import 'download_modal.dart';
@@ -160,7 +159,10 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => CommentModal(resourceTitle: widget.resource.title),
+      builder: (context) => CommentModal(
+        resourceId: widget.resource.id,
+        resourceTitle: widget.resource.title,
+      ),
     );
   }
 
@@ -232,67 +234,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   Widget _statusTag() {
-    if (widget.resource.status == null) return const SizedBox.shrink();
-
-    String text = '';
-    Color color = Colors.grey;
-    IconData icon = Icons.info_outline;
-
-    switch (widget.resource.status) {
-      case 'approved':
-        text = 'Approved by Admin';
-        color = const Color(0xFF00A85A);
-        icon = Icons.check_circle_outline;
-        break;
-      case 'waiting':
-        text = 'Waiting Admin Approval';
-        color = const Color(0xFFFF8A00);
-        icon = Icons.hourglass_empty_rounded;
-        break;
-      case 'declined':
-        text = 'Declined by Admin';
-        color = const Color(0xFFFF4667);
-        icon = Icons.cancel_outlined;
-        break;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 12, color: color),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  text,
-                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (widget.resource.status == 'declined' && widget.resource.declineReason != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 4),
-            child: Text(
-              'Reason: ${widget.resource.declineReason}',
-              style: const TextStyle(color: Colors.white54, fontSize: 9, fontStyle: FontStyle.italic),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   void _handleDownload() async {
@@ -319,7 +261,6 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     final resourceService = ref.watch(resourceServiceProvider);
     final downloadService = ref.watch(downloadServiceProvider);
     final viewService = ref.watch(viewServiceProvider);
-    final commentService = ref.watch(commentServiceProvider);
 
     final isActive = resourceService.activeResourceId == widget.resource.id;
     final isPinned = downloadService.isPinned(widget.resource.title);
@@ -368,7 +309,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    flex: widget.resource.status != null ? 2 : 3,
+                    flex: 3,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -664,12 +605,9 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                         GestureDetector(
                           onTap: _showComments,
                           behavior: HitTestBehavior.translucent,
-                          child: Builder(
-                            builder: (context) {
-                              final count = commentService.getCommentCount(widget.resource.title);
-                              final displayCount = (widget.resource.status == 'approved') ? count.toString() : '0';
-                              return _statItem(Icons.mode_comment_outlined, displayCount);
-                            },
+                          child: _statItem(
+                            Icons.mode_comment_outlined, 
+                            widget.resource.comments.toString(),
                           ),
                         ),
                       ],

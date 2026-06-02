@@ -63,6 +63,7 @@ dependencies:
   flutter_image_compress: ^2.4.0
   dio: ^5.9.2
   open_filex: ^4.7.0
+  uuid: ^4.3.3
 
 dev_dependencies:
   flutter_test:

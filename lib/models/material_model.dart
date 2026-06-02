@@ -29,6 +29,8 @@ class Resource {
   String? status; // 'approved', 'waiting', 'declined'
   final String? declineReason;
   final DateTime? declineDate;
+  final List<String> likedBy;
+  final String visibility;
   int _views;
   int _likes;
   int _comments;
@@ -62,6 +64,8 @@ class Resource {
     this.status,
     this.declineReason,
     this.declineDate,
+    this.likedBy = const [],
+    this.visibility = 'public',
     int views = 0,
     int likes = 0,
     int comments = 0,
@@ -70,15 +74,16 @@ class Resource {
         _likes = likes,
         _comments = comments;
 
-  int get views => status == 'approved' ? _views : 0;
-  int get likes => status == 'approved' ? _likes : 0;
-  int get comments => status == 'approved' ? _comments : 0;
+  int get views => _views;
+  int get likes => _likes;
+  int get comments => _comments;
 
   set views(int val) => _views = val;
   set likes(int val) => _likes = val;
   set comments(int val) => _comments = val;
 
-  factory Resource.fromMap(Map<String, dynamic> map, String docId) {
+  factory Resource.fromMap(Map<String, dynamic> map, String docId, {String? currentUserId}) {
+    final likedByList = List<String>.from(map['likedBy'] ?? []);
     return Resource(
       id: docId,
       title: map['title'] ?? '',
@@ -107,9 +112,12 @@ class Resource {
       status: map['status'],
       declineReason: map['declineReason'],
       declineDate: map['declineDate'] != null ? (map['declineDate'] as Timestamp).toDate() : null,
+      likedBy: likedByList,
+      visibility: map['visibility'] ?? 'public',
       views: map['views'] ?? 0,
       likes: map['likes'] ?? 0,
       comments: map['comments'] ?? 0,
+      isLiked: currentUserId != null ? likedByList.contains(currentUserId) : false,
     );
   }
 
@@ -141,6 +149,8 @@ class Resource {
       'status': status,
       'declineReason': declineReason,
       'declineDate': declineDate != null ? Timestamp.fromDate(declineDate!) : null,
+      'likedBy': likedBy,
+      'visibility': visibility,
       'views': _views,
       'likes': _likes,
       'comments': _comments,
@@ -176,6 +186,8 @@ class Resource {
       status: status,
       declineReason: declineReason,
       declineDate: declineDate,
+      likedBy: likedBy,
+      visibility: visibility,
       views: _views,
       likes: _likes,
       comments: _comments,

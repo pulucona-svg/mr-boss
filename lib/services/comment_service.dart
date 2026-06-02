@@ -1,133 +1,174 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/comment.dart';
-import 'resource_service.dart';
 
 class CommentService extends ChangeNotifier {
   static final CommentService _instance = CommentService._internal();
   factory CommentService() => _instance;
   CommentService._internal();
 
-  final Map<String, List<Comment>> _resourceComments = {};
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  List<Comment> getComments(String resourceTitle) {
-    return _resourceComments.putIfAbsent(resourceTitle, () => _getInitialDummyData());
+  Stream<List<Comment>> streamComments(String resourceId) {
+    final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    return _firestore
+        .collection('resources')
+        .doc(resourceId)
+        .collection('comments')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snapshot) {
+          final allComments = snapshot.docs.map((doc) {
+            return Comment.fromMap(doc.data(), doc.id, currentUserId: currentUserId);
+          }).toList();
+
+          // Construct nesting replies
+          final topLevel = allComments.where((c) => c.parentId == null).toList();
+          
+          for (var parent in topLevel) {
+            parent.replies = allComments.where((c) => c.parentId == parent.id).toList();
+            // Sort replies chronological (ascending)
+            parent.replies.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          }
+
+          // Top level comments are sorted descending (latest first)
+          topLevel.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return topLevel;
+        });
   }
 
-  int getCommentCount(String resourceTitle) {
-    final comments = getComments(resourceTitle);
-    return _calculateTotal(comments);
-  }
+  Future<void> addComment(
+    String resourceId,
+    String text, {
+    Comment? replyingTo,
+    required String authorName,
+    String? authorProfileImage,
+    String? authorId,
+  }) async {
+    final commentDocRef = _firestore
+        .collection('resources')
+        .doc(resourceId)
+        .collection('comments')
+        .doc();
 
-  int _calculateTotal(List<Comment> comments) {
-    int total = comments.length;
-    for (var comment in comments) {
-      total += _calculateTotal(comment.replies);
-    }
-    return total;
-  }
+    final commentData = {
+      'authorId': authorId,
+      'author': authorName,
+      'authorProfileImage': authorProfileImage,
+      'text': text,
+      'timestamp': FieldValue.serverTimestamp(),
+      'likes': 0,
+      'likedBy': [],
+      'parentId': replyingTo?.id,
+      'reactions': {},
+    };
 
-  void addComment(String resourceTitle, String text, {Comment? replyingTo, required String authorName, String? authorProfileImage, String? authorId}) {
-    final comments = getComments(resourceTitle);
-    final newComment = Comment(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      authorId: authorId,
-      author: authorName,
-      authorProfileImage: authorProfileImage,
-      text: text,
-      timestamp: DateTime.now(),
-    );
+    final resourceDocRef = _firestore.collection('resources').doc(resourceId);
 
-    if (replyingTo != null) {
-      replyingTo.replies.add(newComment);
-    } else {
-      comments.insert(0, newComment);
-    }
-    
-    // Increment count and handle notifications via ResourceService
-    ResourceService().incrementComments(resourceTitle);
-    notifyListeners();
-  }
-
-  void deleteComment(String resourceTitle, String commentId) {
-    final comments = getComments(resourceTitle);
-    bool removed = _removeFromList(comments, commentId);
-    if (removed) {
-      notifyListeners();
-    }
-  }
-
-  bool _removeFromList(List<Comment> list, String id) {
-    for (int i = 0; i < list.length; i++) {
-      if (list[i].id == id) {
-        list.removeAt(i);
-        return true;
-      }
-      if (_removeFromList(list[i].replies, id)) return true;
-    }
-    return false;
-  }
-
-  void editComment(String resourceTitle, String commentId, String newText) {
-    final comment = _findInList(getComments(resourceTitle), commentId);
-    if (comment != null) {
-      comment.text = newText;
-      notifyListeners();
-    }
-  }
-
-  Comment? _findInList(List<Comment> list, String id) {
-    for (var c in list) {
-      if (c.id == id) return c;
-      final found = _findInList(c.replies, id);
-      if (found != null) return found;
-    }
-    return null;
-  }
-
-  void updateReaction(String resourceTitle, String commentId, String emoji) {
-    final comment = _findInList(getComments(resourceTitle), commentId);
-    if (comment != null) {
-      comment.reactions[emoji] = (comment.reactions[emoji] ?? 0) + 1;
-      notifyListeners();
+    try {
+      await _firestore.runTransaction((transaction) async {
+        transaction.set(commentDocRef, commentData);
+        transaction.update(resourceDocRef, {
+          'comments': FieldValue.increment(1),
+        });
+      });
+    } catch (e) {
+      debugPrint('CommentService: [ERROR] Failed to add comment: $e');
     }
   }
 
-  void toggleCommentLike(String resourceTitle, Comment comment) {
-    comment.isLiked = !comment.isLiked;
-    if (comment.isLiked) {
-      comment.likes++;
-      // We could add notification for comment likes too if needed
-    } else {
-      comment.likes--;
+  Future<void> deleteComment(String resourceId, String commentId) async {
+    final commentDocRef = _firestore
+        .collection('resources')
+        .doc(resourceId)
+        .collection('comments')
+        .doc(commentId);
+
+    final resourceDocRef = _firestore.collection('resources').doc(resourceId);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        transaction.delete(commentDocRef);
+        transaction.update(resourceDocRef, {
+          'comments': FieldValue.increment(-1),
+        });
+      });
+    } catch (e) {
+      debugPrint('CommentService: [ERROR] Failed to delete comment: $e');
     }
-    notifyListeners();
   }
 
-  List<Comment> _getInitialDummyData() {
-    return [
-      Comment(
-        id: '1',
-        author: 'John Doe',
-        text: 'This was very helpful! Thanks for sharing.',
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        likes: 12,
-      ),
-      Comment(
-        id: '2',
-        author: 'Jane Smith',
-        text: 'Are there more notes for this unit?',
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-        likes: 5,
-        replies: [
-          Comment(
-            id: '3',
-            author: 'Admin',
-            text: 'Yes, check the library section.',
-            timestamp: DateTime.now().subtract(const Duration(hours: 4)),
-            likes: 2,
-          ),
-        ],
-      ),
-    ];
+  Future<void> editComment(String resourceId, String commentId, String newText) async {
+    try {
+      await _firestore
+          .collection('resources')
+          .doc(resourceId)
+          .collection('comments')
+          .doc(commentId)
+          .update({'text': newText});
+    } catch (e) {
+      debugPrint('CommentService: [ERROR] Failed to edit comment: $e');
+    }
+  }
+
+  Future<void> updateReaction(String resourceId, String commentId, String emoji) async {
+    final commentDocRef = _firestore
+        .collection('resources')
+        .doc(resourceId)
+        .collection('comments')
+        .doc(commentId);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(commentDocRef);
+        if (!snapshot.exists) return;
+
+        final data = snapshot.data() ?? {};
+        final reactions = Map<String, int>.from(data['reactions'] ?? {});
+        reactions[emoji] = (reactions[emoji] ?? 0) + 1;
+
+        transaction.update(commentDocRef, {'reactions': reactions});
+      });
+    } catch (e) {
+      debugPrint('CommentService: [ERROR] Failed to update reaction: $e');
+    }
+  }
+
+  Future<void> toggleCommentLike(String resourceId, Comment comment) async {
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final commentDocRef = _firestore
+        .collection('resources')
+        .doc(resourceId)
+        .collection('comments')
+        .doc(comment.id);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(commentDocRef);
+        if (!snapshot.exists) return;
+
+        final data = snapshot.data() ?? {};
+        final likedByList = List<String>.from(data['likedBy'] ?? []);
+        int likesCount = data['likes'] ?? 0;
+
+        if (likedByList.contains(userId)) {
+          likedByList.remove(userId);
+          likesCount = (likesCount - 1).clamp(0, 999999).toInt();
+        } else {
+          likedByList.add(userId);
+          likesCount += 1;
+        }
+
+        transaction.update(commentDocRef, {
+          'likedBy': likedByList,
+          'likes': likesCount,
+        });
+      });
+    } catch (e) {
+      debugPrint('CommentService: [ERROR] Failed to toggle comment like: $e');
+    }
   }
 }

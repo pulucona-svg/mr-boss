@@ -7,8 +7,9 @@ import '../services/comment_service.dart';
 import '../providers/providers.dart';
 
 class CommentModal extends ConsumerStatefulWidget {
+  final String resourceId;
   final String resourceTitle;
-  const CommentModal({super.key, required this.resourceTitle});
+  const CommentModal({super.key, required this.resourceId, required this.resourceTitle});
 
   @override
   ConsumerState<CommentModal> createState() => _CommentModalState();
@@ -25,13 +26,13 @@ class _CommentModalState extends ConsumerState<CommentModal> {
     if (text.isEmpty) return;
 
     if (_editingComment != null) {
-      CommentService().editComment(widget.resourceTitle, _editingComment!.id, text);
+      CommentService().editComment(widget.resourceId, _editingComment!.id, text);
       setState(() => _editingComment = null);
     } else {
       final userProfile = ref.read(userProfileProvider);
 
       CommentService().addComment(
-        widget.resourceTitle,
+        widget.resourceId,
         text,
         replyingTo: _replyingTo,
         authorId: userProfile.uid,
@@ -47,10 +48,10 @@ class _CommentModalState extends ConsumerState<CommentModal> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: CommentService(),
-      builder: (context, child) {
-        final comments = CommentService().getComments(widget.resourceTitle);
+    return StreamBuilder<List<Comment>>(
+      stream: CommentService().streamComments(widget.resourceId),
+      builder: (context, snapshot) {
+        final comments = snapshot.data ?? [];
         final totalCount = comments.length + comments.fold(0, (sum, c) => sum + c.replies.length);
 
         return Container(
@@ -308,7 +309,7 @@ class _CommentModalState extends ConsumerState<CommentModal> {
                   Column(
                     children: [
                       GestureDetector(
-                        onTap: () => CommentService().toggleCommentLike(widget.resourceTitle, comment),
+                        onTap: () => CommentService().toggleCommentLike(widget.resourceId, comment),
                         child: Icon(
                           comment.isLiked ? Icons.favorite : Icons.favorite_border,
                           size: 20,
@@ -380,7 +381,7 @@ class _CommentModalState extends ConsumerState<CommentModal> {
               if (isMe) ...[
                 _buildOptionItem(Icons.delete, 'Delete comment', () {
                   Navigator.pop(context);
-                  CommentService().deleteComment(widget.resourceTitle, comment.id);
+                  CommentService().deleteComment(widget.resourceId, comment.id);
                 }),
               ] else ...[
                 _buildOptionItem(Icons.close, 'Hide', () {
@@ -503,7 +504,7 @@ class _CommentModalState extends ConsumerState<CommentModal> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: reactions.map((r) => GestureDetector(
         onTap: () {
-          CommentService().updateReaction(widget.resourceTitle, comment.id, r);
+          CommentService().updateReaction(widget.resourceId, comment.id, r);
           Navigator.pop(context);
         },
         child: Text(r, style: const TextStyle(fontSize: 24)),

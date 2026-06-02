@@ -384,7 +384,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
         uploaderRole: 'Student',
         uploaderId: state.material.uploaderId,
         uploadDate: DateTime.now(),
-        status: 'waiting',
+        status: 'approved',
+        visibility: 'public',
         targetPrograms: state.material.programs,
         programCodes: state.material.programCodes,
       );

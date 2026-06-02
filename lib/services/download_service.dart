@@ -202,7 +202,7 @@ class DownloadService extends ChangeNotifier {
 
   void startDownload(Map<String, String> resourceData) async {
     final title = resourceData['title']!;
-    final url = resourceData['thumbnail'] ?? resourceData['thumbnailUrl'];
+    final url = resourceData['fileUrl'] ?? resourceData['thumbnail'] ?? resourceData['thumbnailUrl'];
 
     if (isDownloading(title)) return;
 
@@ -309,7 +309,7 @@ class DownloadService extends ChangeNotifier {
             // The UI (ResourceCard) should check 'isExpired' and treat it as not downloaded.
             
             // To "remove the local file", we should ideally remove it from cache
-            final url = res['thumbnail'] ?? res['thumbnailUrl'];
+            final url = res['fileUrl'] ?? res['thumbnail'] ?? res['thumbnailUrl'];
             if (url != null) {
               DefaultCacheManager().removeFile(url);
             }

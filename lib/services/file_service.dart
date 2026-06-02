@@ -13,7 +13,7 @@ class FileService {
   /// Picks a document (PDF, DOCX, etc.) from the device.
   Future<File?> pickDocument({List<String>? allowedExtensions}) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: allowedExtensions != null ? FileType.custom : FileType.any,
         allowedExtensions: allowedExtensions,
       );
