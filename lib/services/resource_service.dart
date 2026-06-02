@@ -6,187 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'notification_service.dart';
 import 'course_service.dart';
 import '../models/notification.dart';
+import '../models/material_model.dart';
+export '../models/material_model.dart' show Resource;
 
-// Riverpod Providers
-final resourceServiceProvider = ChangeNotifierProvider((ref) => ResourceService());
-
-class Resource {
-  final String id;
-  final String title;
-  final String type;
-  final String thumbnailUrl;
-  final String? thumbnailId;
-  final String fileUrl;
-  final String fileId;
-  final String unitName;
-  final String unitCode;
-  final String year;
-  final String uploadYear;
-  final String publicationYear;
-  final String yearOfStudy;
-  final String semester;
-  final List<String> lecturers;
-  final String uploadedBy;
-  final String uploaderRole;
-  final String uploaderId;
-  final String? uploaderProfilePic;
-  final List<String> targetPrograms;
-  final List<String> programCodes;
-  final String materialFormat;
-  final DateTime uploadDate;
-  String? status; // 'approved', 'waiting', 'declined'
-  final String? declineReason;
-  final DateTime? declineDate;
-  int _views;
-  int _likes;
-  int _comments;
-  bool isLiked;
-
-  Resource({
-    this.id = '',
-    required this.title,
-    required this.type,
-    required this.thumbnailUrl,
-    this.thumbnailId,
-    required this.fileUrl,
-    required this.fileId,
-    required this.unitName,
-    required this.unitCode,
-    required this.year,
-    required this.uploadYear,
-    required this.publicationYear,
-    required this.yearOfStudy,
-    required this.semester,
-    required this.lecturers,
-    required this.uploadedBy,
-    required this.uploaderRole,
-    required this.uploaderId,
-    this.uploaderProfilePic,
-    required this.uploadDate,
-    this.targetPrograms = const ['Computer Science'],
-    this.programCodes = const [],
-    this.materialFormat = 'PDF',
-    this.status,
-    this.declineReason,
-    this.declineDate,
-    int views = 0,
-    int likes = 0,
-    int comments = 0,
-    this.isLiked = false,
-  })  : _views = views,
-        _likes = likes,
-        _comments = comments;
-
-  int get views => status == 'approved' ? _views : 0;
-  int get likes => status == 'approved' ? _likes : 0;
-  int get comments => status == 'approved' ? _comments : 0;
-
-  set views(int val) => _views = val;
-  set likes(int val) => _likes = val;
-  set comments(int val) => _comments = val;
-
-  factory Resource.fromMap(Map<String, dynamic> map, String docId) {
-    return Resource(
-      id: docId,
-      title: map['title'] ?? '',
-      type: map['type'] ?? '',
-      thumbnailUrl: map['thumbnailUrl'] ?? '',
-      thumbnailId: map['thumbnailId'],
-      fileUrl: map['fileUrl'] ?? '',
-      fileId: map['fileId'] ?? '',
-      unitName: map['unitName'] ?? '',
-      unitCode: map['unitCode'] ?? '',
-      year: map['year'] ?? '',
-      uploadYear: map['uploadYear'] ?? '',
-      publicationYear: map['publicationYear'] ?? '',
-      yearOfStudy: map['yearOfStudy'] ?? '',
-      semester: map['semester'] ?? '',
-      lecturers: List<String>.from(map['lecturers'] ?? []),
-      uploadedBy: map['uploadedBy'] ?? '',
-      uploaderRole: map['uploaderRole'] ?? '',
-      uploaderId: map['uploaderId'] ?? '',
-      uploaderProfilePic: map['uploaderProfilePic'],
-      uploadDate: map['uploadDate'] != null ? (map['uploadDate'] as Timestamp).toDate() : DateTime.now(),
-      targetPrograms: List<String>.from(map['targetPrograms'] ?? []),
-      programCodes: List<String>.from(map['programCodes'] ?? []),
-      materialFormat: map['materialFormat'] ?? 'PDF',
-      status: map['status'],
-      declineReason: map['declineReason'],
-      declineDate: map['declineDate'] != null ? (map['declineDate'] as Timestamp).toDate() : null,
-      views: map['views'] ?? 0,
-      likes: map['likes'] ?? 0,
-      comments: map['comments'] ?? 0,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'title': title,
-      'type': type,
-      'thumbnailUrl': thumbnailUrl,
-      'thumbnailId': thumbnailId,
-      'fileUrl': fileUrl,
-      'fileId': fileId,
-      'unitName': unitName,
-      'unitCode': unitCode,
-      'year': year,
-      'uploadYear': uploadYear,
-      'publicationYear': publicationYear,
-      'yearOfStudy': yearOfStudy,
-      'semester': semester,
-      'lecturers': lecturers,
-      'uploadedBy': uploadedBy,
-      'uploaderRole': uploaderRole,
-      'uploaderId': uploaderId,
-      'uploaderProfilePic': uploaderProfilePic,
-      'uploadDate': Timestamp.fromDate(uploadDate),
-      'targetPrograms': targetPrograms,
-      'programCodes': programCodes,
-      'materialFormat': materialFormat,
-      'status': status,
-      'declineReason': declineReason,
-      'declineDate': declineDate != null ? Timestamp.fromDate(declineDate!) : null,
-      'views': _views,
-      'likes': _likes,
-      'comments': _comments,
-    };
-  }
-
-  Resource copyWithPoolData(List<String> poolPrograms, List<String> poolLecturers, List<String> poolProgramCodes) {
-    return Resource(
-      id: id,
-      title: title,
-      type: type,
-      thumbnailUrl: thumbnailUrl,
-      thumbnailId: thumbnailId,
-      fileUrl: fileUrl,
-      fileId: fileId,
-      unitName: unitName,
-      unitCode: unitCode,
-      year: year,
-      uploadYear: uploadYear,
-      publicationYear: publicationYear,
-      yearOfStudy: yearOfStudy,
-      semester: semester,
-      lecturers: poolLecturers.isNotEmpty ? poolLecturers : lecturers,
-      uploadedBy: uploadedBy,
-      uploaderRole: uploaderRole,
-      uploaderId: uploaderId,
-      uploaderProfilePic: uploaderProfilePic,
-      uploadDate: uploadDate,
-      targetPrograms: poolPrograms.isNotEmpty ? poolPrograms : targetPrograms,
-      programCodes: poolProgramCodes.isNotEmpty ? poolProgramCodes : programCodes,
-      materialFormat: materialFormat,
-      status: status,
-      declineReason: declineReason,
-      declineDate: declineDate,
-      views: _views,
-      likes: _likes,
-      comments: _comments,
-      isLiked: isLiked,
-    );
-  }
-}
+// Riverpod Providers are now consolidated in lib/providers/service_providers.dart
 
 class ResourceService extends ChangeNotifier {
   static final ResourceService _instance = ResourceService._internal();
@@ -199,18 +22,30 @@ class ResourceService extends ChangeNotifier {
   String? _activeResourceId;
   String? get activeResourceId => _activeResourceId;
 
-  static const String currentUserId = 'user_12345';
-  static const String currentUserName = 'Me';
-
   List<Resource> _allResources = [];
   List<Resource> _userUploads = [];
   StreamSubscription? _allResourcesSub;
   StreamSubscription? _userUploadsSub;
 
   void initialize(String userId) {
+    if (userId.isEmpty) {
+      debugPrint('ResourceService: [DEBUG] initialize called with empty userId. Clearing state...');
+      clear();
+      return;
+    }
+
+    debugPrint('ResourceService: [DEBUG] Initializing for user: $userId');
+    
+    // 1. Cancel existing subscriptions
     _allResourcesSub?.cancel();
     _userUploadsSub?.cancel();
+    
+    // 2. Clear current state to prevent leakage
+    _allResources = [];
+    _userUploads = [];
+    notifyListeners();
 
+    // 3. Attach fresh listeners
     _allResourcesSub = _firestore
         .collection('resources')
         .where('status', isEqualTo: 'approved')
@@ -221,7 +56,7 @@ class ResourceService extends ChangeNotifier {
           .map((doc) => Resource.fromMap(doc.data(), doc.id))
           .toList();
       notifyListeners();
-    });
+    }, onError: (e) => debugPrint('ResourceService: [ERROR] allResources listener failed: $e'));
 
     _userUploadsSub = _firestore
         .collection('resources')
@@ -233,15 +68,39 @@ class ResourceService extends ChangeNotifier {
           .map((doc) => Resource.fromMap(doc.data(), doc.id))
           .toList();
       notifyListeners();
-    });
+    }, onError: (e) => debugPrint('ResourceService: [ERROR] userUploads listener failed: $e'));
+  }
+
+  /// Fully resets the service state and cancels all listeners.
+  /// Call this during logout to prevent state leakage.
+  void clear() {
+    debugPrint('ResourceService: [DEBUG] Clearing all data and listeners.');
+    _allResourcesSub?.cancel();
+    _userUploadsSub?.cancel();
+    _allResourcesSub = null;
+    _userUploadsSub = null;
+    _allResources = [];
+    _userUploads = [];
+    _activeResourceId = null;
+    notifyListeners();
+  }
+
+  // Force re-attach listeners for pull-to-refresh
+  Future<void> refresh(String userId) async {
+    initialize(userId);
+    // Wait briefly to allow the new stream to emit
+    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   List<Resource> get allResources {
+    // Single source of truth from Firestore snapshots
     final approvedFromUploads = _userUploads.where((r) => r.status == 'approved');
     final combined = [..._allResources, ...approvedFromUploads];
-    // Remove duplicates based on ID
+    
+    // Remove duplicates based on document ID
     final seen = <String>{};
     final unique = combined.where((r) => seen.add(r.id)).toList();
+    
     unique.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
     return unique;
   }
@@ -249,6 +108,9 @@ class ResourceService extends ChangeNotifier {
   List<Resource> get userUploads {
     return _userUploads;
   }
+
+  List<Resource> get trashedUploads => _userUploads.where((r) => r.status == 'declined').toList();
+  List<Resource> get archivedUploads => []; // Placeholder
 
   void setActiveResource(String? id) {
     if (_activeResourceId != id) {
@@ -273,6 +135,44 @@ class ResourceService extends ChangeNotifier {
       debugPrint('ResourceService: [ERROR] Failed to add resource: $e');
       rethrow;
     }
+  }
+
+  Future<void> fetchUserUploadsOnce(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('resources')
+          .where('uploaderId', isEqualTo: userId)
+          .orderBy('uploadDate', descending: true)
+          .get();
+      
+      _userUploads = snapshot.docs
+          .map((doc) => Resource.fromMap(doc.data(), doc.id))
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('ResourceService: [ERROR] fetchUserUploadsOnce failed: $e');
+    }
+  }
+
+  Future<void> fetchAllResourcesOnce() async {
+    try {
+      final snapshot = await _firestore
+          .collection('resources')
+          .where('status', isEqualTo: 'approved')
+          .orderBy('uploadDate', descending: true)
+          .get();
+      
+      _allResources = snapshot.docs
+          .map((doc) => Resource.fromMap(doc.data(), doc.id))
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('ResourceService: [ERROR] fetchAllResourcesOnce failed: $e');
+    }
+  }
+
+  Future<void> synchronizeWithPool(CourseService courseService) async {
+    // Placeholder for background pool synchronization logic
   }
 
   Future<void> deleteUpload(String docId, String fileId, String? thumbnailId) async {
@@ -308,6 +208,24 @@ class ResourceService extends ChangeNotifier {
     }
   }
 
+  Future<void> incrementComments(String docId) async {
+    try {
+      await _firestore.collection('resources').doc(docId).update({
+        'comments': FieldValue.increment(1),
+      });
+    } catch (e) {
+      debugPrint('ResourceService: [ERROR] Failed to increment comments: $e');
+    }
+  }
+
+  Resource? findResourceById(String id) {
+    try {
+      return allResources.firstWhere((r) => r.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Resource? findResourceByTitle(String title) {
     try {
       return allResources.firstWhere((r) => r.title == title);
@@ -320,7 +238,9 @@ class ResourceService extends ChangeNotifier {
   void pinMultiple(List<String> titles) {} // Placeholder
   void unpinMultiple(List<String> titles) {} // Placeholder
   void archiveMultiple(List<String> titles) {} // Placeholder
+  void restoreMultiple(List<String> titles) {} // Placeholder
   void deleteMultiple(List<String> titles) {} // Placeholder
+  void permanentlyDeleteMultiple(List<String> titles) {} // Placeholder
 
   List<String> getUniqueLecturers() => allResources.expand((r) => r.lecturers).toSet().toList();
   List<String> getUniquePrograms() => allResources.expand((r) => r.targetPrograms).toSet().toList();

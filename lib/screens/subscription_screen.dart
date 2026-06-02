@@ -5,6 +5,7 @@ import '../models/subscription_model.dart';
 import '../widgets/purchase_modal.dart';
 import '../providers/user_provider.dart';
 import '../providers/upload_provider.dart';
+import '../providers/service_providers.dart';
 import '../widgets/countdown_timer.dart';
 
 class SubscriptionScreen extends ConsumerStatefulWidget {

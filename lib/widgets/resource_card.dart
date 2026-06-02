@@ -7,8 +7,9 @@ import 'resource_details_modal.dart';
 import '../utils/feedback_utils.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/user_provider.dart';
-import '../providers/upload_provider.dart';
+import '../models/material_model.dart'; // Import Resource type from models
+import '../providers/providers.dart';
+import '../services/usage_service.dart';
 
 import '../screens/material_viewer_screen.dart';
 import 'download_modal.dart';
@@ -16,71 +17,25 @@ import 'download_modal.dart';
 class ResourceCard extends ConsumerStatefulWidget {
   const ResourceCard({
     super.key,
-    required this.title,
-    required this.type,
-    required this.thumbnailUrl,
+    required this.resource,
     required this.onTap,
-    this.unitName = 'Data Structures & Algorithms',
-    this.unitCode = 'COMP 222',
-    this.year = '2024',
-    this.uploadYear = '2024',
-    this.publicationYear = '2023',
-    this.yearOfStudy = '2nd Year',
-    this.semester = 'Semester 1',
-    this.lecturers = const ['Dr. James Kamau'],
-    this.uploadedBy = 'Admin',
-    this.uploaderRole = 'Administrator',
-    this.uploaderId = 'admin',
-    this.views = '189',
-    this.likes = '27',
-    this.comments = '5',
-    this.isLiked = false,
-    this.showDownload = true,
-    this.materialFormat = 'PDF',
-    this.targetPrograms = const ['Bachelor of Science Computer Science'],
-    this.programCodes = const [],
-    this.status,
-    this.declineReason,
     this.onLikeToggle,
     this.onViewIncrement,
-    this.uploaderProfilePic,
     this.isSelectionMode = false,
     this.isSelected = false,
     this.showPin = true,
+    this.showDownload = true,
     this.onLongPress,
   });
 
-  final String title;
-  final String type;
-  final String materialFormat;
-  final String thumbnailUrl;
+  final Resource resource;
   final VoidCallback onTap;
-  final String unitName;
-  final String unitCode;
-  final List<String> targetPrograms;
-  final List<String> programCodes;
-  final String year;
-  final String uploadYear;
-  final String publicationYear;
-  final String yearOfStudy;
-  final String semester;
-  final List<String> lecturers;
-  final String uploadedBy;
-  final String uploaderRole;
-  final String uploaderId;
-  final String? uploaderProfilePic;
-  final String views;
-  final String likes;
-  final String comments;
-  final bool isLiked;
-  final bool showDownload;
-  final bool showPin;
-  final String? status;
-  final String? declineReason;
   final VoidCallback? onLikeToggle;
   final VoidCallback? onViewIncrement;
   final bool isSelectionMode;
   final bool isSelected;
+  final bool showPin;
+  final bool showDownload;
   final VoidCallback? onLongPress;
 
   @override
@@ -98,29 +53,30 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
 
   Map<String, String> _getResourceData() {
     final userProfile = ref.read(userProfileProvider);
-    final bool isMe = widget.uploaderId == userProfile.uid || widget.uploadedBy == 'Me';
-    final String displayUploadedBy = isMe ? userProfile.username : widget.uploadedBy;
+    final bool isMe = widget.resource.uploaderId == userProfile.uid || widget.resource.uploadedBy == 'Me';
+    final String displayUploadedBy = isMe ? userProfile.username : widget.resource.uploadedBy;
 
     return {
-      'title': widget.title,
-      'type': widget.type,
-      'thumbnail': widget.thumbnailUrl,
-      'unitName': widget.unitName,
-      'unitCode': widget.unitCode,
-      'year': widget.year,
-      'uploadYear': widget.uploadYear,
-      'publicationYear': widget.publicationYear,
-      'yearOfStudy': widget.yearOfStudy,
-      'semester': widget.semester,
-      'lecturer': widget.lecturers.join(', '),
+      'title': widget.resource.title,
+      'type': widget.resource.type,
+      'thumbnail': widget.resource.thumbnailUrl,
+      'fileUrl': widget.resource.fileUrl,
+      'unitName': widget.resource.unitName,
+      'unitCode': widget.resource.unitCode,
+      'year': widget.resource.year,
+      'uploadYear': widget.resource.uploadYear,
+      'publicationYear': widget.resource.publicationYear,
+      'yearOfStudy': widget.resource.yearOfStudy,
+      'semester': widget.resource.semester,
+      'lecturer': widget.resource.lecturers.join(', '),
       'uploadedBy': displayUploadedBy,
-      'uploaderRole': widget.uploaderRole,
-      'views': widget.views,
-      'likes': widget.likes,
-      'comments': widget.comments,
-      'format': widget.materialFormat,
-      'programs': widget.targetPrograms.join(', '),
-      'isLiked': widget.isLiked.toString(),
+      'uploaderRole': widget.resource.uploaderRole,
+      'views': widget.resource.views.toString(),
+      'likes': widget.resource.likes.toString(),
+      'comments': widget.resource.comments.toString(),
+      'format': widget.resource.materialFormat,
+      'programs': widget.resource.targetPrograms.join(', '),
+      'isLiked': widget.resource.isLiked.toString(),
     };
   }
 
@@ -129,8 +85,8 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     _viewTimer?.cancel();
     _viewTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) {
-        if (viewService.canIncrementView(widget.title)) {
-          viewService.recordView(widget.title);
+        if (viewService.canIncrementView(widget.resource.id)) {
+          viewService.recordView(widget.resource.id);
           widget.onViewIncrement?.call();
         }
       }
@@ -138,14 +94,22 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   void _handleRead() async {
-    final resource = ref.read(resourceServiceProvider).findResourceByTitle(widget.title);
-    final String fileUrl = resource?.fileUrl ?? '';
+    if (widget.resource.fileUrl.isEmpty) {
+      debugPrint('ResourceCard: [ERROR] Attempted to open material with empty fileUrl. ID: ${widget.resource.id}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Material file not found on server.')),
+      );
+      return;
+    }
 
     if (_hasFullAccess()) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => MaterialViewerScreen(title: widget.title, fileUrl: fileUrl),
+          builder: (context) => MaterialViewerScreen(
+            title: widget.resource.title, 
+            fileUrl: widget.resource.fileUrl,
+          ),
         ),
       );
     } else {
@@ -153,13 +117,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
-          resourceTitle: widget.title,
+          resourceTitle: widget.resource.title,
           actionType: AccessActionType.read,
         ),
       );
 
       if (result == true && mounted) {
-        // Auto-resume reading after unlock
         _handleRead();
       }
     }
@@ -170,15 +133,14 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     final resourceService = ref.read(resourceServiceProvider);
 
     final bool isSubscribed = subService.isSubscribed;
-    final bool isMyUpload = resourceService.userUploads.any((r) => r.title == widget.title);
-    final bool isPermanentlyUnlocked = subService.isResourceUnlocked(widget.title);
+    final bool isMyUpload = resourceService.userUploads.any((r) => r.id == widget.resource.id);
+    final bool isPermanentlyUnlocked = subService.isResourceUnlocked(widget.resource.title);
 
-    // After plan expiry, downloaded materials require ad-unlock or new subscription
     return isSubscribed || isMyUpload || isPermanentlyUnlocked;
   }
 
   void _setActiveResource() {
-    ref.read(resourceServiceProvider).setActiveResource(widget.title);
+    ref.read(resourceServiceProvider).setActiveResource(widget.resource.id);
     _incrementView();
   }
 
@@ -198,36 +160,36 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => CommentModal(resourceTitle: widget.title),
+      builder: (context) => CommentModal(resourceTitle: widget.resource.title),
     );
   }
 
   void _showDetails() {
     _setActiveResource();
-    final resource = ref.read(resourceServiceProvider).findResourceByTitle(widget.title);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ResourceDetailsModal(
-        title: widget.title,
-        type: widget.type,
-        thumbnailUrl: widget.thumbnailUrl,
-        unitName: widget.unitName,
-        unitCode: widget.unitCode,
-        targetPrograms: resource?.targetPrograms ?? widget.targetPrograms,
-        programCodes: resource?.programCodes ?? widget.programCodes,
-        materialFormat: widget.materialFormat,
-        uploadYear: widget.uploadYear,
-        publicationYear: widget.publicationYear,
-        yearOfStudy: widget.yearOfStudy,
-        semester: widget.semester,
-        lecturers: resource?.lecturers ?? widget.lecturers,
-        uploadedBy: widget.uploadedBy,
-        uploaderRole: widget.uploaderRole,
-        uploaderId: resource?.uploaderId ?? widget.uploaderId,
-        uploaderProfilePic: resource?.uploaderProfilePic ?? widget.uploaderProfilePic,
-        showDownload: widget.showDownload,
+        title: widget.resource.title,
+        type: widget.resource.type,
+        thumbnailUrl: widget.resource.thumbnailUrl,
+        fileUrl: widget.resource.fileUrl,
+        unitName: widget.resource.unitName,
+        unitCode: widget.resource.unitCode,
+        targetPrograms: widget.resource.targetPrograms,
+        programCodes: widget.resource.programCodes,
+        materialFormat: widget.resource.materialFormat,
+        uploadYear: widget.resource.uploadYear,
+        publicationYear: widget.resource.publicationYear,
+        yearOfStudy: widget.resource.yearOfStudy,
+        semester: widget.resource.semester,
+        lecturers: widget.resource.lecturers,
+        uploadedBy: widget.resource.uploadedBy,
+        uploaderRole: widget.resource.uploaderRole,
+        uploaderId: widget.resource.uploaderId,
+        uploaderProfilePic: widget.resource.uploaderProfilePic,
+        showDownload: true,
       ),
     );
   }
@@ -270,13 +232,13 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   Widget _statusTag() {
-    if (widget.status == null) return const SizedBox.shrink();
+    if (widget.resource.status == null) return const SizedBox.shrink();
 
     String text = '';
     Color color = Colors.grey;
     IconData icon = Icons.info_outline;
 
-    switch (widget.status) {
+    switch (widget.resource.status) {
       case 'approved':
         text = 'Approved by Admin';
         color = const Color(0xFF00A85A);
@@ -319,11 +281,11 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
             ],
           ),
         ),
-        if (widget.status == 'declined' && widget.declineReason != null)
+        if (widget.resource.status == 'declined' && widget.resource.declineReason != null)
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 4),
             child: Text(
-              'Reason: ${widget.declineReason}',
+              'Reason: ${widget.resource.declineReason}',
               style: const TextStyle(color: Colors.white54, fontSize: 9, fontStyle: FontStyle.italic),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -341,13 +303,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         context: context,
         barrierDismissible: false,
         builder: (context) => DownloadModal(
-          resourceTitle: widget.title,
+          resourceTitle: widget.resource.title,
           actionType: AccessActionType.download,
         ),
       );
 
       if (result == true && mounted) {
-        // Auto-resume download after unlock
         _handleDownload();
       }
     }
@@ -360,14 +321,13 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     final viewService = ref.watch(viewServiceProvider);
     final commentService = ref.watch(commentServiceProvider);
 
-    final resource = resourceService.findResourceByTitle(widget.title);
-    final isActive = resourceService.activeResourceId == widget.title;
-    final isPinned = downloadService.isPinned(widget.title);
-    final isDownloaded = downloadService.isDownloaded(widget.title);
+    final isActive = resourceService.activeResourceId == widget.resource.id;
+    final isPinned = downloadService.isPinned(widget.resource.title);
+    final isDownloaded = downloadService.isDownloaded(widget.resource.title);
     
-    final viewsCount = resource?.views.toString() ?? widget.views;
-    final likesCount = resource?.likes.toString() ?? widget.likes;
-    final isLiked = resource?.isLiked ?? widget.isLiked;
+    final viewsCount = widget.resource.views.toString();
+    final likesCount = widget.resource.likes.toString();
+    final isLiked = widget.resource.isLiked;
     
     return ListenableBuilder(
       listenable: Listenable.merge([resourceService, downloadService, ref.watch(subscriptionServiceProvider)]),
@@ -408,15 +368,15 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    flex: widget.status != null ? 2 : 3,
+                    flex: widget.resource.status != null ? 2 : 3,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        widget.thumbnailUrl.startsWith('http')
+                        widget.resource.thumbnailUrl.startsWith('http')
                           ? CachedNetworkImage(
-                              imageUrl: widget.thumbnailUrl,
+                              imageUrl: widget.resource.thumbnailUrl,
                               fit: BoxFit.cover,
-                              cacheKey: widget.thumbnailUrl,
+                              cacheKey: widget.resource.thumbnailUrl,
                               placeholder: (context, url) => Container(
                                 color: Colors.white10,
                                 child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
@@ -427,7 +387,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                               ),
                             )
                           : Image.file(
-                              File(widget.thumbnailUrl),
+                              File(widget.resource.thumbnailUrl),
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
                                 color: Colors.white10,
@@ -484,7 +444,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '${(widget.title.length * 1.5 + 40).toStringAsFixed(2)} kB',
+                                '${(widget.resource.title.length * 1.5 + 40).toStringAsFixed(2)} kB',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -503,7 +463,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                         if (!widget.isSelectionMode)
                           Positioned(
                             top: 10,
-                            left: (isPinned && widget.showPin && (widget.type == 'Time tables' || widget.type.contains('Timetable'))) ? 10 : 10,
+                            left: (isPinned && widget.showPin && (widget.resource.type == 'Time tables' || widget.resource.type.contains('Timetable'))) ? 10 : 10,
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -512,7 +472,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                 border: Border.all(color: Colors.white24, width: 0.5),
                               ),
                               child: Text(
-                                _getTypeLabel(widget.type),
+                                _getTypeLabel(widget.resource.type),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,
@@ -523,24 +483,24 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                             ),
                           ),
 
-                        if (!widget.isSelectionMode && (widget.type == 'Time tables' || widget.type.contains('Timetable')))
+                        if (!widget.isSelectionMode && (widget.resource.type == 'Time tables' || widget.resource.type.contains('Timetable')))
                           Positioned(
                             top: 10,
                             // If pinned and pin is shown (Library), move to left side but after the 'TABLE' badge.
                             left: (isPinned && widget.showPin) ? 65 : null,
                             // On Dashboard (showPin is false), ensure it's on the right, avoiding the download icon if present.
-                            right: (isPinned && widget.showPin) ? null : (widget.showDownload ? 45 : 10),
+                            right: (isPinned && widget.showPin) ? null : 10,
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: widget.type.contains('EXAM') 
+                                color: widget.resource.type.contains('EXAM') 
                                     ? const Color(0xFFFF4667).withValues(alpha: 0.8) 
                                     : const Color(0xFF00A85A).withValues(alpha: 0.8),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(color: Colors.white24, width: 0.5),
                               ),
                               child: Text(
-                                widget.type.contains('EXAM') ? 'EXAM' : 'CLASS',
+                                widget.resource.type.contains('EXAM') ? 'EXAM' : 'CLASS',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,
@@ -555,13 +515,13 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                           Positioned(
                             top: 10,
                             // If pinned and pin is shown (Library), shift action icon further left to avoid badges.
-                            left: (isPinned && widget.showPin && (widget.type == 'Time tables' || widget.type.contains('Timetable'))) ? 115 : null,
-                            right: (isPinned && widget.showPin) ? (widget.type.contains('Timetable') ? null : 35) : 10,
+                            left: (isPinned && widget.showPin && (widget.resource.type == 'Time tables' || widget.resource.type.contains('Timetable'))) ? 115 : null,
+                            right: (isPinned && widget.showPin) ? (widget.resource.type.contains('Timetable') ? null : 35) : 10,
                             child: GestureDetector(
                               onTap: () {
                                 _setActiveResource(); // Just set active/views, NO auto-read
                                 if (isPinned) {
-                                  downloadService.unpin(widget.title);
+                                  downloadService.unpin(widget.resource.title);
                                   FeedbackUtils.showActionFeedback(
                                     context: context,
                                     type: FeedbackActionType.unpin,
@@ -569,7 +529,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                     isDownloads: true,
                                   );
                                 } else if (isDownloaded) {
-                                  downloadService.pin(widget.title);
+                                  downloadService.pin(widget.resource.title);
                                   FeedbackUtils.showActionFeedback(
                                     context: context,
                                     type: FeedbackActionType.pin,
@@ -584,12 +544,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                               child: Stack(
                                 alignment: Alignment.center,
                                 children: [
-                                  if (downloadService.isDownloading(widget.title))
+                                  if (downloadService.isDownloading(widget.resource.title))
                                     SizedBox(
                                       width: 32,
                                       height: 32,
                                       child: CircularProgressIndicator(
-                                        value: downloadService.getProgress(widget.title),
+                                        value: downloadService.getProgress(widget.resource.title),
                                         strokeWidth: 3,
                                         color: const Color(0xFF00A85A),
                                         backgroundColor: Colors.white10,
@@ -602,12 +562,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                           ? const Color(0xFFD9BD26) 
                                           : (isDownloaded ? const Color(0xFF00A85A) : Colors.black38),
                                       shape: BoxShape.circle,
-                                      border: (downloadService.isDownloading(widget.title) || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
+                                      border: (downloadService.isDownloading(widget.resource.title) || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
                                     ),
                                     child: Icon(
                                       (isPinned && widget.showPin)
                                           ? Icons.push_pin_rounded 
-                                          : (downloadService.isDownloading(widget.title) ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
+                                          : (downloadService.isDownloading(widget.resource.title) ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
                                       color: Colors.white,
                                       size: 16,
                                     ),
@@ -622,7 +582,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                           child: Align(
                             alignment: Alignment.bottomCenter,
                             child: Text(
-                              widget.title,
+                              widget.resource.title,
                               textAlign: TextAlign.center,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -650,16 +610,16 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                 children: [
                                   Flexible(
                                     child: _pill(
-                                      (widget.type == 'Time tables' || 
-                                       widget.type == 'Class Timetable' || 
-                                       widget.type == 'EXAM Timetable') && widget.programCodes.isNotEmpty
-                                          ? widget.programCodes.join(', ')
-                                          : widget.unitCode,
+                                      (widget.resource.type == 'Time tables' || 
+                                       widget.resource.type == 'Class Timetable' || 
+                                       widget.resource.type == 'EXAM Timetable') && widget.resource.programCodes.isNotEmpty
+                                          ? widget.resource.programCodes.join(', ')
+                                          : widget.resource.unitCode,
                                       const Color(0xFFD92680),
                                     ),
                                   ),
                                   const SizedBox(width: 4),
-                                  _pill(widget.publicationYear, const Color(0xFFD9BD26)),
+                                  _pill(widget.resource.publicationYear, const Color(0xFFD9BD26)),
                                 ],
                               ),
                             ),
@@ -690,7 +650,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                         _statItem(
                           Icons.visibility_outlined, 
                           viewsCount,
-                          iconColor: viewService.hasViewed(widget.title) ? const Color(0xFF00A85A) : Colors.white54,
+                          iconColor: viewService.hasViewed(widget.resource.id) ? const Color(0xFF00A85A) : Colors.white54,
                         ),
                         GestureDetector(
                           onTap: _toggleLike,
@@ -706,8 +666,8 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                           behavior: HitTestBehavior.translucent,
                           child: Builder(
                             builder: (context) {
-                              final count = commentService.getCommentCount(widget.title);
-                              final displayCount = (resource?.status == 'approved') ? count.toString() : '0';
+                              final count = commentService.getCommentCount(widget.resource.title);
+                              final displayCount = (widget.resource.status == 'approved') ? count.toString() : '0';
                               return _statItem(Icons.mode_comment_outlined, displayCount);
                             },
                           ),

@@ -3,7 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'user_service.dart';
+import 'resource_service.dart';
+import 'device_id_manager.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -45,10 +48,31 @@ class AuthService {
   Future<UserCredential?> signInWithEmailAndPassword(String email, String password) async {
     try {
       final userCredential = await _auth.signInWithEmailAndPassword(email: email, password: password);
+      if (userCredential.user != null) {
+        await _handleLoginSuccess(userCredential.user!);
+      }
       return userCredential;
     } on FirebaseAuthException catch (e) {
       debugPrint('AuthService: signInWithEmailAndPassword error: ${e.code}');
       rethrow;
+    }
+  }
+
+  // Helper to handle session sync on successful login
+  Future<void> _handleLoginSuccess(User user) async {
+    try {
+      final deviceId = await DeviceIdManager.getPersistentDeviceId();
+      final platform = kIsWeb ? 'Web' : Platform.operatingSystem;
+      
+      debugPrint('AuthService: [SESSION] Handling login success for UID: ${user.uid}');
+      debugPrint('AuthService: [SESSION] Device ID: $deviceId, Platform: $platform');
+      
+      await _userService.syncUser(user);
+      await _userService.syncSession(user.uid, deviceId, platform);
+      
+      debugPrint('AuthService: [SESSION] Session sync complete.');
+    } catch (e) {
+      debugPrint('AuthService: [ERROR] _handleLoginSuccess failed: $e');
     }
   }
 
@@ -76,6 +100,11 @@ class AuthService {
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       debugPrint('AuthService: [DEBUG] createUserWithEmailAndPassword() SUCCESS');
+      
+      if (userCredential.user != null) {
+        await _handleLoginSuccess(userCredential.user!);
+      }
+      
       return userCredential;
     } on FirebaseAuthException catch (e) {
       debugPrint('AuthService: [DEBUG] createUserWithEmailAndPassword() FAILED: Code=${e.code}, Message=${e.message}');
@@ -175,9 +204,7 @@ class AuthService {
       debugPrint('AuthService: [DEBUG] Step 7: FirebaseAuth sign-in successful. UID: ${userCredential.user?.uid}');
       
       if (userCredential.user != null) {
-        debugPrint('AuthService: [DEBUG] Step 8: Syncing user with UserService...');
-        await _userService.syncUser(userCredential.user!);
-        debugPrint('AuthService: [DEBUG] Step 8: Sync complete.');
+        await _handleLoginSuccess(userCredential.user!);
       }
 
       return userCredential;
@@ -203,6 +230,15 @@ class AuthService {
   Future<void> signOut() async {
     debugPrint('AuthService: [DEBUG] Starting signOut flow...');
     try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        final deviceId = await DeviceIdManager.getPersistentDeviceId();
+        await _userService.deactivateSession(user.uid, deviceId);
+      }
+      
+      // Clear all resource state and listeners to prevent data leakage
+      ResourceService().clear();
+      
       await _ensureInitialized();
       await Future.wait<dynamic>([
         _auth.signOut(),

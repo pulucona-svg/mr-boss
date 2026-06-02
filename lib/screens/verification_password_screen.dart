@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/theme_provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/firebase_auth_provider.dart';
-import '../providers/user_provider.dart';
+import '../providers/providers.dart';
 import '../services/top_notification_service.dart';
 import '../services/persistence_service.dart';
 import '../services/user_service.dart';

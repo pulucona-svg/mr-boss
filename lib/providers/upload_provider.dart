@@ -8,16 +8,9 @@ import '../services/subscription_service.dart';
 import '../services/download_service.dart';
 import '../services/view_service.dart';
 import '../services/comment_service.dart';
-import 'user_provider.dart';
+import 'providers.dart';
 
-// Service Providers
-final fileServiceProvider = Provider((ref) => FileService());
-final uploadServiceProvider = Provider((ref) => UploadService());
-final resourceServiceProvider = ChangeNotifierProvider((ref) => ResourceService());
-final subscriptionServiceProvider = ChangeNotifierProvider((ref) => SubscriptionService());
-final downloadServiceProvider = ChangeNotifierProvider((ref) => DownloadService());
-final viewServiceProvider = ChangeNotifierProvider((ref) => ViewService());
-final commentServiceProvider = ChangeNotifierProvider((ref) => CommentService());
+// Service Providers - Consolidated in service_providers.dart
 
 // Upload State Class
 class UploadState {
@@ -95,7 +88,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
             semester: 'Semester 1',
             yearOfPublication: DateTime.now().year,
             uploadedBy: _userProfile.username,
-            uploaderId: ResourceService.currentUserId,
+            uploaderId: _userProfile.uid,
             yearOfUpload: DateTime.now().year,
             materialType: 'Notes',
           ),
@@ -364,12 +357,14 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
       final String finalFileUrl = uploadResult['fileUrl'] ?? '';
       final String finalFileId = uploadResult['fileId'] ?? '';
+      final String finalFileName = uploadResult['fileName'] ?? '';
       final String finalThumbUrl = uploadResult['thumbnailUrl'] ?? thumbnailUrl;
       final String finalThumbId = uploadResult['thumbnailId'] ?? '';
 
       // Create a Resource object and add to ResourceService
       final resource = Resource(
         title: resourceTitle,
+        fileName: finalFileName,
         type: state.material.materialType,
         thumbnailUrl: finalThumbUrl,
         fileUrl: finalFileUrl,
@@ -395,6 +390,9 @@ class UploadNotifier extends StateNotifier<UploadState> {
       );
 
       await ResourceService().addUpload(resource, _courseService);
+      
+      // Force immediate refresh of user uploads to update list in UI
+      await ResourceService().fetchUserUploadsOnce(state.material.uploaderId);
 
       // Reset fields after successful upload
       reset();
@@ -448,7 +446,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
         semester: 'Semester 1',
         yearOfPublication: DateTime.now().year,
         uploadedBy: _userProfile.username,
-        uploaderId: ResourceService.currentUserId,
+        uploaderId: _userProfile.uid,
         yearOfUpload: DateTime.now().year,
         materialType: state.uploadMode == 'timetable' ? 'Class Timetable' : 'Notes',
       ),

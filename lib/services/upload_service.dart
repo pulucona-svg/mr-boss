@@ -15,16 +15,17 @@ class UploadService {
     String? thumbnailId;
 
     // 1. Upload Main File
+    String mainFileName = '';
     if (material.file != null) {
+      mainFileName = material.file!.path.split(RegExp(r'[/\\]')).last;
       final fileBytes = await material.file!.readAsBytes();
       final base64File = base64Encode(fileBytes);
-      final fileName = material.file!.path.split(RegExp(r'[/\\]')).last;
       
       final folder = _getFolderForType(material.materialType);
       
       final result = await _functions.httpsCallable('uploadToImageKit').call({
         'file': base64File,
-        'fileName': fileName,
+        'fileName': mainFileName,
         'folder': folder,
       });
       
@@ -55,6 +56,7 @@ class UploadService {
     return {
       'fileUrl': fileUrl,
       'fileId': fileId,
+      'fileName': mainFileName,
       'thumbnailUrl': thumbnailUrl,
       'thumbnailId': thumbnailId,
     };

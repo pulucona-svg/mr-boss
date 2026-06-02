@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/resource_service.dart';
 import '../services/course_service.dart';
 import '../providers/upload_provider.dart';
+import '../providers/service_providers.dart';
 
 class FilterModal extends ConsumerStatefulWidget {
   final Map<String, String> initialFilters;

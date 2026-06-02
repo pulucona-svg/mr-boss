@@ -3,10 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/progress_service.dart';
-import '../providers/upload_provider.dart';
+import '../providers/providers.dart';
 import '../screens/material_viewer_screen.dart';
-import '../providers/theme_provider.dart';
-import '../providers/user_provider.dart';
 import '../services/course_service.dart';
 
 import 'download_modal.dart';
@@ -29,6 +27,7 @@ class ResourceDetailsModal extends ConsumerWidget {
   final String uploaderRole;
   final String uploaderId;
   final String? uploaderProfilePic;
+  final String fileUrl;
   final bool showDownload;
 
   const ResourceDetailsModal({
@@ -50,6 +49,7 @@ class ResourceDetailsModal extends ConsumerWidget {
     required this.uploaderRole,
     this.uploaderId = 'admin',
     this.uploaderProfilePic,
+    required this.fileUrl,
     this.showDownload = true,
   });
 
@@ -62,6 +62,7 @@ class ResourceDetailsModal extends ConsumerWidget {
       'title': title,
       'type': type,
       'thumbnail': thumbnailUrl,
+      'fileUrl': fileUrl,
       'unitName': unitName,
       'unitCode': unitCode,
       'targetPrograms': displayPrograms.join(', '),
@@ -102,7 +103,7 @@ class ResourceDetailsModal extends ConsumerWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => MaterialViewerScreen(title: title),
+            builder: (context) => MaterialViewerScreen(title: title, fileUrl: fileUrl),
           ),
         );
       }

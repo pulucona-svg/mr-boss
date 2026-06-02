@@ -3,11 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'academic_personalization_screen.dart';
-import 'verification_password_screen.dart';
 import 'email_verification_screen.dart';
 import '../services/top_notification_service.dart';
-import '../providers/firebase_auth_provider.dart';
-import '../providers/user_provider.dart';
+import '../providers/providers.dart';
 import '../services/persistence_service.dart';
 import '../services/user_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -54,7 +52,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         debugPrint('SignupScreen: [DEBUG] Profile state after fetch: onboardingComplete=${profile.onboardingComplete}');
 
         // Update local profile with Google info ONLY if fields are currently empty
-        // This prevents overwriting manually updated info (like profile pic) with Google defaults
         debugPrint('SignupScreen: [DEBUG] Merging local profile with Google info (non-destructive)...');
         ref.read(userProfileProvider.notifier).updateProfile(
           uid: user.uid,
@@ -78,11 +75,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ),
           );
         }
-      } else {
-        debugPrint('SignupScreen: [DEBUG] Google Sign-In returned null (user cancelled).');
       }
     } catch (e) {
-      debugPrint('SignupScreen: [FATAL ERROR] Google Sign-In failed in catch block: $e');
+      debugPrint('SignupScreen: [FATAL ERROR] Google Sign-In failed: $e');
       if (mounted) {
         TopNotificationService().showNotification(context, "Google Sign-In failed: $e");
       }
@@ -157,26 +152,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     
                     debugPrint('SignupScreen: [DEBUG] Calling registerWithEmailAndPassword...');
                     final userCredential = await authService.registerWithEmailAndPassword(email, dummyPassword);
-                    debugPrint('SignupScreen: [DEBUG] Account creation successful.');
                     
                     if (userCredential != null) {
                       await PersistenceService().saveSession(userCredential.user!.uid);
-                      debugPrint('SignupScreen: [DEBUG] Session saved: ${userCredential.user!.uid}');
-                      
-                      debugPrint('SignupScreen: [DEBUG] Syncing user to Firestore...');
-                      await UserService().syncUser(userCredential.user!);
-                      debugPrint('SignupScreen: [DEBUG] Firestore sync complete.');
+                      debugPrint('SignupScreen: [DEBUG] Session saved for ${userCredential.user!.uid}');
                     }
 
                     debugPrint('SignupScreen: [DEBUG] Calling sendEmailVerification...');
                     await authService.sendEmailVerification();
-                    debugPrint('SignupScreen: [DEBUG] Verification email sent successfully.');
 
                     if (mounted) {
-                      debugPrint('SignupScreen: [DEBUG] Navigating to EmailVerificationScreen');
-                      // Close the modal before navigating
                       Navigator.pop(context);
-                      
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -187,16 +173,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       );
                     }
                   } on FirebaseAuthException catch (e) {
-                    debugPrint('SignupScreen: [DEBUG] FirebaseAuthException: Code=${e.code}, Message=${e.message}');
+                    debugPrint('SignupScreen: [DEBUG] FirebaseAuthException: Code=${e.code}');
                     String message = e.message ?? 'An error occurred during signup';
                     if (e.code == 'email-already-in-use') {
                       message = 'This email is already registered. Please login instead.';
-                    } else if (e.code == 'invalid-email') {
-                      message = 'The email address is invalid.';
-                    } else if (e.code == 'weak-password') {
-                      message = 'The password is too weak.';
                     }
-                    
                     if (mounted) {
                       TopNotificationService().showNotification(context, message);
                     }
@@ -230,18 +211,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               alignment: const Alignment(0, -0.2),
             ),
           ),
-
           Positioned.fill(
             child: Container(
               color: Colors.black.withOpacity(0.3),
             ),
           ),
-
           SafeArea(
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // Back Button Row
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
@@ -253,8 +231,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ],
                     ),
                   ),
-
-                  // LOGO
                   Center(
                     child: Container(
                       height: 110,
@@ -268,9 +244,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
                   const Text(
                     'Join Mirror Laikipia',
                     style: TextStyle(
@@ -279,26 +253,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 10),
-
                   const Text(
                     'Access notes, exams & academic resources',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70),
                   ),
-
                   const SizedBox(height: 40),
-
-                  // GOOGLE BUTTON
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: _buildGoogleButton(),
                   ),
-
                   const SizedBox(height: 16),
-
-                  // APPLE BUTTON
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: _buildSocialButton(
@@ -309,10 +275,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       },
                     ),
                   ),
-
                   const SizedBox(height: 16),
-
-                  // EMAIL BUTTON
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: _buildSocialButton(
@@ -321,10 +284,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       onPressed: _showEmailModal,
                     ),
                   ),
-
                   const SizedBox(height: 30),
-
-                  // TERMS
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -352,10 +312,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
-                  // FOOTER
                   const Column(
                     children: [
                       Text(
@@ -376,7 +333,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 40),
                 ],
               ),

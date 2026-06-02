@@ -197,25 +197,88 @@ class UserService {
     }
   }
 
-  // Update session ID in Firestore
-  Future<void> updateSessionId(String uid, String sessionId) async {
+  // Update session document in Firestore (Production-grade last-login-wins system)
+  Future<void> syncSession(String uid, String deviceId, String platform) async {
     try {
-      await _firestore.collection('users').doc(uid).update({
-        'sessionId': sessionId,
+      final now = FieldValue.serverTimestamp();
+      final batch = _firestore.batch();
+
+      // 1. Update the main user document
+      batch.update(_firestore.collection('users').doc(uid), {
+        'activeDeviceId': deviceId,
+        'lastLogin': now,
       });
-      debugPrint('UserService: Updated sessionId to $sessionId for $uid');
+
+      // 2. Update/Create the specific session document for this device
+      final sessionRef = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('sessions')
+          .doc(deviceId);
+
+      batch.set(sessionRef, {
+        'deviceId': deviceId,
+        'isActive': true,
+        'platform': platform,
+        'lastLogin': now,
+      }, SetOptions(merge: true));
+
+      await batch.commit();
+      debugPrint('UserService: [SESSION] Synced session for device $deviceId. Structure: users/{uid}/sessions/{deviceId}');
     } catch (e) {
-      debugPrint('UserService: updateSessionId error: $e');
+      debugPrint('UserService: [ERROR] syncSession failed: $e');
     }
   }
 
-  // Stream of session ID from Firestore
-  Stream<String?> streamUserSessionId(String uid) {
-    return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
-      if (snapshot.exists) {
-        return snapshot.data()?['sessionId'] as String?;
-      }
-      return null;
+  // Deactivates a specific session (on logout)
+  Future<void> deactivateSession(String uid, String deviceId) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('sessions')
+          .doc(deviceId)
+          .update({
+        'isActive': false,
+      });
+      debugPrint('UserService: [SESSION] Deactivated session for device $deviceId');
+    } catch (e) {
+      debugPrint('UserService: [ERROR] deactivateSession failed: $e');
+    }
+  }
+
+  // Stream of specific device session ID
+  Stream<bool> streamSessionStatus(String uid, String deviceId) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('sessions')
+        .doc(deviceId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return false;
+      return snapshot.data()?['isActive'] ?? false;
     });
+  }
+
+  // Delete user profile data but PRESERVE resources
+  Future<void> deleteUserAccount(String uid) async {
+    try {
+      debugPrint('UserService: [DEBUG] Starting account deletion for UID: $uid');
+      
+      // 1. Delete user document from 'users' collection
+      await _firestore.collection('users').doc(uid).delete();
+      
+      // 2. Clear all sessions subcollection (completely remove)
+      final sessions = await _firestore.collection('users').doc(uid).collection('sessions').get();
+      for (var doc in sessions.docs) {
+        await doc.reference.delete();
+      }
+
+      debugPrint('UserService: [DEBUG] Account data deleted. Resources PRESERVED.');
+    } catch (e) {
+      debugPrint('UserService: [ERROR] deleteUserAccount failed: $e');
+      rethrow;
+    }
   }
 }

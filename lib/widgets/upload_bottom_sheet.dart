@@ -4,8 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dotted_border/dotted_border.dart';
 import '../providers/upload_provider.dart';
-import '../providers/user_provider.dart';
+import '../providers/service_providers.dart';
 import '../services/resource_service.dart';
+
 import '../services/course_service.dart';
 
 class UploadBottomSheet extends ConsumerStatefulWidget {

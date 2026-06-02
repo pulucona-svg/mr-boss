@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/comment.dart';
 import '../services/comment_service.dart';
-import '../providers/user_provider.dart';
+import '../providers/providers.dart';
 
 class CommentModal extends ConsumerStatefulWidget {
   final String resourceTitle;

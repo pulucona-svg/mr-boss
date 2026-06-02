@@ -16,9 +16,7 @@ import '../widgets/upload_bottom_sheet.dart';
 import '../widgets/draggable_fab.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
-import '../providers/theme_provider.dart';
-import '../providers/chat_provider.dart';
-import '../providers/ui_provider.dart';
+import '../providers/providers.dart';
 import 'help_support_screen.dart';
 import 'archive_trash_screen.dart';
 import '../utils/feedback_utils.dart';
@@ -361,7 +359,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       return;
     }
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    // Real network refresh by re-attaching Firestore listeners
+    final userId = ref.read(userProfileProvider).uid;
+    await ResourceService().refresh(userId);
+
     if (mounted) {
       setState(() {});
     }
@@ -1279,29 +1280,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               (context, index) {
                 final res = chunk[index];
                 return ResourceCard(
-                  title: res.title,
-                  type: res.type,
-                  materialFormat: res.materialFormat,
-                  thumbnailUrl: res.thumbnailUrl,
-                  unitName: res.unitName,
-                  unitCode: res.unitCode,
-                  targetPrograms: res.targetPrograms,
-                  programCodes: res.programCodes,
-                  year: res.year,
-                  uploadYear: res.uploadYear,
-                  publicationYear: res.publicationYear,
-                  yearOfStudy: res.yearOfStudy,
-                  semester: res.semester,
-                  lecturers: res.lecturers,
-                  uploadedBy: res.uploadedBy,
-                  uploaderRole: res.uploaderRole,
-                  views: res.views.toString(),
-                  likes: res.likes.toString(),
-                  comments: res.comments.toString(),
-                  isLiked: res.isLiked,
+                  resource: res,
                   showDownload: false,
-                  status: !isDownloads ? res.status : null,
-                  declineReason: !isDownloads ? res.declineReason : null,
                   onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
                   onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
                   isSelectionMode: isSelectionMode,

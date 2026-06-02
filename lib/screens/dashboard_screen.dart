@@ -14,10 +14,8 @@ import '../services/connectivity_service.dart';
 import '../widgets/filter_modal.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
-import '../providers/theme_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/providers.dart';
 import '../services/top_notification_service.dart';
-import '../providers/ui_provider.dart';
 import 'help_support_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -277,7 +275,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    // Real network refresh by re-attaching Firestore listeners
+    final userId = ResourceService().userUploads.isNotEmpty 
+        ? ResourceService().userUploads.first.uploaderId 
+        : ''; // Fallback, initialize handles this gracefully
+    
+    await ResourceService().refresh(userId);
+
     if (mounted) {
       setState(() {
         _shuffledResources = List.from(ResourceService().allResources)..shuffle();
@@ -872,37 +876,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 0.72),
             delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final res = chunk[index];
-                return ResourceCard(
-                  title: res.title,
-                  type: res.type,
-                  materialFormat: res.materialFormat,
-                  thumbnailUrl: res.thumbnailUrl,
-                  unitName: res.unitName,
-                  unitCode: res.unitCode,
-                  targetPrograms: res.targetPrograms,
-                  programCodes: res.programCodes,
-                  year: res.year,
-                  uploadYear: res.uploadYear,
-                  publicationYear: res.publicationYear,
-                  yearOfStudy: res.yearOfStudy,
-                  semester: res.semester,
-                  lecturers: res.lecturers,
-                  uploadedBy: res.uploadedBy,
-                  uploaderRole: res.uploaderRole,
-                  views: res.views.toString(),
-                  likes: res.likes.toString(),
-                  comments: res.comments.toString(),
-                  isLiked: res.isLiked,
-                  onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
-                  onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
-                  showPin: false,
-                  onTap: () {},
-                );
-              },
-              childCount: chunk.length,
-            ),
+               (context, index) {
+                 final res = chunk[index];
+                 return ResourceCard(
+                   resource: res,
+                   onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
+                   onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
+                   showPin: false,
+                   onTap: () {},
+                 );
+               },
+               childCount: chunk.length,
+             ),
           ),
         ),
       );

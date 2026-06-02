@@ -8,28 +8,23 @@ import 'firebase_options.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/profile_screen.dart';
-import 'screens/placeholder_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/explore_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/academic_personalization_screen.dart';
 import 'screens/email_verification_screen.dart';
-import 'widgets/draggable_fab.dart';
 
 import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
 import 'services/resource_service.dart';
-import 'providers/upload_provider.dart';
-import 'providers/theme_provider.dart';
-import 'services/download_service.dart';
-import 'services/top_notification_service.dart';
 import 'services/persistence_service.dart';
-import 'services/user_service.dart';
-import 'services/usage_service.dart';
 import 'services/subscription_service.dart';
-import 'providers/ui_provider.dart';
-import 'providers/user_provider.dart';
-import 'providers/firebase_auth_provider.dart';
+import 'services/usage_service.dart';
+import 'services/download_service.dart';
+import 'services/device_id_manager.dart';
+import 'services/top_notification_service.dart';
+import 'services/user_service.dart';
+import 'providers/providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -225,7 +220,8 @@ class MainNavigation extends ConsumerStatefulWidget {
 
 class _MainNavigationState extends ConsumerState<MainNavigation> {
   late final PageController _pageController;
-  StreamSubscription<String?>? _sessionSubscription;
+  StreamSubscription<bool>? _sessionSubscription;
+  late final String _deviceId;
 
   @override
   void initState() {
@@ -234,8 +230,14 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     _pageController = PageController(initialPage: uiState.mainNavigationIndex);
     ConnectivityService().initialize();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _deviceId = await DeviceIdManager.getPersistentDeviceId();
+      
+      final userProfile = ref.read(userProfileProvider);
       final courseService = ref.read(courseServiceProvider);
+      
+      // Initialize ResourceService with real-time listeners
+      ResourceService().initialize(userProfile.uid);
       ResourceService().synchronizeWithPool(courseService);
 
       // Start session monitoring
@@ -258,69 +260,22 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   void _startSessionMonitoring() {
     final userProfile = ref.read(userProfileProvider);
-    final instanceSessionId = ref.read(userProfileProvider.notifier).instanceSessionId;
     
     if (userProfile.uid.isNotEmpty) {
-      debugPrint('MainNavigation: [DEBUG] Starting session monitoring for UID: ${userProfile.uid}');
+      debugPrint('MainNavigation: [DEBUG] Monitoring session status for UID: ${userProfile.uid}, Device: $_deviceId');
       
-      // 1. Initial background sync/check
-      _checkAndSyncSession(userProfile.uid, instanceSessionId);
-
-      // 2. Listen for connectivity changes to re-verify session
-      ConnectivityService().addListener(_onConnectivityChanged);
-
-      // 3. Listen to Firestore stream for real-time mismatches
-      final startTime = DateTime.now();
-      _sessionSubscription = UserService().streamUserSessionId(userProfile.uid).listen((remoteSessionId) {
-        // Ignore events for the first 3 seconds to allow initial sync to propagate
-        if (DateTime.now().difference(startTime).inSeconds < 3) return;
-
-        if (remoteSessionId != null && remoteSessionId.isNotEmpty && remoteSessionId != instanceSessionId) {
-          debugPrint('MainNavigation: [DEBUG] Session mismatch detected via Stream! Remote: $remoteSessionId, Local: $instanceSessionId');
+      // Listen to specific device session status (isActive)
+      _sessionSubscription = UserService().streamSessionStatus(userProfile.uid, _deviceId).listen((isActive) {
+        if (!isActive) {
+          debugPrint('MainNavigation: [DEBUG] Session deactivated for this device!');
           _handleAutoLogout();
         }
       });
     }
   }
 
-  void _onConnectivityChanged() {
-    if (!ConnectivityService().isOffline) {
-      final userProfile = ref.read(userProfileProvider);
-      final instanceSessionId = ref.read(userProfileProvider.notifier).instanceSessionId;
-      if (userProfile.uid.isNotEmpty) {
-        debugPrint('MainNavigation: [DEBUG] Connectivity restored. Re-verifying session...');
-        _checkAndSyncSession(userProfile.uid, instanceSessionId);
-      }
-    }
-  }
-
-  Future<void> _checkAndSyncSession(String uid, String instanceId) async {
-    try {
-      // First, get the current remote session ID without updating it
-      final profile = await UserService().getUserProfile(uid);
-      final remoteId = profile?['sessionId'] as String?;
-      
-      debugPrint('MainNavigation: [DEBUG] Background Check - Remote: $remoteId, Local: $instanceId');
-
-      if (remoteId == null || remoteId.isEmpty) {
-        // If no session exists in Firestore, claim it
-        debugPrint('MainNavigation: [DEBUG] No remote session found. Claiming session...');
-        await UserService().updateSessionId(uid, instanceId);
-      } else if (remoteId != instanceId) {
-        // Mismatch! Someone else is logged in.
-        debugPrint('MainNavigation: [DEBUG] Session mismatch detected in background check!');
-        _handleAutoLogout();
-      } else {
-        debugPrint('MainNavigation: [DEBUG] Session validated successfully.');
-      }
-    } catch (e) {
-      debugPrint('MainNavigation: [DEBUG] Background session check failed (likely offline): $e');
-    }
-  }
-
   void _handleAutoLogout() async {
     _sessionSubscription?.cancel();
-    ConnectivityService().removeListener(_onConnectivityChanged);
     final authService = ref.read(authServiceProvider);
     await authService.signOut();
     await PersistenceService().clearSession();
@@ -337,7 +292,6 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   @override
   void dispose() {
     _sessionSubscription?.cancel();
-    ConnectivityService().removeListener(_onConnectivityChanged);
     _pageController.dispose();
     ConnectivityService().dispose();
     super.dispose();

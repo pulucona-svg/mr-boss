@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/subscription_model.dart';
 import '../providers/upload_provider.dart';
+import '../providers/service_providers.dart';
 
 class PurchaseModal extends ConsumerStatefulWidget {
   final SubscriptionPackage package;
