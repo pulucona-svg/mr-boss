@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import '../services/progress_service.dart';
 import '../services/usage_service.dart';
+import '../services/file_service.dart';
 
 class MaterialViewerScreen extends StatefulWidget {
   final String title;
@@ -13,47 +17,78 @@ class MaterialViewerScreen extends StatefulWidget {
 }
 
 class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
-  final ScrollController _scrollController = ScrollController();
+  final FileService _fileService = FileService();
+  bool _isLoading = true;
+  String? _localPath;
+  bool _isPdf = false;
+  bool _isImage = false;
   double _progress = 0.0;
+  final PdfViewerController _pdfController = PdfViewerController();
 
   @override
   void initState() {
     super.initState();
     _progress = ProgressService().getProgress(widget.title);
-    _scrollController.addListener(_onScroll);
+    _isPdf = _fileService.isPdf(widget.fileUrl);
+    _isImage = _fileService.isImage(widget.fileUrl);
     
     // Start tracking reading time
     UsageService().startMaterialTracking(widget.title);
 
-    // Set initial scroll position after build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients && _progress > 0) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent * _progress);
-      }
-    });
+    _prepareFile();
   }
 
-  void _onScroll() {
-    if (_scrollController.hasClients) {
-      final double maxScroll = _scrollController.position.maxScrollExtent;
-      final double currentScroll = _scrollController.position.pixels;
-      
-      if (maxScroll > 0) {
-        final double newProgress = (currentScroll / maxScroll).clamp(0.0, 1.0);
-        if ((newProgress - _progress).abs() > 0.01) {
-          _progress = newProgress;
-          ProgressService().updateProgress(widget.title, _progress);
+  Future<void> _prepareFile() async {
+    debugPrint('MaterialViewerScreen: [DEBUG] Opening resource: ${widget.title}');
+    debugPrint('MaterialViewerScreen: [DEBUG] fileUrl: ${widget.fileUrl}');
+
+    if (widget.fileUrl.isEmpty) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Resource URL is empty.')),
+        );
+      }
+      return;
+    }
+
+    // If it's not a PDF or Image, try to download and open with system app
+    if (!_isPdf && !_isImage) {
+      final fileName = '${widget.title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
+      final path = await _fileService.downloadFile(widget.fileUrl, fileName);
+      if (path != null) {
+        await _fileService.openFile(path);
+        if (mounted) Navigator.pop(context);
+      } else {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Could not download file.')),
+          );
         }
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _onPdfChanged(PdfPageChangedDetails details) {
+    final totalPages = _pdfController.pageCount;
+    if (totalPages > 0) {
+      final newProgress = (details.newPageNumber / totalPages).clamp(0.0, 1.0);
+      if ((newProgress - _progress).abs() > 0.05) {
+        _progress = newProgress;
+        ProgressService().updateProgress(widget.title, _progress);
       }
     }
   }
 
   @override
   void dispose() {
-    // Stop tracking reading time
     UsageService().stopMaterialTracking();
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -64,53 +99,56 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF141232),
         title: Text(widget.title, style: const TextStyle(fontSize: 16)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        child: Column(
-          children: [
-            Container(
-              height: 2000, // Large height to simulate a long document
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.05),
-                    Colors.white.withValues(alpha: 0.01),
-                  ],
+        actions: [
+          if (_isPdf)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Center(
+                child: Text(
+                  '${(_progress * 100).toInt()}%',
+                  style: const TextStyle(color: Color(0xFF20C8FF), fontWeight: FontWeight.bold),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Reading Mode Active',
-                    style: TextStyle(color: Color(0xFF20C8FF), fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  if (widget.fileUrl.isNotEmpty)
-                    Text(
-                      'Loading from ImageKit: ${widget.fileUrl}',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Scrolling tracks your progress automatically. Your highest reached point is saved.\n\n' * 50,
-                    style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.6),
-                  ),
-                ],
-              ),
             ),
-          ],
-        ),
+        ],
       ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF)))
+        : _buildViewer(),
     );
+  }
+
+  Widget _buildViewer() {
+    if (_isPdf) {
+      return SfPdfViewer.network(
+        widget.fileUrl,
+        controller: _pdfController,
+        onPageChanged: _onPdfChanged,
+        onDocumentLoaded: (details) {
+          if (_progress > 0) {
+            final targetPage = (_progress * _pdfController.pageCount).round().clamp(1, _pdfController.pageCount);
+            _pdfController.jumpToPage(targetPage);
+          }
+        },
+      );
+    } else if (_isImage) {
+      return Center(
+        child: InteractiveViewer(
+          child: CachedNetworkImage(
+            imageUrl: widget.fileUrl,
+            placeholder: (context, url) => const CircularProgressIndicator(),
+            errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+          ),
+        ),
+      );
+    } else {
+      return const Center(
+        child: Text(
+          'File format not supported for in-app viewing.\nOpening in system app...',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
   }
 }
