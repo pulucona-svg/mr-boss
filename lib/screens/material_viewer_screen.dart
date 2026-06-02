@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'dart:io';
 import '../services/progress_service.dart';
 import '../services/usage_service.dart';
@@ -22,6 +23,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   String? _localPath;
   bool _isPdf = false;
   bool _isImage = false;
+  bool _isHtml = false;
   double _progress = 0.0;
   final PdfViewerController _pdfController = PdfViewerController();
 
@@ -31,6 +33,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     _progress = ProgressService().getProgress(widget.title);
     _isPdf = _fileService.isPdf(widget.fileUrl);
     _isImage = _fileService.isImage(widget.fileUrl);
+    _isHtml = _fileService.isHtml(widget.fileUrl);
     
     // Start tracking reading time
     UsageService().startMaterialTracking(widget.title);
@@ -52,8 +55,8 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       return;
     }
 
-    // If it's not a PDF or Image, try to download and open with system app
-    if (!_isPdf && !_isImage) {
+    // If it's not a PDF, Image, or HTML, try to download and open with system app
+    if (!_isPdf && !_isImage && !_isHtml) {
       final fileName = '${widget.title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
       final path = await _fileService.downloadFile(widget.fileUrl, fileName);
       if (path != null) {
@@ -98,6 +101,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       backgroundColor: const Color(0xFF070716),
       appBar: AppBar(
         backgroundColor: const Color(0xFF141232),
+        elevation: 0,
         title: Text(widget.title, style: const TextStyle(fontSize: 16)),
         actions: [
           if (_isPdf)
@@ -138,6 +142,21 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
             imageUrl: widget.fileUrl,
             placeholder: (context, url) => const CircularProgressIndicator(),
             errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+          ),
+        ),
+      );
+    } else if (_isHtml) {
+      return Container(
+        color: Colors.white, // HTML content is usually better on white background
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: HtmlWidget(
+            widget.fileUrl, // remote URL
+            factoryBuilder: () => WidgetFactory(),
+            textStyle: const TextStyle(color: Colors.black),
+            onLoadingBuilder: (context, element, loadingProgress) => const Center(
+              child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
+            ),
           ),
         ),
       );

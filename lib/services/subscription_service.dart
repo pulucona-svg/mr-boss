@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/subscription_model.dart';
@@ -9,11 +12,14 @@ class SubscriptionService extends ChangeNotifier {
   factory SubscriptionService() => _instance;
   SubscriptionService._internal();
 
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   List<SubscriptionHistory> _history = [];
   final Set<String> _unlockedResources = {}; 
   bool _isInitialized = false;
   RewardedAd? _rewardedAd;
   bool _isAdLoading = false;
+  StreamSubscription? _historySubscription;
+  String? _userId;
 
   List<SubscriptionHistory> get history => _history;
   
@@ -42,6 +48,7 @@ class SubscriptionService extends ChangeNotifier {
     if (_isInitialized) return;
     _isInitialized = true;
     
+    // 1. Load from local cache for offline/initial use
     final historyJson = PersistenceService().getStringList('subscription_history') ?? [];
     _history = historyJson
         .map((j) => SubscriptionHistory.fromJson(jsonDecode(j)))
@@ -52,6 +59,55 @@ class SubscriptionService extends ChangeNotifier {
     
     _updateSubscriptionStates();
     _loadRewardedAd();
+    notifyListeners();
+
+    // 2. Setup real-time sync if user is logged in
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      initialize(currentUser.uid);
+    }
+  }
+
+  /// Starts real-time synchronization with Firestore for the given user.
+  void initialize(String userId) {
+    if (_userId == userId) return;
+    _userId = userId;
+    
+    _historySubscription?.cancel();
+    
+    debugPrint('SubscriptionService: [DEBUG] Initializing sync for user: $userId');
+    
+    _historySubscription = _firestore
+        .collection('subscriptions')
+        .doc(userId)
+        .collection('history')
+        .snapshots()
+        .listen((snapshot) {
+      _history = snapshot.docs
+          .map((doc) => SubscriptionHistory.fromFirestore(doc.data(), doc.id))
+          .toList();
+      
+      // Sort by purchase date (newest first)
+      _history.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
+      
+      _saveHistory();
+      _updateSubscriptionStates();
+      notifyListeners();
+      debugPrint('SubscriptionService: [DEBUG] Subscription history synced from Firestore. Count: ${_history.length}');
+    }, onError: (e) {
+      debugPrint('SubscriptionService: [ERROR] Firestore listener failed: $e');
+    });
+  }
+
+  /// Clears the service state. Call on logout.
+  void clear() {
+    _historySubscription?.cancel();
+    _historySubscription = null;
+    _userId = null;
+    _history = [];
+    _unlockedResources.clear();
+    _saveHistory();
+    _saveUnlockedResources();
     notifyListeners();
   }
 
@@ -88,26 +144,46 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> recordDownload() async {
     final active = activeSubscription;
-    if (active != null) {
-      for (int i = 0; i < _history.length; i++) {
-        if (_history[i].id == active.id) {
-          _history[i] = _history[i].copyWith(downloadCount: _history[i].downloadCount + 1);
-          break;
+    if (active != null && _userId != null) {
+      try {
+        await _firestore
+            .collection('subscriptions')
+            .doc(_userId)
+            .collection('history')
+            .doc(active.id)
+            .update({'downloadCount': FieldValue.increment(1)});
+      } catch (e) {
+        debugPrint('SubscriptionService: [ERROR] Failed to record download in Firestore: $e');
+        // Fallback to local update if Firestore fails (will sync later when online)
+        for (int i = 0; i < _history.length; i++) {
+          if (_history[i].id == active.id) {
+            _history[i] = _history[i].copyWith(downloadCount: _history[i].downloadCount + 1);
+            break;
+          }
         }
+        await _saveHistory();
+        notifyListeners();
       }
-      await _saveHistory();
-      notifyListeners();
     }
   }
 
   void _updateSubscriptionStates() {
+    if (_userId == null) return;
+    
     bool changed = false;
     final now = DateTime.now();
+    final batch = _firestore.batch();
 
     // 1. Check for expired active subscriptions
     for (int i = 0; i < _history.length; i++) {
       if (_history[i].status == SubscriptionStatus.active && _history[i].expiryDate.isBefore(now)) {
-        _history[i] = _history[i].copyWith(status: SubscriptionStatus.expired);
+        final docRef = _firestore
+            .collection('subscriptions')
+            .doc(_userId)
+            .collection('history')
+            .doc(_history[i].id);
+        
+        batch.update(docRef, {'status': SubscriptionStatus.expired.name});
         changed = true;
       }
     }
@@ -119,26 +195,26 @@ class SubscriptionService extends ChangeNotifier {
       if (queued.isNotEmpty) {
         // Sort by purchase date to get the oldest
         queued.sort((a, b) => a.purchaseDate.compareTo(b.purchaseDate));
-        final oldestQueuedId = queued.first.id;
+        final oldestQueued = queued.first;
         
-        for (int i = 0; i < _history.length; i++) {
-          if (_history[i].id == oldestQueuedId) {
-            final duration = _history[i].expiryDate.difference(_history[i].activationDate);
-            _history[i] = _history[i].copyWith(
-              status: SubscriptionStatus.active,
-              activationDate: now,
-              expiryDate: now.add(duration),
-            );
-            changed = true;
-            break;
-          }
-        }
+        final duration = oldestQueued.expiryDate.difference(oldestQueued.activationDate);
+        final docRef = _firestore
+            .collection('subscriptions')
+            .doc(_userId)
+            .collection('history')
+            .doc(oldestQueued.id);
+
+        batch.update(docRef, {
+          'status': SubscriptionStatus.active.name,
+          'activationDate': now,
+          'expiryDate': now.add(duration),
+        });
+        changed = true;
       }
     }
 
     if (changed) {
-      _saveHistory();
-      notifyListeners();
+      batch.commit().catchError((e) => debugPrint('SubscriptionService: [ERROR] Batch update failed: $e'));
     }
   }
 
@@ -148,42 +224,57 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> addSubscription(SubscriptionPackage package) async {
+    if (_userId == null) return;
+
     // Simulate payment process delay
     await Future.delayed(const Duration(seconds: 2));
 
     final now = DateTime.now();
     bool hasActive = isSubscribed;
 
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
     final newSub = SubscriptionHistory(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: id,
       packageTitle: package.title,
       amount: package.price,
       transactionCode: 'TXN${DateTime.now().millisecondsSinceEpoch}',
       purchaseDate: now,
-      activationDate: hasActive ? now : now, // Placeholder, will be updated if queued
-      expiryDate: hasActive ? now.add(package.duration) : now.add(package.duration),
+      activationDate: now, 
+      expiryDate: now.add(package.duration),
       status: hasActive ? SubscriptionStatus.queued : SubscriptionStatus.active,
     );
 
-    _history.insert(0, newSub);
-    await _saveHistory();
-    notifyListeners();
+    try {
+      await _firestore
+          .collection('subscriptions')
+          .doc(_userId)
+          .collection('history')
+          .doc(id)
+          .set(newSub.toFirestore());
+      
+      debugPrint('SubscriptionService: [DEBUG] New subscription added to Firestore.');
+    } catch (e) {
+      debugPrint('SubscriptionService: [ERROR] Failed to add subscription to Firestore: $e');
+      // Even if Firestore fails, we can't easily fallback here without a local-only implementation
+      // which we are trying to avoid. But for UX, we might want to show it locally.
+      rethrow;
+    }
   }
 
   Future<void> terminateSubscription(String id) async {
-    bool changed = false;
-    for (int i = 0; i < _history.length; i++) {
-      if (_history[i].id == id) {
-        _history[i] = _history[i].copyWith(status: SubscriptionStatus.terminated);
-        changed = true;
-        break;
-      }
-    }
+    if (_userId == null) return;
 
-    if (changed) {
-      _updateSubscriptionStates(); // This will auto-activate the next in queue if needed
-      await _saveHistory();
-      notifyListeners();
+    try {
+      await _firestore
+          .collection('subscriptions')
+          .doc(_userId)
+          .collection('history')
+          .doc(id)
+          .update({'status': SubscriptionStatus.terminated.name});
+      
+      _updateSubscriptionStates(); // Try to activate next in queue
+    } catch (e) {
+      debugPrint('SubscriptionService: [ERROR] Failed to terminate subscription in Firestore: $e');
     }
   }
 

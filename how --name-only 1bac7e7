@@ -1,0 +1,15 @@
+[33mcommit 1bac7e7a9b99410d1e39cabc4153cd88aebe22b6[m
+Author: pulucona-svg <pulucona@gmail.com>
+Date:   Mon May 25 21:57:08 2026 +0300
+
+    feat: enhance search engine and refactor explore screen UI
+
+lib/models/explore_models.dart
+lib/providers/upload_provider.dart
+lib/screens/dashboard_screen.dart
+lib/screens/explore_screen.dart
+lib/screens/library_screen.dart
+lib/services/resource_service.dart
+lib/widgets/resource_card.dart
+lib/widgets/search_dropdown.dart
+lib/widgets/upload_bottom_sheet.dart

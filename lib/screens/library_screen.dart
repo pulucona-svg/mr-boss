@@ -1115,11 +1115,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     
     final filteredResources = baseResources.where((res) {
       // 1. Strict Category Match
-      final isTimetableCategory = uiState.libraryCategory == 'All' ? false : uiState.libraryCategory == 'Time tables';
-      final matchesCategory = uiState.libraryCategory == 'All' || 
-          (isTimetableCategory 
-              ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
-              : res.type == uiState.libraryCategory);
+      final isTimetableCategory = uiState.libraryCategory == 'Time tables';
+      final isAllCategory = uiState.libraryCategory == 'All';
+      final isTimetableType = res.type.toLowerCase().contains('timetable') || 
+                            res.type.toLowerCase().contains('time tables') ||
+                            res.type.toLowerCase().contains('time table');
+      
+      bool matchesCategory;
+      if (isAllCategory) {
+        // "All" now acts as a "Materials" tab, excluding timetables
+        matchesCategory = !isTimetableType;
+      } else if (isTimetableCategory) {
+        // "Time tables" category only shows timetables
+        matchesCategory = isTimetableType;
+      } else {
+        // Other categories (Notes, CATs, etc.) match exactly
+        matchesCategory = res.type == uiState.libraryCategory;
+      }
+      
       if (!matchesCategory) return false;
 
       // 2. Strict Search Query Match

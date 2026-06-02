@@ -84,4 +84,29 @@ class SubscriptionHistory {
     status: SubscriptionStatus.values.byName(json['status'] ?? 'active'),
     downloadCount: json['downloadCount'] ?? 0,
   );
+
+  Map<String, dynamic> toFirestore() => toJson();
+
+  factory SubscriptionHistory.fromFirestore(Map<String, dynamic> json, String id) {
+    return SubscriptionHistory(
+      id: id,
+      packageTitle: json['packageTitle'] ?? '',
+      amount: (json['amount'] ?? 0.0).toDouble(),
+      transactionCode: json['transactionCode'] ?? '',
+      purchaseDate: json['purchaseDate'] is String 
+          ? DateTime.parse(json['purchaseDate']) 
+          : (json['purchaseDate'] as dynamic).toDate(),
+      activationDate: json['activationDate'] is String 
+          ? DateTime.parse(json['activationDate']) 
+          : (json['activationDate'] as dynamic).toDate(),
+      expiryDate: json['expiryDate'] is String 
+          ? DateTime.parse(json['expiryDate']) 
+          : (json['expiryDate'] as dynamic).toDate(),
+      status: SubscriptionStatus.values.firstWhere(
+        (e) => e.name == (json['status'] ?? 'active'),
+        orElse: () => SubscriptionStatus.active,
+      ),
+      downloadCount: json['downloadCount'] ?? 0,
+    );
+  }
 }

@@ -101,4 +101,10 @@ class FileService {
            lowerUrl.contains('.png') || 
            lowerUrl.contains('.webp');
   }
+
+  /// Determines if a file is an HTML file.
+  bool isHtml(String url) {
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.contains('.html') || lowerUrl.contains('.htm');
+  }
 }

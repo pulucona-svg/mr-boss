@@ -486,15 +486,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           // 1. Filter out pinned non-timetable items
           final isPinned = DownloadService().isPinned(res.title);
           final isTimetableType = res.type.toLowerCase().contains('timetable') || 
-                                res.type.toLowerCase().contains('time tables');
+                                res.type.toLowerCase().contains('time tables') ||
+                                res.type.toLowerCase().contains('time table');
           if (isPinned && !isTimetableType) return false;
 
           // 2. Strict Category Match
-          final isTimetableCategory = uiState.dashboardCategory == 'All' ? false : uiState.dashboardCategory == 'Time tables';
-          final matchesCategory = uiState.dashboardCategory == 'All' || 
-              (isTimetableCategory 
-                  ? (res.type == 'Time tables' || res.type.toLowerCase().contains('timetable'))
-                  : res.type == uiState.dashboardCategory);
+          final isTimetableCategory = uiState.dashboardCategory == 'Time tables';
+          final isAllCategory = uiState.dashboardCategory == 'All';
+          
+          bool matchesCategory;
+          if (isAllCategory) {
+            // "All" now acts as a "Materials" tab, excluding timetables
+            matchesCategory = !isTimetableType;
+          } else if (isTimetableCategory) {
+            // "Time tables" category only shows timetables
+            matchesCategory = isTimetableType;
+          } else {
+            // Other categories (Notes, CATs, etc.) match exactly
+            matchesCategory = res.type == uiState.dashboardCategory;
+          }
+          
           if (!matchesCategory) return false;
 
           // 3. Strict Search Query Match

@@ -5,6 +5,7 @@
 import FlutterMacOS
 import Foundation
 
+import audio_session
 import audioplayers_darwin
 import cloud_firestore
 import cloud_functions
@@ -17,14 +18,18 @@ import firebase_auth
 import firebase_core
 import flutter_image_compress_macos
 import google_sign_in_ios
+import just_audio
+import package_info_plus
 import shared_preferences_foundation
 import sqflite_darwin
 import syncfusion_pdfviewer_macos
 import url_launcher_macos
 import video_player_avfoundation
+import wakelock_plus
 import webview_flutter_wkwebview
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+  AudioSessionPlugin.register(with: registry.registrar(forPlugin: "AudioSessionPlugin"))
   AudioplayersDarwinPlugin.register(with: registry.registrar(forPlugin: "AudioplayersDarwinPlugin"))
   FLTFirebaseFirestorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseFirestorePlugin"))
   FirebaseFunctionsPlugin.register(with: registry.registrar(forPlugin: "FirebaseFunctionsPlugin"))
@@ -37,10 +42,13 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   FLTFirebaseCorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseCorePlugin"))
   FlutterImageCompressMacosPlugin.register(with: registry.registrar(forPlugin: "FlutterImageCompressMacosPlugin"))
   FLTGoogleSignInPlugin.register(with: registry.registrar(forPlugin: "FLTGoogleSignInPlugin"))
+  JustAudioPlugin.register(with: registry.registrar(forPlugin: "JustAudioPlugin"))
+  FPPPackageInfoPlusPlugin.register(with: registry.registrar(forPlugin: "FPPPackageInfoPlusPlugin"))
   SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
   SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
   SyncfusionFlutterPdfViewerPlugin.register(with: registry.registrar(forPlugin: "SyncfusionFlutterPdfViewerPlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
   FVPVideoPlayerPlugin.register(with: registry.registrar(forPlugin: "FVPVideoPlayerPlugin"))
+  WakelockPlusMacosPlugin.register(with: registry.registrar(forPlugin: "WakelockPlusMacosPlugin"))
   WebViewFlutterPlugin.register(with: registry.registrar(forPlugin: "WebViewFlutterPlugin"))
 }

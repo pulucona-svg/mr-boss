@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'user_service.dart';
 import 'resource_service.dart';
+import 'subscription_service.dart';
 import 'device_id_manager.dart';
 
 class AuthService {
@@ -69,6 +70,9 @@ class AuthService {
       
       await _userService.syncUser(user);
       await _userService.syncSession(user.uid, deviceId, platform);
+      
+      // Initialize other user-specific services
+      SubscriptionService().initialize(user.uid);
       
       debugPrint('AuthService: [SESSION] Session sync complete.');
     } catch (e) {
@@ -238,6 +242,7 @@ class AuthService {
       
       // Clear all resource state and listeners to prevent data leakage
       ResourceService().clear();
+      SubscriptionService().clear();
       
       await _ensureInitialized();
       await Future.wait<dynamic>([
