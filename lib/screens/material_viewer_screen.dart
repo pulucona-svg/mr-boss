@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide FileService;
 import 'dart:io';
 import '../services/progress_service.dart';
 import '../services/usage_service.dart';
@@ -21,6 +22,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   final FileService _fileService = FileService();
   bool _isLoading = true;
   String? _localPath;
+  String? _htmlContent;
   bool _isPdf = false;
   bool _isImage = false;
   bool _isHtml = false;
@@ -55,20 +57,58 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       return;
     }
 
-    // If it's not a PDF, Image, or HTML, try to download and open with system app
-    if (!_isPdf && !_isImage && !_isHtml) {
-      final fileName = '${widget.title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
-      final path = await _fileService.downloadFile(widget.fileUrl, fileName);
-      if (path != null) {
-        await _fileService.openFile(path);
-        if (mounted) Navigator.pop(context);
+    try {
+      // 1. Check if the file is already cached (or downloaded)
+      final fileInfo = await DefaultCacheManager().getFileFromCache(widget.fileUrl);
+      File? file;
+      if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
+        file = fileInfo.file;
+        debugPrint('MaterialViewerScreen: Loaded valid cached/downloaded file from path: ${file.path}');
       } else {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Could not download file.')),
-          );
+        debugPrint('MaterialViewerScreen: File not cached. Fetching and storing in cache...');
+        // 2. Fetch and store in cache
+        file = await DefaultCacheManager().getSingleFile(widget.fileUrl);
+        debugPrint('MaterialViewerScreen: File fetched and cached at path: ${file.path}');
+      }
+
+      _localPath = file.path;
+
+      if (_isHtml) {
+        _htmlContent = await file.readAsString();
+      }
+
+      // If it's not a PDF, Image, or HTML, open with system app
+      if (!_isPdf && !_isImage && !_isHtml) {
+        await _fileService.openFile(_localPath!);
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+    } catch (e) {
+      debugPrint('MaterialViewerScreen: [ERROR] Caching failed: $e');
+
+      // Fallback for non-PDF/Image/HTML if cache fails
+      if (!_isPdf && !_isImage && !_isHtml) {
+        final fileName = '${widget.title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
+        final path = await _fileService.downloadFile(widget.fileUrl, fileName);
+        if (path != null) {
+          await _fileService.openFile(path);
+          if (mounted) Navigator.pop(context);
+        } else {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Error: Could not download file.')),
+            );
+          }
         }
+        return;
+      }
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading file: $e')),
+        );
       }
       return;
     }
@@ -124,25 +164,42 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
   Widget _buildViewer() {
     if (_isPdf) {
-      return SfPdfViewer.network(
-        widget.fileUrl,
-        controller: _pdfController,
-        onPageChanged: _onPdfChanged,
-        onDocumentLoaded: (details) {
-          if (_progress > 0) {
-            final targetPage = (_progress * _pdfController.pageCount).round().clamp(1, _pdfController.pageCount);
-            _pdfController.jumpToPage(targetPage);
-          }
-        },
-      );
+      return _localPath != null
+          ? SfPdfViewer.file(
+              File(_localPath!),
+              controller: _pdfController,
+              onPageChanged: _onPdfChanged,
+              onDocumentLoaded: (details) {
+                if (_progress > 0) {
+                  final targetPage = (_progress * _pdfController.pageCount).round().clamp(1, _pdfController.pageCount);
+                  _pdfController.jumpToPage(targetPage);
+                }
+              },
+            )
+          : SfPdfViewer.network(
+              widget.fileUrl,
+              controller: _pdfController,
+              onPageChanged: _onPdfChanged,
+              onDocumentLoaded: (details) {
+                if (_progress > 0) {
+                  final targetPage = (_progress * _pdfController.pageCount).round().clamp(1, _pdfController.pageCount);
+                  _pdfController.jumpToPage(targetPage);
+                }
+              },
+            );
     } else if (_isImage) {
       return Center(
         child: InteractiveViewer(
-          child: CachedNetworkImage(
-            imageUrl: widget.fileUrl,
-            placeholder: (context, url) => const CircularProgressIndicator(),
-            errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
-          ),
+          child: _localPath != null
+              ? Image.file(
+                  File(_localPath!),
+                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+                )
+              : CachedNetworkImage(
+                  imageUrl: widget.fileUrl,
+                  placeholder: (context, url) => const CircularProgressIndicator(),
+                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+                ),
         ),
       );
     } else if (_isHtml) {
@@ -151,7 +208,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: HtmlWidget(
-            widget.fileUrl, // remote URL
+            _htmlContent ?? widget.fileUrl,
             factoryBuilder: () => WidgetFactory(),
             textStyle: const TextStyle(color: Colors.black),
             onLoadingBuilder: (context, element, loadingProgress) => const Center(
