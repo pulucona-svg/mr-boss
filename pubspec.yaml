@@ -37,6 +37,7 @@ dependencies:
   video_player: ^2.11.1
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.4.1
+  pdfrx: ^2.4.7
   path_provider: ^2.1.5
   flutter_riverpod: 2.5.1
   flutter_widget_from_html: ^0.15.1
