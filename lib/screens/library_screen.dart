@@ -843,7 +843,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           Text('Your offline academic hub.', style: TextStyle(color: subTextColor, fontSize: 16)),
           const SizedBox(height: 20),
           const SmartAdBanner(),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -971,7 +971,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
@@ -994,7 +994,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -1007,7 +1007,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           // Toggle Switch
           Container(
             height: 50,
@@ -1071,7 +1071,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
@@ -1090,7 +1090,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
         ],
       ),
     );

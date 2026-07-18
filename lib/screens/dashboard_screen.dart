@@ -821,7 +821,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
                                 ),
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 8),
                               Row(
                                 children: [
                                   Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
@@ -832,7 +832,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
                                 ],
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 10),
                             ],
                           ),
                         ),
