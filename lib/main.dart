@@ -13,6 +13,7 @@ import 'screens/explore_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/academic_personalization_screen.dart';
 import 'screens/email_verification_screen.dart';
+import 'screens/signup_screen.dart';
 
 import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
@@ -74,7 +75,7 @@ class MirrorApp extends ConsumerStatefulWidget {
 class _MirrorAppState extends ConsumerState<MirrorApp> {
   Widget _getInitialScreen() {
     if (!widget.isLoggedIn) {
-      return const LoginScreen();
+      return const SignupScreen();
     }
     
     return const InitialSessionCheck();
