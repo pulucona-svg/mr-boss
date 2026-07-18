@@ -40,48 +40,57 @@ class DashboardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 60),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Skeleton(height: 40, width: 150),
-              const Skeleton(height: 40, width: 40, borderRadius: 20),
-            ],
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(20),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              const SizedBox(height: 60),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Skeleton(height: 40, width: 150),
+                  const Skeleton(height: 40, width: 40, borderRadius: 20),
+                ],
+              ),
+              const SizedBox(height: 30),
+              const Skeleton(height: 50, width: double.infinity, borderRadius: 15),
+              const SizedBox(height: 30),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: List.generate(4, (index) => const Padding(
+                    padding: EdgeInsets.only(right: 10),
+                    child: Skeleton(height: 35, width: 80, borderRadius: 20),
+                  )),
+                ),
+              ),
+              const SizedBox(height: 30),
+              const Skeleton(height: 20, width: 100),
+              const SizedBox(height: 20),
+            ]),
           ),
-          const SizedBox(height: 30),
-          const Skeleton(height: 50, width: double.infinity, borderRadius: 15),
-          const SizedBox(height: 30),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: List.generate(4, (index) => const Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: Skeleton(height: 35, width: 80, borderRadius: 20),
-              )),
-            ),
-          ),
-          const SizedBox(height: 30),
-          const Skeleton(height: 20, width: 100),
-          const SizedBox(height: 20),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 15,
               mainAxisSpacing: 15,
               childAspectRatio: 0.7,
             ),
-            itemCount: 4,
-            itemBuilder: (context, index) => const Skeleton(borderRadius: 20),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => const Skeleton(borderRadius: 20),
+              childCount: 4,
+            ),
           ),
-        ],
-      ),
+        ),
+        const SliverToBoxAdapter(
+          child: SizedBox(height: 20),
+        ),
+      ],
     );
   }
 }
@@ -91,44 +100,53 @@ class LibrarySkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 60),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Skeleton(height: 40, width: 120),
-              const Skeleton(height: 40, width: 40, borderRadius: 20),
-            ],
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(20),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              const SizedBox(height: 60),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Skeleton(height: 40, width: 120),
+                  const Skeleton(height: 40, width: 40, borderRadius: 20),
+                ],
+              ),
+              const SizedBox(height: 30),
+              const Skeleton(height: 45, width: double.infinity, borderRadius: 15),
+              const SizedBox(height: 30),
+              const Row(
+                children: [
+                  Skeleton(height: 40, width: 100, borderRadius: 12),
+                  SizedBox(width: 10),
+                  Skeleton(height: 40, width: 100, borderRadius: 12),
+                ],
+              ),
+              const SizedBox(height: 30),
+            ]),
           ),
-          const SizedBox(height: 30),
-          const Skeleton(height: 45, width: double.infinity, borderRadius: 15),
-          const SizedBox(height: 30),
-          const Row(
-            children: [
-              Skeleton(height: 40, width: 100, borderRadius: 12),
-              SizedBox(width: 10),
-              Skeleton(height: 40, width: 100, borderRadius: 12),
-            ],
-          ),
-          const SizedBox(height: 30),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 15,
               mainAxisSpacing: 15,
               childAspectRatio: 0.75,
             ),
-            itemCount: 6,
-            itemBuilder: (context, index) => const Skeleton(borderRadius: 20),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => const Skeleton(borderRadius: 20),
+              childCount: 6,
+            ),
           ),
-        ],
-      ),
+        ),
+        const SliverToBoxAdapter(
+          child: SizedBox(height: 20),
+        ),
+      ],
     );
   }
 }
@@ -138,7 +156,7 @@ class ProfileSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
@@ -166,27 +184,36 @@ class ExploreSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 60),
-          const Skeleton(height: 40, width: 120),
-          const SizedBox(height: 40),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 15,
-                mainAxisSpacing: 15,
-              ),
-              itemCount: 8,
-              itemBuilder: (context, index) => const Skeleton(borderRadius: 15),
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(20),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              const SizedBox(height: 60),
+              const Skeleton(height: 40, width: 120),
+              const SizedBox(height: 40),
+            ]),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 15,
+              mainAxisSpacing: 15,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => const Skeleton(borderRadius: 15),
+              childCount: 8,
             ),
           ),
-        ],
-      ),
+        ),
+        const SliverToBoxAdapter(
+          child: SizedBox(height: 20),
+        ),
+      ],
     );
   }
 }
