@@ -597,7 +597,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const SizedBox(),
+                                  Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
                                   Row(
                                     children: [
                                       ListenableBuilder(
@@ -678,12 +678,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 8),
                               Text('Find your academic edge.', style: TextStyle(color: subTextColor)),
                               const SizedBox(height: 20),
                               const SmartAdBanner(),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 10),
                               SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 clipBehavior: Clip.none,
@@ -706,7 +704,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 10),
                               Row(
                                 children: [
                                   Expanded(
@@ -810,7 +808,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 6),
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: TextButton.icon(
@@ -823,7 +821,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
                                 ),
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 16),
                               Row(
                                 children: [
                                   Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),

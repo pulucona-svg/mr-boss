@@ -328,13 +328,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 48),
                   const Column(
                     children: [
                       Text(
-                        'Copyright © 2026 - MIRROR Softwares',
+                        'Copyright © 2026- MIRROR Softwares',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: Color(0xFFE31E24),
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
@@ -342,7 +342,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       Text(
                         'International',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: Color(0xFFE31E24),
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
