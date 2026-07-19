@@ -374,10 +374,6 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
             ),
           ],
         ],
-        IconButton(
-          icon: const Icon(Icons.close, color: Colors.white70),
-          onPressed: _stopSearchMode,
-        ),
       ],
     );
   }
@@ -437,129 +433,147 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       subtitleLine = yearPart;
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF070716),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF141232),
-        elevation: 0,
-        title: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: _isSearching
-              ? _buildSearchField()
-              : Column(
-                  key: const ValueKey('normal_title'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      titleLine,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF20C8FF),
+    return PopScope(
+      canPop: !_isSearching && _activeAnnotationType == AnnotationType.none,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isSearching) {
+          _stopSearchMode();
+        } else if (_activeAnnotationType != AnnotationType.none) {
+          _exitDrawingMode();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF070716),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF141232),
+          elevation: 0,
+          automaticallyImplyLeading: !_isSearching,
+          leading: _isSearching
+              ? IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                  onPressed: _stopSearchMode,
+                )
+              : null,
+          title: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _isSearching
+                ? _buildSearchField()
+                : Column(
+                    key: const ValueKey('normal_title'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        titleLine,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF20C8FF),
+                        ),
                       ),
-                    ),
-                    if (subtitleLine.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Text(
-                            subtitleLine,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white70,
-                            ),
-                          ),
-                          if (_isPdf) ...[
-                            const SizedBox(width: 24),
-                            GestureDetector(
-                              onTap: _startSearchMode,
-                              behavior: HitTestBehavior.translucent,
-                              child: const Icon(
-                                Icons.search,
+                      if (subtitleLine.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(
+                              subtitleLine,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
                                 color: Colors.white70,
-                                size: 16,
                               ),
                             ),
+                            if (_isPdf) ...[
+                              const SizedBox(width: 24),
+                              GestureDetector(
+                                onTap: _startSearchMode,
+                                behavior: HitTestBehavior.translucent,
+                                child: const Icon(
+                                  Icons.search,
+                                  color: Colors.white70,
+                                  size: 16,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+          actions: [
+            if (!_isSearching) ...[
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    GestureDetector(
+                      onTap: _showMoreToolsBottomSheet,
+                      behavior: HitTestBehavior.translucent,
+                      child: const Icon(Icons.more_vert, color: Colors.white70, size: 22),
+                    ),
+                    if (_isPdf) ...[
+                      const SizedBox(height: 2),
+                      ValueListenableBuilder<double>(
+                        valueListenable: _progressNotifier,
+                        builder: (context, progress, child) {
+                          return Text(
+                            '${(progress * 100).toInt()}%',
+                            style: const TextStyle(
+                              color: Color(0xFF20C8FF), 
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ],
                 ),
-        ),
-        actions: [
-          if (!_isSearching) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  GestureDetector(
-                    onTap: _showMoreToolsBottomSheet,
-                    behavior: HitTestBehavior.translucent,
-                    child: const Icon(Icons.more_vert, color: Colors.white70, size: 22),
-                  ),
-                  if (_isPdf) ...[
-                    const SizedBox(height: 2),
-                    ValueListenableBuilder<double>(
-                      valueListenable: _progressNotifier,
-                      builder: (context, progress, child) {
-                        return Text(
-                          '${(progress * 100).toInt()}%',
-                          style: const TextStyle(
-                            color: Color(0xFF20C8FF), 
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ],
               ),
-            ),
+            ],
           ],
-        ],
-      ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF)))
-        : Stack(
-            children: [
-              _buildViewer(),
-              if (_activeAnnotationType != AnnotationType.none) ...[
-                // Center-right page navigation scroll buttons
-                Positioned(
-                  right: 16,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildScrollButton(Icons.keyboard_arrow_up, true),
-                        const SizedBox(height: 16),
-                        _buildScrollButton(Icons.keyboard_arrow_down, false),
-                      ],
+        ),
+        body: _isLoading 
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF)))
+          : Stack(
+              children: [
+                _buildViewer(),
+                if (_activeAnnotationType != AnnotationType.none) ...[
+                  // Center-right page navigation scroll buttons
+                  Positioned(
+                    right: 16,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildScrollButton(Icons.keyboard_arrow_up, true),
+                          const SizedBox(height: 16),
+                          _buildScrollButton(Icons.keyboard_arrow_down, false),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                // Floating drawing toolbar positioned comfortably above the study toolbar
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 16,
-                  child: _buildDrawingToolbar(context),
-                ),
+                  // Floating drawing toolbar positioned comfortably above the study toolbar
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 16,
+                    child: _buildDrawingToolbar(context),
+                  ),
+                ],
               ],
-            ],
-          ),
-      bottomNavigationBar: _isLoading ? null : _buildStudyToolbar(context),
+            ),
+        bottomNavigationBar: _isLoading ? null : _buildStudyToolbar(context),
+      ),
     );
   }
 
@@ -578,63 +592,71 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            GestureDetector(
-              onTap: () => _showColorPickerSheet(!isPen),
-              behavior: HitTestBehavior.translucent,
-              child: Row(
+        child: SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              GestureDetector(
+                onTap: () => _showColorPickerSheet(!isPen),
+                behavior: HitTestBehavior.translucent,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: selectedColor.withOpacity(0.4),
+                            blurRadius: 6,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: 10,
+                        backgroundColor: selectedColor,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      isPen ? 'Pen Mode' : 'Highlighter Mode',
+                      style: TextStyle(color: defaultColor, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: selectedColor.withOpacity(0.4),
-                          blurRadius: 6,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      radius: 10,
-                      backgroundColor: selectedColor,
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.undo),
+                    color: defaultColor,
+                    onPressed: () => _undoLastStroke(),
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    isPen ? 'Pen Mode' : 'Highlighter Mode',
-                    style: TextStyle(color: defaultColor, fontWeight: FontWeight.bold, fontSize: 13),
+                  IconButton(
+                    icon: const Icon(Icons.redo),
+                    color: defaultColor,
+                    onPressed: () => _redoLastStroke(),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _exitDrawingMode,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF20C8FF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Done'),
                   ),
                 ],
               ),
-            ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.undo),
-                  color: defaultColor,
-                  onPressed: () => _undoLastStroke(),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.redo),
-                  color: defaultColor,
-                  onPressed: () => _redoLastStroke(),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _exitDrawingMode,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF20C8FF),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text('Done'),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
