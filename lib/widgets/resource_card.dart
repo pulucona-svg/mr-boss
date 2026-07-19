@@ -108,6 +108,10 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
           builder: (context) => MaterialViewerScreen(
             title: widget.resource.title, 
             fileUrl: widget.resource.fileUrl,
+            unitName: widget.resource.unitName,
+            unitCode: widget.resource.unitCode,
+            category: widget.resource.type,
+            publicationYear: widget.resource.publicationYear,
           ),
         ),
       );

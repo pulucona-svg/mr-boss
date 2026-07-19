@@ -13,8 +13,20 @@ import '../services/file_service.dart';
 class MaterialViewerScreen extends StatefulWidget {
   final String title;
   final String fileUrl;
+  final String? unitName;
+  final String? unitCode;
+  final String? category;
+  final String? publicationYear;
 
-  const MaterialViewerScreen({super.key, required this.title, required this.fileUrl});
+  const MaterialViewerScreen({
+    super.key,
+    required this.title,
+    required this.fileUrl,
+    this.unitName,
+    this.unitCode,
+    this.category,
+    this.publicationYear,
+  });
 
   @override
   State<MaterialViewerScreen> createState() => _MaterialViewerScreenState();
@@ -53,10 +65,20 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     _isImage = _fileService.isImage(widget.fileUrl);
     _isHtml = _fileService.isHtml(widget.fileUrl);
     
+    // Continuously monitor scroll page changes from controller
+    _pdfController.addListener(_onControllerChanged);
+
     // Start tracking reading time
     UsageService().startMaterialTracking(widget.title);
 
     _prepareFile();
+  }
+
+  void _onControllerChanged() {
+    final page = _pdfController.pageNumber;
+    if (page != null && page != _currentPageNotifier.value) {
+      _currentPageNotifier.value = page;
+    }
   }
 
   Future<void> _prepareFile() async {
@@ -66,9 +88,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     if (widget.fileUrl.isEmpty) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: Resource URL is empty.')),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Error: Resource URL is empty.')),
+            );
+          }
+        });
       }
       return;
     }
@@ -148,7 +174,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _toggleBookmark() {
-    final page = _currentPageNotifier.value;
+    final page = _pdfController.pageNumber ?? _currentPageNotifier.value;
     final currentList = List<int>.from(_bookmarksNotifier.value);
     final stored = PersistenceService().getJson(_bookmarksKey) as List? ?? [];
     final List<Map<String, dynamic>> bookmarksList = List<Map<String, dynamic>>.from(
@@ -207,6 +233,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
   @override
   void dispose() {
+    _pdfController.removeListener(_onControllerChanged);
     UsageService().stopMaterialTracking();
     _progressNotifier.dispose();
     _currentPageNotifier.dispose();
@@ -216,12 +243,63 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final String displayUnitName = (widget.unitName != null && widget.unitName!.isNotEmpty)
+        ? widget.unitName!
+        : widget.title;
+    final String unitCodeSuffix = (widget.unitCode != null && widget.unitCode!.isNotEmpty)
+        ? ' (${widget.unitCode})'
+        : '';
+    final String titleLine = '$displayUnitName$unitCodeSuffix';
+
+    final String categoryPart = (widget.category != null && widget.category!.isNotEmpty)
+        ? widget.category!
+        : '';
+    final String yearPart = (widget.publicationYear != null && widget.publicationYear!.isNotEmpty)
+        ? widget.publicationYear!
+        : '';
+
+    String subtitleLine = '';
+    if (categoryPart.isNotEmpty && yearPart.isNotEmpty) {
+      subtitleLine = '$categoryPart • $yearPart';
+    } else if (categoryPart.isNotEmpty) {
+      subtitleLine = categoryPart;
+    } else if (yearPart.isNotEmpty) {
+      subtitleLine = yearPart;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF070716),
       appBar: AppBar(
         backgroundColor: const Color(0xFF141232),
         elevation: 0,
-        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              titleLine,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            if (subtitleLine.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                subtitleLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white70,
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
           if (_isPdf)
             Padding(

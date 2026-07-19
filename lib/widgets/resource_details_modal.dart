@@ -103,7 +103,14 @@ class ResourceDetailsModal extends ConsumerWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => MaterialViewerScreen(title: title, fileUrl: fileUrl),
+            builder: (context) => MaterialViewerScreen(
+              title: title, 
+              fileUrl: fileUrl, 
+              unitName: unitName,
+              unitCode: unitCode,
+              category: type,
+              publicationYear: publicationYear,
+            ),
           ),
         );
       }
