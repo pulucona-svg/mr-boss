@@ -14,9 +14,37 @@ class UploadService {
     String? thumbnailUrl;
     String? thumbnailId;
 
-    // 1. Upload Main File
+    // 1. Upload Main File / Files
     String mainFileName = '';
-    if (material.file != null) {
+    if (material.fileFormat == 'Images' && material.files.isNotEmpty) {
+      mainFileName = material.files.first.path.split(RegExp(r'[/\\]')).last;
+      final List<String> urls = [];
+      final List<String> ids = [];
+      
+      final int totalFiles = material.files.length;
+      for (int i = 0; i < totalFiles; i++) {
+        final File currentFile = material.files[i];
+        final fileBytes = await currentFile.readAsBytes();
+        final base64File = base64Encode(fileBytes);
+        final name = currentFile.path.split(RegExp(r'[/\\]')).last;
+        final folder = _getFolderForType(material.materialType);
+        
+        final result = await _functions.httpsCallable('uploadToImageKit').call({
+          'file': base64File,
+          'fileName': name,
+          'folder': folder,
+        });
+        
+        urls.add(result.data['url'] ?? '');
+        ids.add(result.data['fileId'] ?? '');
+        
+        // Progress goes from 0.1 to 0.6 as we upload images
+        onProgress(0.1 + (0.5 * (i + 1) / totalFiles));
+      }
+      
+      fileUrl = jsonEncode(urls);
+      fileId = jsonEncode(ids);
+    } else if (material.file != null) {
       mainFileName = material.file!.path.split(RegExp(r'[/\\]')).last;
       final fileBytes = await material.file!.readAsBytes();
       final base64File = base64Encode(fileBytes);

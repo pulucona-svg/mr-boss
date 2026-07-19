@@ -27,6 +27,27 @@ class FileService {
     return null;
   }
 
+  /// Picks multiple files (PDF, images, etc.) from the device.
+  Future<List<File>?> pickMultipleFiles({List<String>? allowedExtensions}) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: allowedExtensions != null ? FileType.custom : FileType.any,
+        allowedExtensions: allowedExtensions,
+        allowMultiple: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        return result.files
+            .where((f) => f.path != null)
+            .map((f) => File(f.path!))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('FileService: [ERROR] pickMultipleFiles failed: $e');
+    }
+    return null;
+  }
+
   /// Picks an image from the gallery or camera.
   Future<File?> pickImage({ImageSource source = ImageSource.gallery}) async {
     try {

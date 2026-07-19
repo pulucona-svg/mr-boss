@@ -127,8 +127,11 @@ class DownloadService extends ChangeNotifier {
   }
 
   void togglePin(String title) {
-    if (isPinned(title)) unpin(title);
-    else pin(title);
+    if (isPinned(title)) {
+      unpin(title);
+    } else {
+      pin(title);
+    }
   }
 
   void pinMultiple(List<String> titles) {
@@ -228,7 +231,16 @@ class DownloadService extends ChangeNotifier {
 
     if (url != null) {
       try {
-        await DefaultCacheManager().downloadFile(url, key: url);
+        if (url.startsWith('[') && url.endsWith(']')) {
+          final List<dynamic> urls = jsonDecode(url);
+          for (final u in urls) {
+            if (u is String && u.isNotEmpty) {
+              await DefaultCacheManager().downloadFile(u, key: u);
+            }
+          }
+        } else {
+          await DefaultCacheManager().downloadFile(url, key: url);
+        }
       } catch (e) {
         debugPrint('Error caching file: $e');
       }

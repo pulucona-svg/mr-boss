@@ -5,9 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dotted_border/dotted_border.dart';
 import '../providers/upload_provider.dart';
 import '../providers/service_providers.dart';
-import '../services/resource_service.dart';
-
-import '../services/course_service.dart';
 
 class UploadBottomSheet extends ConsumerStatefulWidget {
   const UploadBottomSheet({super.key});
@@ -332,14 +329,60 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildFilePicker(
                           label: 'Material File',
                           file: uploadState.material.file,
+                          files: uploadState.material.files,
+                          isImage: uploadState.material.fileFormat == 'Images',
                           icon: Icons.picture_as_pdf_outlined,
-                          onTap: notifier.pickDocument,
+                          onTap: () async {
+                            await notifier.pickDocument();
+                            final err = ref.read(uploadProvider).error;
+                            if (err != null && context.mounted) {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(err),
+                                  backgroundColor: Colors.redAccent,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                              notifier.clearError();
+                            }
+                          },
                         ),
 
                       const SizedBox(height: 32),
                       
                       // Auto-filled info
                       _buildInfoRow('Uploaded By', ref.watch(userProfileProvider).username),
+                      
+                      if (uploadState.uploadMode == 'material') ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Upload Anonymously',
+                                  style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Hide your identity from other users',
+                                  style: TextStyle(color: Colors.white38, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: uploadState.material.isAnonymous,
+                              onChanged: (val) {
+                                notifier.updateIsAnonymous(val);
+                              },
+                              activeColor: const Color(0xFF20C8FF),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       _buildInfoRow('Upload Year', uploadState.material.yearOfUpload.toString()),
                       
@@ -748,10 +791,14 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
   Widget _buildFilePicker({
     required String label,
     File? file,
+    List<File> files = const [],
     bool isImage = false,
     required IconData icon,
     required VoidCallback onTap,
   }) {
+    final bool hasSelection = file != null || files.isNotEmpty;
+    final File? firstFile = files.isNotEmpty ? files.first : file;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -776,15 +823,15 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                 color: Colors.white.withValues(alpha: 0.02),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: file != null
+              child: hasSelection
                   ? Stack(
                       children: [
-                        if (isImage)
+                        if (isImage && firstFile != null)
                           ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: Image.file(file, fit: BoxFit.cover, width: double.infinity, height: double.infinity),
+                            child: Image.file(firstFile, fit: BoxFit.cover, width: double.infinity, height: double.infinity),
                           )
-                        else
+                        else if (firstFile != null)
                           Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -794,13 +841,30 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Text(
-                                    file.path.split(RegExp(r'[/\\]')).last,
+                                    firstFile.path.split(RegExp(r'[/\\]')).last,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(color: Colors.white, fontSize: 10),
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                        if (files.isNotEmpty && files.length > 1)
+                          Positioned(
+                            bottom: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFF20C8FF), width: 1),
+                              ),
+                              child: Text(
+                                '${files.length} images',
+                                style: const TextStyle(color: Color(0xFF20C8FF), fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
                         Positioned(
@@ -816,17 +880,17 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                     )
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, color: Colors.white24, size: 32),
-                      const SizedBox(height: 8),
-                      const Text('Tap to select', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                      const SizedBox(height: 4),
-                      Text(
-                        isImage ? '(Images only)' : '(PDF, Image, HTML)',
-                        style: const TextStyle(color: Colors.white10, fontSize: 10),
-                      ),
-                    ],
-                  ),
+                      children: [
+                        Icon(icon, color: Colors.white24, size: 32),
+                        const SizedBox(height: 8),
+                        const Text('Tap to select', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(
+                          isImage ? '(Images only)' : '(PDF, Image, HTML)',
+                          style: const TextStyle(color: Colors.white10, fontSize: 10),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ),

@@ -39,7 +39,8 @@ class UploadState {
           material.semester.isNotEmpty &&
           material.yearOfPublication > 1900 &&
           material.materialType.isNotEmpty &&
-          material.file != null;
+          (material.file != null || material.files.isNotEmpty) &&
+          error == null;
     } else {
       // Timetable mode: requires programs, programCodes, yearOfStudy, semester, files
       return material.programs.isNotEmpty &&
@@ -282,28 +283,65 @@ class UploadNotifier extends StateNotifier<UploadState> {
   }
 
   Future<void> pickDocument() async {
-    final file = await _fileService.pickDocument(
+    final pickedFiles = await _fileService.pickMultipleFiles(
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'html', 'htm'],
     );
-    if (file != null) {
-      final extension = file.path.split('.').last.toLowerCase();
-      String format = 'Unknown';
-      
-      if (['jpg', 'jpeg', 'png'].contains(extension)) {
-        format = 'Image';
-      } else if (extension == 'pdf') {
-        format = 'PDF';
-      } else if (['html', 'htm'].contains(extension)) {
-        format = 'HTML';
-      }
-      
+    if (pickedFiles == null || pickedFiles.isEmpty) return;
+
+    final hasPdf = pickedFiles.any((f) => f.path.split('.').last.toLowerCase() == 'pdf');
+    final hasHtml = pickedFiles.any((f) => ['html', 'htm'].contains(f.path.split('.').last.toLowerCase()));
+    final hasImage = pickedFiles.any((f) => ['jpg', 'jpeg', 'png'].contains(f.path.split('.').last.toLowerCase()));
+
+    if ((hasPdf || hasHtml) && hasImage) {
       state = state.copyWith(
+        error: 'Mixing PDF/HTML and images is not allowed.',
+      );
+      return;
+    }
+
+    if ((hasPdf || hasHtml) && pickedFiles.length > 1) {
+      state = state.copyWith(
+        error: 'Only one PDF/HTML document can be uploaded at a time.',
+      );
+      return;
+    }
+
+    if (hasImage) {
+      if (pickedFiles.length > 10) {
+        state = state.copyWith(
+          error: 'Maximum of 10 images allowed per upload.',
+        );
+        return;
+      }
+      state = state.copyWith(
+        error: null,
         material: state.material.copyWith(
-          file: file,
-          fileFormat: format,
+          file: pickedFiles.first,
+          files: pickedFiles,
+          fileFormat: 'Images',
+        ),
+      );
+    } else {
+      // Single PDF or HTML
+      state = state.copyWith(
+        error: null,
+        material: state.material.copyWith(
+          file: pickedFiles.first,
+          files: [pickedFiles.first],
+          fileFormat: hasPdf ? 'PDF' : 'HTML',
         ),
       );
     }
+  }
+
+  void updateIsAnonymous(bool value) {
+    state = state.copyWith(
+      material: state.material.copyWith(isAnonymous: value),
+    );
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
   }
 
   Future<void> pickTimetableImage() async {
@@ -388,6 +426,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
         visibility: 'public',
         targetPrograms: state.material.programs,
         programCodes: state.material.programCodes,
+        materialFormat: state.uploadMode == 'timetable' ? 'Image' : (state.material.fileFormat ?? 'PDF'),
+        isAnonymous: state.uploadMode == 'timetable' ? false : state.material.isAnonymous,
       );
 
       await ResourceService().addUpload(resource, _courseService);

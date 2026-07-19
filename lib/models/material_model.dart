@@ -31,6 +31,7 @@ class Resource {
   final DateTime? declineDate;
   final List<String> likedBy;
   final String visibility;
+  final bool isAnonymous;
   int _views;
   int _likes;
   int _comments;
@@ -66,6 +67,7 @@ class Resource {
     this.declineDate,
     this.likedBy = const [],
     this.visibility = 'public',
+    this.isAnonymous = false,
     int views = 0,
     int likes = 0,
     int comments = 0,
@@ -114,6 +116,7 @@ class Resource {
       declineDate: map['declineDate'] != null ? (map['declineDate'] as Timestamp).toDate() : null,
       likedBy: likedByList,
       visibility: map['visibility'] ?? 'public',
+      isAnonymous: map['isAnonymous'] ?? false,
       views: map['views'] ?? 0,
       likes: map['likes'] ?? 0,
       comments: map['comments'] ?? 0,
@@ -151,6 +154,7 @@ class Resource {
       'declineDate': declineDate != null ? Timestamp.fromDate(declineDate!) : null,
       'likedBy': likedBy,
       'visibility': visibility,
+      'isAnonymous': isAnonymous,
       'views': _views,
       'likes': _likes,
       'comments': _comments,
@@ -188,6 +192,7 @@ class Resource {
       declineDate: declineDate,
       likedBy: likedBy,
       visibility: visibility,
+      isAnonymous: isAnonymous,
       views: _views,
       likes: _likes,
       comments: _comments,
@@ -213,6 +218,8 @@ class UploadMaterialModel {
   final String? fileFormat;
   final File? file;
   final File? thumbnail;
+  final List<File> files;
+  final bool isAnonymous;
 
   UploadMaterialModel({
     required this.unitName,
@@ -231,6 +238,8 @@ class UploadMaterialModel {
     this.fileFormat,
     this.file,
     this.thumbnail,
+    this.files = const [],
+    this.isAnonymous = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -251,6 +260,7 @@ class UploadMaterialModel {
       'fileFormat': fileFormat,
       'fileName': file?.path.split(RegExp(r'[/\\]')).last,
       'thumbnailName': thumbnail?.path.split(RegExp(r'[/\\]')).last,
+      'isAnonymous': isAnonymous,
     };
   }
 
@@ -271,6 +281,8 @@ class UploadMaterialModel {
     String? fileFormat,
     File? file,
     File? thumbnail,
+    List<File>? files,
+    bool? isAnonymous,
   }) {
     return UploadMaterialModel(
       unitName: unitName ?? this.unitName,
@@ -289,6 +301,8 @@ class UploadMaterialModel {
       fileFormat: fileFormat ?? this.fileFormat,
       file: file ?? this.file,
       thumbnail: thumbnail ?? this.thumbnail,
+      files: files ?? this.files,
+      isAnonymous: isAnonymous ?? this.isAnonymous,
     );
   }
 }

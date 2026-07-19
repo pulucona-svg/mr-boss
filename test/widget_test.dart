@@ -10,6 +10,10 @@ import 'package:mirror_laikipia/main.dart';
 import 'package:mirror_laikipia/screens/material_viewer_screen.dart';
 import 'package:mirror_laikipia/services/persistence_service.dart';
 import 'package:mirror_laikipia/services/progress_service.dart';
+import 'package:mirror_laikipia/widgets/resource_details_modal.dart';
+import 'package:mirror_laikipia/providers/upload_provider.dart';
+import 'package:mirror_laikipia/models/material_model.dart';
+import 'dart:io';
 
 void main() {
   setUp(() async {
@@ -490,5 +494,100 @@ void main() {
     // Verify selector sheet closes and voice row updates
     expect(find.text('Select Voice'), findsNothing);
     expect(find.text('French (France)'), findsOneWidget);
+  });
+
+  testWidgets('ResourceDetailsModal hides uploader details when isAnonymous is true', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: ResourceDetailsModal(
+              title: 'Chemistry Lesson 1',
+              type: 'Notes',
+              thumbnailUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=400&q=80',
+              unitName: 'Organic Chemistry I',
+              unitCode: 'CHEM 122',
+              materialFormat: 'PDF',
+              uploadYear: '2026',
+              publicationYear: '2025',
+              yearOfStudy: '1st Year',
+              semester: 'Semester 1',
+              lecturers: ['Dr. John Doe'],
+              uploadedBy: 'Jane Doe',
+              uploaderRole: 'Student',
+              uploaderId: 'other_user',
+              uploaderProfilePic: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&q=80',
+              fileUrl: 'test_doc.pdf',
+              isAnonymous: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // The name "Jane Doe" and role "Student" should NOT be visible.
+    // Instead, "Anonymous" should be displayed.
+    expect(find.textContaining('Jane Doe'), findsNothing);
+    expect(find.textContaining('Student'), findsNothing);
+    expect(find.text('Anonymous'), findsOneWidget);
+
+    // The uploader profile picture should use the local anonymous_mask.png asset
+    bool foundAsset = false;
+    for (final element in tester.allElements) {
+      if (element.widget is Image) {
+        final img = element.widget as Image;
+        if (img.image is AssetImage) {
+          final assetImage = img.image as AssetImage;
+          if (assetImage.assetName == 'assets/images/anonymous_mask.png') {
+            foundAsset = true;
+            break;
+          }
+        }
+      }
+    }
+    expect(foundAsset, isTrue);
+  });
+
+  test('UploadState validation works for PDFs and multiple images', () {
+    final statePdf = UploadState(
+      material: UploadMaterialModel(
+        unitName: 'Intro to Programming',
+        unitCode: 'COMP 101',
+        programs: ['Computer Science'],
+        yearOfStudy: '1st Year',
+        semester: 'Semester 1',
+        yearOfPublication: 2026,
+        uploadedBy: 'uploader',
+        uploaderId: 'id',
+        yearOfUpload: 2026,
+        materialType: 'Notes',
+        file: File('dummy.pdf'),
+        fileFormat: 'PDF',
+      ),
+    );
+    expect(statePdf.isValid, isTrue);
+
+    final stateImages = UploadState(
+      material: UploadMaterialModel(
+        unitName: 'Intro to Programming',
+        unitCode: 'COMP 101',
+        programs: ['Computer Science'],
+        yearOfStudy: '1st Year',
+        semester: 'Semester 1',
+        yearOfPublication: 2026,
+        uploadedBy: 'uploader',
+        uploaderId: 'id',
+        yearOfUpload: 2026,
+        materialType: 'Notes',
+        files: [File('dummy1.png'), File('dummy2.png')],
+        fileFormat: 'Images',
+      ),
+    );
+    expect(stateImages.isValid, isTrue);
+
+    final stateMix = statePdf.copyWith(error: 'Some error');
+    expect(stateMix.isValid, isFalse);
   });
 }

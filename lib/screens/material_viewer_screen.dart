@@ -6,6 +6,7 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide FileService;
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../services/persistence_service.dart';
 import '../services/progress_service.dart';
@@ -58,6 +59,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   bool _isPdf = false;
   bool _isImage = false;
   bool _isHtml = false;
+  bool _isMultiImage = false;
+  List<String> _multiImageLocalPaths = [];
+  List<String> _multiImageUrls = [];
+  final ScrollController _multiImageScrollController = ScrollController();
   late final ValueNotifier<double> _progressNotifier;
   late final ValueNotifier<int> _currentPageNotifier;
   late final ValueNotifier<List<int>> _bookmarksNotifier;
@@ -134,9 +139,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           .toList();
     }
 
-    _isPdf = _fileService.isPdf(widget.fileUrl);
-    _isImage = _fileService.isImage(widget.fileUrl);
-    _isHtml = _fileService.isHtml(widget.fileUrl);
+    _isMultiImage = widget.fileUrl.startsWith('[') && widget.fileUrl.endsWith(']');
+    _isPdf = !_isMultiImage && _fileService.isPdf(widget.fileUrl);
+    _isImage = !_isMultiImage && _fileService.isImage(widget.fileUrl);
+    _isHtml = !_isMultiImage && _fileService.isHtml(widget.fileUrl);
     
     // Continuously monitor scroll page changes from controller
     _pdfController.addListener(_onControllerChanged);
@@ -181,27 +187,55 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     }
 
     try {
-      // 1. Check if the file is already cached (or downloaded)
-      final fileInfo = await DefaultCacheManager().getFileFromCache(widget.fileUrl);
-      File? file;
-      if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
-        file = fileInfo.file;
-        debugPrint('MaterialViewerScreen: Loaded valid cached/downloaded file from path: ${file.path}');
+      if (_isMultiImage) {
+        final List<dynamic> urls = jsonDecode(widget.fileUrl);
+        final List<String> localPaths = [];
+        for (final url in urls) {
+          if (url is String && url.isNotEmpty) {
+            final fileInfo = await DefaultCacheManager().getFileFromCache(url);
+            File? file;
+            if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
+              file = fileInfo.file;
+            } else {
+              file = await DefaultCacheManager().getSingleFile(url);
+            }
+            localPaths.add(file.path);
+          }
+        }
+        _multiImageLocalPaths = localPaths;
+        _multiImageUrls = List<String>.from(urls);
+
+        // Restore progress
+        final initialProgress = _progressNotifier.value;
+        if (initialProgress > 0 && _multiImageUrls.isNotEmpty) {
+          final targetPage = (initialProgress * _multiImageUrls.length).round().clamp(1, _multiImageUrls.length);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _goToMultiImagePage(targetPage);
+          });
+        }
       } else {
-        debugPrint('MaterialViewerScreen: File not cached. Fetching and storing in cache...');
-        // 2. Fetch and store in cache
-        file = await DefaultCacheManager().getSingleFile(widget.fileUrl);
-        debugPrint('MaterialViewerScreen: File fetched and cached at path: ${file.path}');
+        // 1. Check if the file is already cached (or downloaded)
+        final fileInfo = await DefaultCacheManager().getFileFromCache(widget.fileUrl);
+        File? file;
+        if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
+          file = fileInfo.file;
+          debugPrint('MaterialViewerScreen: Loaded valid cached/downloaded file from path: ${file.path}');
+        } else {
+          debugPrint('MaterialViewerScreen: File not cached. Fetching and storing in cache...');
+          // 2. Fetch and store in cache
+          file = await DefaultCacheManager().getSingleFile(widget.fileUrl);
+          debugPrint('MaterialViewerScreen: File fetched and cached at path: ${file.path}');
+        }
+
+        _localPath = file.path;
+
+        if (_isHtml) {
+          _htmlContent = await file.readAsString();
+        }
       }
 
-      _localPath = file.path;
-
-      if (_isHtml) {
-        _htmlContent = await file.readAsString();
-      }
-
-      // If it's not a PDF, Image, or HTML, open with system app
-      if (!_isPdf && !_isImage && !_isHtml) {
+      // If it's not a PDF, Image, HTML or MultiImage, open with system app
+      if (!_isPdf && !_isImage && !_isHtml && !_isMultiImage) {
         await _fileService.openFile(_localPath!);
         if (mounted) Navigator.pop(context);
         return;
@@ -427,10 +461,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     _pdfController.removeListener(_onControllerChanged);
     UsageService().stopMaterialTracking();
     _flutterTts.stop();
-    if (_isPdf) {
+    if (_isPdf || _isMultiImage) {
       try {
-        final page = _pdfController.pageNumber ?? _currentPageNotifier.value;
-        final totalPages = _pdfController.pageCount;
+        final page = _currentPageNotifier.value;
+        final totalPages = _totalPages;
         if (totalPages > 0) {
           final finalProgress = (page / totalPages).clamp(0.0, 1.0);
           ProgressService().updateProgress(widget.title, finalProgress);
@@ -438,7 +472,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       } catch (e) {
         debugPrint('Error saving progress during dispose: $e');
       }
-      if (_textSearcher != null) {
+      if (_isPdf && _textSearcher != null) {
         _textSearcher!.removeListener(_onSearchUpdated);
         _textSearcher!.dispose();
       }
@@ -448,6 +482,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     _progressNotifier.dispose();
     _currentPageNotifier.dispose();
     _bookmarksNotifier.dispose();
+    _multiImageScrollController.dispose();
     super.dispose();
   }
 
@@ -796,7 +831,9 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           buildToolbarItem(
             icon: Icons.volume_up_outlined,
             label: 'Read Aloud',
-            onTap: _showReadAloudBottomSheet,
+            onTap: _isPdf 
+                ? _showReadAloudBottomSheet 
+                : () => _showOnlyPdfSupportSnackbar('Read Aloud'),
           ),
           ValueListenableBuilder<int>(
             valueListenable: _currentPageNotifier,
@@ -911,6 +948,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           uploaderId: matchedResource.uploaderId,
           uploaderProfilePic: matchedResource.uploaderProfilePic,
           showDownload: true,
+          isAnonymous: matchedResource.isAnonymous,
         ),
       );
     } else {
@@ -920,23 +958,95 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     }
   }
 
+  int get _totalPages {
+    if (_isPdf) {
+      return _pdfController.isReady ? _pdfController.pageCount : 1;
+    } else if (_isMultiImage) {
+      return _multiImageUrls.length;
+    }
+    return 1;
+  }
+
+  void _goToMultiImagePage(int pageNumber) {
+    if (pageNumber < 1 || pageNumber > _totalPages) return;
+    final pageIndex = pageNumber - 1;
+    final pageHeight = MediaQuery.of(context).size.width * 1.414;
+    _multiImageScrollController.animateTo(
+      pageIndex * pageHeight,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  Widget _buildImagePageOverlay(int pageNumber) {
+    final pageHasNotes = _notes.any((n) => n.pageNumber == pageNumber);
+    final isHighlighted = pageNumber == _highlightedPageNumber;
+
+    return Stack(
+      children: [
+        if (isHighlighted)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            color: const Color(0xFF20C8FF).withOpacity(0.2),
+          ),
+        if (pageHasNotes)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                _openNotesForPage(pageNumber);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF20C8FF),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black38,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.sticky_note_2_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   void _scrollPage(bool isUp) {
-    if (!_pdfController.isReady) return;
     final currentPage = _currentPageNotifier.value;
-    final pageCount = _pdfController.pageCount;
+    final pageCount = _totalPages;
     if (isUp) {
       if (currentPage > 1) {
-        _pdfController.goToPage(
-          pageNumber: currentPage - 1,
-          duration: const Duration(milliseconds: 250),
-        );
+        if (_isPdf) {
+          _pdfController.goToPage(
+            pageNumber: currentPage - 1,
+            duration: const Duration(milliseconds: 250),
+          );
+        } else if (_isMultiImage) {
+          _goToMultiImagePage(currentPage - 1);
+        }
       }
     } else {
       if (currentPage < pageCount) {
-        _pdfController.goToPage(
-          pageNumber: currentPage + 1,
-          duration: const Duration(milliseconds: 250),
-        );
+        if (_isPdf) {
+          _pdfController.goToPage(
+            pageNumber: currentPage + 1,
+            duration: const Duration(milliseconds: 250),
+          );
+        } else if (_isMultiImage) {
+          _goToMultiImagePage(currentPage + 1);
+        }
       }
     }
   }
@@ -1450,6 +1560,71 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   Widget _buildViewer() {
     if (widget.fileUrl == 'test_doc.pdf') {
       return const Center(child: Text('Mock PDF Viewer'));
+    }
+    if (_isMultiImage) {
+      final physics = _activeAnnotationType != AnnotationType.none
+          ? const NeverScrollableScrollPhysics()
+          : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+      return NotificationListener<ScrollNotification>(
+        onNotification: (ScrollNotification notification) {
+          final pageHeight = MediaQuery.of(context).size.width * 1.414;
+          if (_multiImageScrollController.hasClients) {
+            final offset = _multiImageScrollController.offset;
+            final page = (offset / pageHeight).round() + 1;
+            final clampedPage = page.clamp(1, _totalPages);
+            if (clampedPage != _currentPageNotifier.value) {
+              _currentPageNotifier.value = clampedPage;
+              _progressNotifier.value = (clampedPage / _totalPages).clamp(0.0, 1.0);
+            }
+          }
+          return false;
+        },
+        child: ListView.builder(
+          controller: _multiImageScrollController,
+          itemCount: _multiImageUrls.length,
+          physics: physics,
+          itemBuilder: (context, index) {
+            final url = _multiImageUrls[index];
+            final localPath = _multiImageLocalPaths.length > index ? _multiImageLocalPaths[index] : null;
+            final pageHeight = MediaQuery.of(context).size.width * 1.414;
+            final pageWidth = MediaQuery.of(context).size.width;
+
+            return Container(
+              width: pageWidth,
+              height: pageHeight,
+              margin: const EdgeInsets.only(bottom: 8),
+              color: const Color(0xFF141232),
+              child: Stack(
+                children: [
+                  InteractiveViewer(
+                    minScale: 1.0,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: localPath != null && File(localPath).existsSync()
+                          ? Image.file(
+                              File(localPath),
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: url,
+                              fit: BoxFit.contain,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
+                              ),
+                              errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+                            ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: _buildImagePageOverlay(index + 1),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
     }
     if (_isPdf) {
       final initialProgress = _progressNotifier.value;
@@ -2335,16 +2510,20 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _goToPageTts(int pageNum) {
-    if (!_pdfController.isReady) return;
-    if (pageNum < 1 || pageNum > _pdfController.pageCount) return;
+    if (pageNum < 1 || pageNum > _totalPages) return;
     
     final wasPlaying = _isPlaying;
     _stopPlayback();
     
-    _pdfController.goToPage(
-      pageNumber: pageNum,
-      duration: const Duration(milliseconds: 300),
-    );
+    if (_isPdf) {
+      if (!_pdfController.isReady) return;
+      _pdfController.goToPage(
+        pageNumber: pageNum,
+        duration: const Duration(milliseconds: 300),
+      );
+    } else if (_isMultiImage) {
+      _goToMultiImagePage(pageNum);
+    }
     
     if (wasPlaying) {
       Future.delayed(const Duration(milliseconds: 500), () {

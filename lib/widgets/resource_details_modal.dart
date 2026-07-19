@@ -5,9 +5,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/progress_service.dart';
 import '../providers/providers.dart';
 import '../screens/material_viewer_screen.dart';
-import '../services/course_service.dart';
 
 import 'download_modal.dart';
+
+const String anonymousMaskAsset = 'assets/images/anonymous_mask.png';
 
 class ResourceDetailsModal extends ConsumerWidget {
   final String title;
@@ -29,6 +30,7 @@ class ResourceDetailsModal extends ConsumerWidget {
   final String? uploaderProfilePic;
   final String fileUrl;
   final bool showDownload;
+  final bool isAnonymous;
 
   const ResourceDetailsModal({
     super.key,
@@ -51,12 +53,15 @@ class ResourceDetailsModal extends ConsumerWidget {
     this.uploaderProfilePic,
     required this.fileUrl,
     this.showDownload = true,
+    this.isAnonymous = false,
   });
 
   Map<String, String> _getResourceData(List<String> displayPrograms, List<String> displayLecturers, WidgetRef ref) {
     final userProfile = ref.read(userProfileProvider);
     final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
-    final String displayUploadedBy = isMe ? userProfile.username : uploadedBy;
+    final String displayUploadedBy = isAnonymous
+        ? (isMe ? 'Anonymous (You)' : 'Anonymous')
+        : (isMe ? userProfile.username : uploadedBy);
 
     return {
       'title': title,
@@ -76,7 +81,7 @@ class ResourceDetailsModal extends ConsumerWidget {
       'uploadedBy': displayUploadedBy,
       'uploaderRole': uploaderRole,
       'uploaderId': uploaderId,
-      'uploaderProfilePic': uploaderProfilePic ?? '',
+      'uploaderProfilePic': isAnonymous ? anonymousMaskAsset : (uploaderProfilePic ?? ''),
     };
   }
 
@@ -235,7 +240,9 @@ class ResourceDetailsModal extends ConsumerWidget {
 
     final userProfile = ref.watch(userProfileProvider);
     final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
-    final String displayUploadedBy = isMe ? userProfile.username : uploadedBy;
+    final String displayUploadedBy = isAnonymous
+        ? (isMe ? 'Anonymous (You)' : 'Anonymous')
+        : (isMe ? userProfile.username : uploadedBy);
 
     final bgColor = isDark ? const Color(0xFF141232) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
@@ -434,8 +441,9 @@ class ResourceDetailsModal extends ConsumerWidget {
                         isDark,
                         Icons.cloud_upload_outlined, 
                         'Uploaded By', 
-                        '$displayUploadedBy ($uploaderRole)',
-                        customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath, userProfile.photoURL),                  ),
+                        isAnonymous ? displayUploadedBy : '$displayUploadedBy ($uploaderRole)',
+                        customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath, userProfile.photoURL),
+                      ),
                       
                       Builder(
                         builder: (context) {
@@ -632,7 +640,9 @@ class ResourceDetailsModal extends ConsumerWidget {
   }
 
   Widget _buildUploaderProfilePic(WidgetRef ref, bool isMe, String? myProfilePic, String? myPhotoUrl) {
-    final String? profilePic = isMe ? (myProfilePic ?? myPhotoUrl) : uploaderProfilePic;
+    final String? profilePic = isAnonymous
+        ? (isMe ? (myProfilePic ?? myPhotoUrl) : anonymousMaskAsset)
+        : (isMe ? (myProfilePic ?? myPhotoUrl) : uploaderProfilePic);
     
     return Container(
       width: 32,

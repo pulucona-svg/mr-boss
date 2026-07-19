@@ -112,6 +112,7 @@ flutter:
 
   assets:
     - assets/icon.png
+    - assets/images/anonymous_mask.png
     - assets/splashyote.png
     - assets/ad_cyber.jpeg
     - assets/ad_data.jpeg

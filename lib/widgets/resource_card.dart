@@ -196,6 +196,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         uploaderId: widget.resource.uploaderId,
         uploaderProfilePic: widget.resource.uploaderProfilePic,
         showDownload: true,
+        isAnonymous: widget.resource.isAnonymous,
       ),
     );
   }
