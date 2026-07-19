@@ -438,9 +438,9 @@ void main() {
     }
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
 
-    // Verify voice selector is present and shows Default Voice
+    // Verify voice selector is present and shows Default Voice (which gets resolved to English (US) Voice 1)
     expect(find.text('Voice'), findsOneWidget);
-    expect(find.text('Default Voice'), findsOneWidget);
+    expect(find.text('English (US) Voice 1'), findsOneWidget);
 
     // Tap Voice selector to open voice sheet
     await tester.tap(find.text('Voice'));
@@ -451,15 +451,38 @@ void main() {
     expect(find.text('Select Voice'), findsOneWidget);
 
     // Verify grouped headers and mock voice display names are present
-    expect(find.text('English'), findsOneWidget);
+    expect(find.text('English Voices (Recommended)'), findsOneWidget);
     expect(find.text('French'), findsOneWidget);
-    expect(find.text('English (US) Voice 1'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'English (US) Voice 1'), findsOneWidget);
     expect(find.text('English (US) Voice 2'), findsOneWidget);
     expect(find.text('English (UK)'), findsOneWidget);
-    expect(find.text('French (France)'), findsOneWidget);
+    final frenchVoiceFinder = find.ancestor(
+      of: find.byWidgetPredicate((w) => w is Text && w.data == 'French (France)' && w.style?.fontSize == 15),
+      matching: find.byType(ListTile),
+    );
+    expect(frenchVoiceFinder, findsOneWidget);
+
+    // Test search functionality in voice selection sheet
+    // Search for 'French'
+    await tester.enterText(find.byType(TextField).last, 'French');
+    await tester.pumpAndSettle();
+    
+    // Only French should be visible, English should be filtered out
+    expect(frenchVoiceFinder, findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'English (US) Voice 1'), findsNothing);
+
+    // Search for non-existent voice
+    await tester.enterText(find.byType(TextField).last, 'NonExistentVoice');
+    await tester.pumpAndSettle();
+    expect(find.text('No matching voices found.'), findsOneWidget);
+
+    // Clear search
+    await tester.tap(find.byIcon(Icons.clear_rounded));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'English (US) Voice 1'), findsOneWidget);
 
     // Select "French (France)"
-    await tester.tap(find.text('French (France)'));
+    await tester.tap(frenchVoiceFinder);
     for (int i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }

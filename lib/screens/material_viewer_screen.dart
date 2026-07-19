@@ -38,6 +38,18 @@ class MaterialViewerScreen extends StatefulWidget {
 
 enum AnnotationType { none, pen, highlighter }
 
+class TtsSentence {
+  final String text;
+  final int start;
+  final int end;
+
+  TtsSentence({
+    required this.text,
+    required this.start,
+    required this.end,
+  });
+}
+
 class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   final FileService _fileService = FileService();
   bool _isLoading = true;
@@ -67,8 +79,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   final FlutterTts _flutterTts = FlutterTts();
   bool _isPlaying = false;
   bool _isPaused = false;
-  List<String> _sentences = [];
+  List<TtsSentence> _sentences = [];
   int _currentSentenceIndex = 0;
+  int? _ttsPageNumber;
+  PdfPageText? _ttsPageText;
   double _speechRate = 1.0; 
   double _speechPitch = 1.0; 
   String? _selectedVoiceName; 
@@ -1461,64 +1475,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   if (_textSearcher != null)
                     _textSearcher!.pageTextMatchPaintCallback,
                 ],
-                pageOverlaysBuilder: (context, pageRect, page) {
-                  final pageHasNotes = _notes.any((n) => n.pageNumber == page.pageNumber);
-                  final isDrawing = _activeAnnotationType != AnnotationType.none;
-                  
-                  if (!isDrawing && !pageHasNotes) {
-                    return const [];
-                  }
-                  
-                  return [
-                    if (isDrawing)
-                      PageDrawingOverlay(
-                        pageNumber: page.pageNumber,
-                        pageRect: pageRect,
-                        isDrawingActive: true,
-                        selectedColor: _activeAnnotationType == AnnotationType.highlighter 
-                            ? _selectedHighlightColor 
-                            : _selectedPenColor,
-                        selectedThickness: _activeAnnotationType == AnnotationType.highlighter
-                            ? _selectedHighlightThickness
-                            : _selectedPenThickness,
-                        isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
-                        savedStrokes: const [],
-                        onStrokeAdded: (stroke) {
-                          _addStroke(stroke);
-                        },
-                      ),
-                    if (pageHasNotes)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            _openNotesForPage(page.pageNumber);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF20C8FF),
-                              shape: BoxShape.circle,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black38,
-                                  blurRadius: 4,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.sticky_note_2_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ];
-                },
+                pageOverlaysBuilder: _buildPageOverlays,
               ),
             )
           : PdfViewer.uri(
@@ -1539,64 +1496,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   if (_textSearcher != null)
                     _textSearcher!.pageTextMatchPaintCallback,
                 ],
-                pageOverlaysBuilder: (context, pageRect, page) {
-                  final pageHasNotes = _notes.any((n) => n.pageNumber == page.pageNumber);
-                  final isDrawing = _activeAnnotationType != AnnotationType.none;
-                  
-                  if (!isDrawing && !pageHasNotes) {
-                    return const [];
-                  }
-                  
-                  return [
-                    if (isDrawing)
-                      PageDrawingOverlay(
-                        pageNumber: page.pageNumber,
-                        pageRect: pageRect,
-                        isDrawingActive: true,
-                        selectedColor: _activeAnnotationType == AnnotationType.highlighter 
-                            ? _selectedHighlightColor 
-                            : _selectedPenColor,
-                        selectedThickness: _activeAnnotationType == AnnotationType.highlighter
-                            ? _selectedHighlightThickness
-                            : _selectedPenThickness,
-                        isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
-                        savedStrokes: const [],
-                        onStrokeAdded: (stroke) {
-                          _addStroke(stroke);
-                        },
-                      ),
-                    if (pageHasNotes)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            _openNotesForPage(page.pageNumber);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF20C8FF),
-                              shape: BoxShape.circle,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black38,
-                                  blurRadius: 4,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.sticky_note_2_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ];
-                },
+                pageOverlaysBuilder: _buildPageOverlays,
               ),
             );
     } else if (_isImage) {
@@ -2081,9 +1981,23 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   Future<void> _doInitTts() async {
     if (_ttsInitialized) return;
     
-    _speechRate = PersistenceService().getDouble('tts_speech_rate') ?? 1.0;
-    _speechPitch = PersistenceService().getDouble('tts_speech_pitch') ?? 1.0;
+    final savedRate = PersistenceService().getDouble('tts_speech_rate');
+    final savedPitch = PersistenceService().getDouble('tts_speech_pitch');
     _selectedVoiceName = PersistenceService().getString('tts_voice_name');
+    
+    if (savedRate != null) {
+      _speechRate = savedRate;
+    } else {
+      _speechRate = 0.8;
+      PersistenceService().setDouble('tts_speech_rate', 0.8);
+    }
+    
+    if (savedPitch != null) {
+      _speechPitch = savedPitch;
+    } else {
+      _speechPitch = 1.0;
+      PersistenceService().setDouble('tts_speech_pitch', 1.0);
+    }
     
     try {
       await _flutterTts.setSpeechRate(_speechRate);
@@ -2103,11 +2017,23 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
             .where((v) => v['name']!.isNotEmpty)
             .toList();
             
+        final friendlyVoices = _getFriendlyVoices();
+        
         if (_selectedVoiceName != null) {
           final voiceExists = _availableVoices.any((v) => v['name'] == _selectedVoiceName);
           if (voiceExists) {
             final voice = _availableVoices.firstWhere((v) => v['name'] == _selectedVoiceName);
             await _flutterTts.setVoice(Map<String, String>.from(voice));
+          }
+        } else {
+          final defaultVoice = _determineDefaultVoice(friendlyVoices);
+          if (defaultVoice != null) {
+            _selectedVoiceName = defaultVoice.rawName;
+            PersistenceService().setString('tts_voice_name', defaultVoice.rawName);
+            await _flutterTts.setVoice({
+              'name': defaultVoice.rawName,
+              'locale': defaultVoice.rawLocale,
+            });
           }
         }
       } else if (widget.fileUrl == 'test_doc.pdf') {
@@ -2117,6 +2043,19 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           {'name': 'en-gb-x-rjs-local', 'locale': 'en-GB'},
           {'name': 'fr-fr-x-xyz-network', 'locale': 'fr-FR'},
         ];
+        
+        final friendlyVoices = _getFriendlyVoices();
+        if (_selectedVoiceName == null) {
+          final defaultVoice = _determineDefaultVoice(friendlyVoices);
+          if (defaultVoice != null) {
+            _selectedVoiceName = defaultVoice.rawName;
+            PersistenceService().setString('tts_voice_name', defaultVoice.rawName);
+            await _flutterTts.setVoice({
+              'name': defaultVoice.rawName,
+              'locale': defaultVoice.rawLocale,
+            });
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error loading TTS voices: $e');
@@ -2127,6 +2066,19 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           {'name': 'en-gb-x-rjs-local', 'locale': 'en-GB'},
           {'name': 'fr-fr-x-xyz-network', 'locale': 'fr-FR'},
         ];
+        
+        final friendlyVoices = _getFriendlyVoices();
+        if (_selectedVoiceName == null) {
+          final defaultVoice = _determineDefaultVoice(friendlyVoices);
+          if (defaultVoice != null) {
+            _selectedVoiceName = defaultVoice.rawName;
+            PersistenceService().setString('tts_voice_name', defaultVoice.rawName);
+            await _flutterTts.setVoice({
+              'name': defaultVoice.rawName,
+              'locale': defaultVoice.rawLocale,
+            });
+          }
+        }
       }
     }
     
@@ -2152,13 +2104,20 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     }
   }
 
-  List<String> _splitIntoSentences(String text) {
+  List<TtsSentence> _splitIntoTtsSentences(String text) {
     final RegExp sentenceRegExp = RegExp(r'[^.!?]+[.!?]*');
-    return sentenceRegExp
-        .allMatches(text)
-        .map((m) => m.group(0)!.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
+    final List<TtsSentence> list = [];
+    for (final match in sentenceRegExp.allMatches(text)) {
+      final sentenceText = match.group(0)!;
+      final trimmed = sentenceText.trim();
+      if (trimmed.isNotEmpty) {
+        final startOffset = sentenceText.indexOf(trimmed);
+        final start = match.start + startOffset;
+        final end = start + trimmed.length;
+        list.add(TtsSentence(text: trimmed, start: start, end: end));
+      }
+    }
+    return list;
   }
 
   void _startPlayback() {
@@ -2168,7 +2127,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         _isPaused = false;
       });
       if (_sentences.isNotEmpty && _currentSentenceIndex < _sentences.length) {
-        final sentence = _sentences[_currentSentenceIndex];
+        final sentence = _sentences[_currentSentenceIndex].text;
         try {
           _flutterTts.speak(sentence);
         } catch (e) {
@@ -2179,35 +2138,33 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     }
     
     final pageNum = _currentPageNotifier.value;
+    _ttsPageNumber = pageNum;
     
     String pageTextStr = '';
     if (_pdfDocument != null) {
       try {
         final page = _pdfDocument!.pages[pageNum - 1];
-        page.loadText().then((textObj) {
-          if (textObj != null) {
-            pageTextStr = textObj.fullText.trim();
-            _sentences = _splitIntoSentences(pageTextStr);
-            if (_sentences.isEmpty) {
-              setState(() {
-                _isPlaying = false;
-                _isPaused = false;
-              });
-              return;
-            }
+        page.loadStructuredText().then((textObj) {
+          _ttsPageText = textObj;
+          pageTextStr = textObj.fullText;
+          _sentences = _splitIntoTtsSentences(pageTextStr);
+          if (_sentences.isEmpty) {
             setState(() {
-              _isPlaying = true;
+              _isPlaying = false;
               _isPaused = false;
-              _currentSentenceIndex = 0;
             });
-            final sentence = _sentences[0];
-            try {
-              _flutterTts.speak(sentence);
-            } catch (e) {
-              debugPrint('Error starting TTS: $e');
-            }
-          } else {
-            _handleNoText(pageNum);
+            return;
+          }
+          setState(() {
+            _isPlaying = true;
+            _isPaused = false;
+            _currentSentenceIndex = 0;
+          });
+          final sentence = _sentences[0].text;
+          try {
+            _flutterTts.speak(sentence);
+          } catch (e) {
+            debugPrint('Error starting TTS: $e');
           }
         }).catchError((e) {
           debugPrint('Error loading page text: $e');
@@ -2227,7 +2184,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       return;
     }
     
-    _sentences = _splitIntoSentences(pageTextStr);
+    _sentences = _splitIntoTtsSentences(pageTextStr);
     if (_sentences.isEmpty) {
       setState(() {
         _isPlaying = false;
@@ -2242,7 +2199,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       _currentSentenceIndex = 0;
     });
     
-    final sentence = _sentences[0];
+    final sentence = _sentences[0].text;
     try {
       _flutterTts.speak(sentence);
     } catch (e) {
@@ -2264,11 +2221,14 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _onSentenceCompleted() {
-    if (!_isPlaying) return;
+    if (!mounted || !_isPlaying) return;
     
-    _currentSentenceIndex++;
+    setState(() {
+      _currentSentenceIndex++;
+    });
+    
     if (_currentSentenceIndex < _sentences.length) {
-      final sentence = _sentences[_currentSentenceIndex];
+      final sentence = _sentences[_currentSentenceIndex].text;
       try {
         _flutterTts.speak(sentence);
       } catch (e) {
@@ -2302,7 +2262,76 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       _isPaused = false;
       _currentSentenceIndex = 0;
       _sentences = [];
+      _ttsPageNumber = null;
+      _ttsPageText = null;
     });
+  }
+
+  List<Widget> _buildPageOverlays(BuildContext context, Rect pageRect, PdfPage page) {
+    final pageHasNotes = _notes.any((n) => n.pageNumber == page.pageNumber);
+    final isDrawing = _activeAnnotationType != AnnotationType.none;
+    final isTtsActive = (_isPlaying || _isPaused) && page.pageNumber == _ttsPageNumber;
+
+    if (!isDrawing && !pageHasNotes && !isTtsActive) {
+      return const [];
+    }
+
+    return [
+      if (isTtsActive && _sentences.isNotEmpty && _currentSentenceIndex < _sentences.length)
+        TtsHighlightOverlay(
+          page: page,
+          pageRect: pageRect,
+          pageText: _ttsPageText,
+          sentence: _sentences[_currentSentenceIndex],
+        ),
+      if (isDrawing)
+        PageDrawingOverlay(
+          pageNumber: page.pageNumber,
+          pageRect: pageRect,
+          isDrawingActive: true,
+          selectedColor: _activeAnnotationType == AnnotationType.highlighter 
+              ? _selectedHighlightColor 
+              : _selectedPenColor,
+          selectedThickness: _activeAnnotationType == AnnotationType.highlighter
+              ? _selectedHighlightThickness
+              : _selectedPenThickness,
+          isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
+          savedStrokes: const [],
+          onStrokeAdded: (stroke) {
+            _addStroke(stroke);
+          },
+        ),
+      if (pageHasNotes)
+        Positioned(
+          top: 6,
+          right: 6,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              _openNotesForPage(page.pageNumber);
+            },
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: const BoxDecoration(
+                color: Color(0xFF20C8FF),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black38,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.sticky_note_2_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+          ),
+        ),
+    ];
   }
 
   void _goToPageTts(int pageNum) {
@@ -2545,6 +2574,52 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              Card(
+                                elevation: 0,
+                                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.08),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                margin: EdgeInsets.zero,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        '💡',
+                                        style: TextStyle(fontSize: 14),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: RichText(
+                                          text: TextSpan(
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              height: 1.4,
+                                              color: Colors.white70,
+                                            ),
+                                            children: const [
+                                              TextSpan(
+                                                text: 'Best experience:\n',
+                                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                                              ),
+                                              TextSpan(
+                                                text: 'Use an Online voice for the highest quality and most natural speech.',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ],
                           );
                         },
@@ -2628,7 +2703,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       final countryName = countryCode.isNotEmpty ? _getCountryName(countryCode) : '';
       final baseFriendlyName = countryName.isNotEmpty ? '$langName ($countryName)' : langName;
       
-      baseGroups.putIfAbsent(baseFriendlyName, () => []).add(voice);
+      baseGroups.putIfAbsent(baseFriendlyName, () => []).add(voice.cast<String, String>());
     }
     
     baseGroups.forEach((baseFriendlyName, voices) {
@@ -2642,9 +2717,14 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         
         final parts = locale.split(RegExp(r'[-_]'));
         final langCode = parts[0];
+        final countryCode = parts.length > 1 ? parts[1] : '';
         final langName = _getLanguageName(langCode);
+        final countryName = countryCode.isNotEmpty ? _getCountryName(countryCode) : '';
         
-        final isOnline = name.toLowerCase().contains('network');
+        final isOnline = name.toLowerCase().contains('network') ||
+                         name.toLowerCase().contains('online') ||
+                         name.toLowerCase().contains('neural') ||
+                         name.toLowerCase().contains('premium');
         final displayName = hasMultiple ? '$baseFriendlyName Voice ${i + 1}' : baseFriendlyName;
         
         list.add(FriendlyVoice(
@@ -2653,6 +2733,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           languageName: langName,
           displayName: displayName,
           isOnline: isOnline,
+          countryName: countryName,
         ));
       }
     });
@@ -2678,17 +2759,235 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         languageName: '',
         displayName: 'Custom Voice',
         isOnline: false,
+        countryName: '',
       ),
     );
     return match.displayName;
   }
 
+  int _getEnglishCountryPriority(String locale) {
+    final parts = locale.split(RegExp(r'[-_]'));
+    final country = parts.length > 1 ? parts[1].toUpperCase() : '';
+    switch (country) {
+      case 'US': return 1;
+      case 'GB':
+      case 'UK': return 2;
+      case 'AU': return 3;
+      case 'CA': return 4;
+      case 'IN': return 5;
+      default: return 6;
+    }
+  }
+
+  bool _isHighQuality(String rawName) {
+    final lower = rawName.toLowerCase();
+    return lower.contains('online') ||
+        lower.contains('neural') ||
+        lower.contains('premium') ||
+        lower.contains('network');
+  }
+
+  int _getQualityScore(FriendlyVoice v) {
+    final name = v.rawName.toLowerCase();
+    
+    final isNeural = name.contains('neural');
+    final isOnline = name.contains('online') || name.contains('network') || v.isOnline;
+    final isPremium = name.contains('premium') || name.contains('enhanced');
+    final isNetwork = name.contains('network');
+    
+    if (isOnline && isNeural) return 5;
+    if (isOnline) return 4;
+    if (isPremium) return 3;
+    if (isNetwork) return 2;
+    return 1; // Offline
+  }
+
+  int _scoreVoiceForDefault(FriendlyVoice v) {
+    final parts = v.rawLocale.split(RegExp(r'[-_]'));
+    final lang = parts[0].toLowerCase();
+    final country = parts.length > 1 ? parts[1].toUpperCase() : '';
+    
+    final isEnglish = lang == 'en';
+    
+    if (isEnglish) {
+      int countryScore;
+      if (country == 'US') {
+        countryScore = 60;
+      } else if (country == 'GB' || country == 'UK') {
+        countryScore = 50;
+      } else if (country == 'AU') {
+        countryScore = 40;
+      } else if (country == 'CA') {
+        countryScore = 30;
+      } else if (country == 'IN') {
+        countryScore = 20;
+      } else {
+        countryScore = 10;
+      }
+      return countryScore * 10 + _getQualityScore(v);
+    } else {
+      // Non-English voice
+      return _getQualityScore(v);
+    }
+  }
+
+  FriendlyVoice? _determineDefaultVoice(List<FriendlyVoice> friendlyVoices) {
+    if (friendlyVoices.isEmpty) return null;
+
+    final List<FriendlyVoice> sorted = List.from(friendlyVoices);
+    sorted.sort((a, b) {
+      final scoreA = _scoreVoiceForDefault(a);
+      final scoreB = _scoreVoiceForDefault(b);
+      if (scoreA != scoreB) {
+        return scoreB.compareTo(scoreA); // Highest score first
+      }
+      return a.displayName.compareTo(b.displayName); // Alphabetical fallback
+    });
+
+    return sorted.first;
+  }
+
+  Map<String, List<FriendlyVoice>> _getGroupedAndSortedVoices(List<FriendlyVoice> voices) {
+    final List<FriendlyVoice> englishVoices = voices.where((v) => v.languageName == 'English').toList();
+    final List<FriendlyVoice> otherVoices = voices.where((v) => v.languageName != 'English').toList();
+
+    englishVoices.sort((a, b) {
+      final priorityA = _getEnglishCountryPriority(a.rawLocale);
+      final priorityB = _getEnglishCountryPriority(b.rawLocale);
+      if (priorityA != priorityB) return priorityA.compareTo(priorityB);
+
+      final highA = _isHighQuality(a.rawName);
+      final highB = _isHighQuality(b.rawName);
+      if (highA != highB) return highA ? -1 : 1;
+
+      return a.displayName.compareTo(b.displayName);
+    });
+
+    if (englishVoices.isNotEmpty && _selectedVoiceName != null) {
+      final selectedIndex = englishVoices.indexWhere((v) => v.rawName == _selectedVoiceName);
+      if (selectedIndex != -1) {
+        final selectedVoice = englishVoices.removeAt(selectedIndex);
+        englishVoices.insert(0, selectedVoice);
+      }
+    }
+
+    final Map<String, List<FriendlyVoice>> otherGroups = {};
+    for (final v in otherVoices) {
+      otherGroups.putIfAbsent(v.languageName, () => []).add(v);
+    }
+
+    otherGroups.forEach((lang, list) {
+      list.sort((a, b) => a.displayName.compareTo(b.displayName));
+      if (_selectedVoiceName != null) {
+        final selectedIndex = list.indexWhere((v) => v.rawName == _selectedVoiceName);
+        if (selectedIndex != -1) {
+          final selectedVoice = list.removeAt(selectedIndex);
+          list.insert(0, selectedVoice);
+        }
+      }
+    });
+
+    final sortedOtherLanguages = otherGroups.keys.toList()..sort();
+
+    final Map<String, List<FriendlyVoice>> finalGroups = {};
+    if (englishVoices.isNotEmpty) {
+      finalGroups['English Voices (Recommended)'] = englishVoices;
+    }
+    for (final lang in sortedOtherLanguages) {
+      finalGroups[lang] = otherGroups[lang]!;
+    }
+
+    return finalGroups;
+  }
+
+  List<String> _getQualityChips(FriendlyVoice voice) {
+    final List<String> chips = [];
+    final nameLower = voice.rawName.toLowerCase();
+    
+    if (nameLower.contains('online') || voice.isOnline) {
+      chips.add('Online');
+    }
+    if (nameLower.contains('neural')) {
+      chips.add('Neural');
+    }
+    if (nameLower.contains('premium') || nameLower.contains('enhanced')) {
+      chips.add('Premium');
+    }
+    if (nameLower.contains('network')) {
+      chips.add('Network');
+    }
+    
+    if (chips.isEmpty) {
+      chips.add('Offline');
+    }
+    return chips;
+  }
+
+  Widget _buildQualityChip(String label, BuildContext context) {
+    final isOnlineOrNeural = label == 'Online' || label == 'Neural' || label == 'Premium' || label == 'Network';
+    final themeColor = isOnlineOrNeural ? const Color(0xFF20C8FF) : Colors.white60;
+    
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: themeColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: themeColor.withOpacity(0.25),
+          width: 0.8,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: themeColor,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  String _getFullLocaleName(FriendlyVoice voice) {
+    final parts = voice.rawLocale.split(RegExp(r'[-_]'));
+    final country = parts.length > 1 ? parts[1].toUpperCase() : '';
+    
+    String countryFull = '';
+    switch (country) {
+      case 'US': countryFull = 'United States'; break;
+      case 'GB':
+      case 'UK': countryFull = 'United Kingdom'; break;
+      case 'AU': countryFull = 'Australia'; break;
+      case 'CA': countryFull = 'Canada'; break;
+      case 'IN': countryFull = 'India'; break;
+      case 'FR': countryFull = 'France'; break;
+      case 'DE': countryFull = 'Germany'; break;
+      case 'ES': countryFull = 'Spain'; break;
+      case 'IT': countryFull = 'Italy'; break;
+      case 'JP': countryFull = 'Japan'; break;
+      case 'CN': countryFull = 'China'; break;
+      case 'TW': countryFull = 'Taiwan'; break;
+      case 'BR': countryFull = 'Brazil'; break;
+      case 'PT': countryFull = 'Portugal'; break;
+      case 'RU': countryFull = 'Russia'; break;
+      case 'KR': countryFull = 'South Korea'; break;
+      case 'MX': countryFull = 'Mexico'; break;
+      case 'ZA': countryFull = 'South Africa'; break;
+      case 'NZ': countryFull = 'New Zealand'; break;
+      case 'SG': countryFull = 'Singapore'; break;
+      case 'HK': countryFull = 'Hong Kong'; break;
+      default: countryFull = voice.countryName; break;
+    }
+    
+    if (countryFull.isNotEmpty) {
+      return '${voice.languageName} ($countryFull)';
+    }
+    return voice.languageName;
+  }
+
   void _showVoiceSelectionBottomSheet(StateSetter parentSetState) {
     final friendlyVoices = _getFriendlyVoices();
-    final Map<String, List<FriendlyVoice>> grouped = {};
-    for (final v in friendlyVoices) {
-      grouped.putIfAbsent(v.languageName, () => []).add(v);
-    }
     
     showModalBottomSheet(
       context: context,
@@ -2698,121 +2997,208 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (context, scrollController) {
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Select Voice',
-                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Colors.white70),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(color: Colors.white10, height: 1),
-                Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: grouped.keys.length,
-                    itemBuilder: (context, index) {
-                      final lang = grouped.keys.elementAt(index);
-                      final voices = grouped[lang]!;
-                      
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        String searchQuery = '';
+        final searchController = TextEditingController();
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final query = searchQuery.trim().toLowerCase();
+            final filteredVoices = friendlyVoices.where((v) {
+              if (query.isEmpty) return true;
+              
+              final nameMatch = v.displayName.toLowerCase().contains(query) || v.rawName.toLowerCase().contains(query);
+              final langMatch = v.languageName.toLowerCase().contains(query) || _getFullLocaleName(v).toLowerCase().contains(query);
+              final localeMatch = v.rawLocale.toLowerCase().contains(query);
+              final countryMatch = v.countryName.toLowerCase().contains(query);
+              
+              bool keywordMatch = false;
+              final chips = _getQualityChips(v).map((c) => c.toLowerCase()).toList();
+              if (query == 'online' || query == 'offline' || query == 'neural' || query == 'premium' || query == 'network') {
+                keywordMatch = chips.contains(query);
+              } else {
+                keywordMatch = chips.any((c) => c.contains(query));
+              }
+              
+              return nameMatch || langMatch || localeMatch || countryMatch || keywordMatch;
+            }).toList();
+
+            final groupedAndSorted = _getGroupedAndSortedVoices(filteredVoices);
+
+            final List<VoiceSheetItem> flatItems = [];
+            groupedAndSorted.forEach((lang, voicesList) {
+              flatItems.add(VoiceHeaderItem(lang));
+              for (final voice in voicesList) {
+                flatItems.add(VoiceRowItem(voice));
+              }
+              flatItems.add(VoiceSeparatorItem());
+            });
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.6,
+              minChildSize: 0.4,
+              maxChildSize: 0.9,
+              expand: false,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 8),
-                            child: Text(
-                              lang,
-                              style: const TextStyle(
-                                color: Color(0xFF20C8FF),
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
+                          const Text(
+                            'Select Voice',
+                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                           ),
-                          ...voices.map((voice) {
-                            final isSelected = _selectedVoiceName == voice.rawName;
-                            
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      voice.displayName,
-                                      style: TextStyle(
-                                        color: isSelected ? Colors.white : Colors.white70,
-                                        fontSize: 15,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: voice.isOnline 
-                                          ? const Color(0xFF20C8FF).withOpacity(0.15) 
-                                          : Colors.white.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      voice.isOnline ? 'Online' : 'Offline',
-                                      style: TextStyle(
-                                        color: voice.isOnline ? const Color(0xFF20C8FF) : Colors.white60,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  if (isSelected)
-                                    const Icon(Icons.check_rounded, color: Color(0xFF20C8FF), size: 18),
-                                ],
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: TextField(
+                        controller: searchController,
+                        autofocus: true,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        cursorColor: const Color(0xFF20C8FF),
+                        decoration: InputDecoration(
+                          hintText: 'Search voice, language, or country...',
+                          hintStyle: const TextStyle(color: Colors.white38),
+                          prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54),
+                          suffixIcon: searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, color: Colors.white54),
+                                  onPressed: () {
+                                    searchController.clear();
+                                    setSheetState(() {
+                                      searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.06),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: const BorderSide(color: Color(0xFF20C8FF), width: 1.5),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          setSheetState(() {
+                            searchQuery = value;
+                          });
+                        },
+                      ),
+                    ),
+                    const Divider(color: Colors.white10, height: 1),
+                    Expanded(
+                      child: flatItems.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No matching voices found.',
+                                style: TextStyle(color: Colors.white70, fontSize: 16),
                               ),
-                              onTap: () async {
-                                setState(() {
-                                  _selectedVoiceName = voice.rawName;
-                                });
-                                parentSetState(() {});
-                                try {
-                                  await _flutterTts.setVoice({
-                                    'name': voice.rawName,
-                                    'locale': voice.rawLocale,
-                                  });
-                                } catch (e) {
-                                  debugPrint('Error setting voice: $e');
-                                }
-                                PersistenceService().setString('tts_voice_name', voice.rawName);
-                                if (context.mounted) {
-                                  Navigator.pop(context);
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              itemCount: flatItems.length,
+                              itemBuilder: (context, index) {
+                                final item = flatItems[index];
+                                if (item is VoiceHeaderItem) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 8),
+                                    child: Text(
+                                      item.title,
+                                      style: const TextStyle(
+                                        color: Color(0xFF20C8FF),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  );
+                                } else if (item is VoiceRowItem) {
+                                  final voice = item.voice;
+                                  final isSelected = _selectedVoiceName == voice.rawName;
+                                  final chips = _getQualityChips(voice);
+                                  
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                                    title: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            voice.displayName,
+                                            style: TextStyle(
+                                              color: isSelected ? Colors.white : Colors.white70,
+                                              fontSize: 15,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                        ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: chips.map((chip) => _buildQualityChip(chip, context)).toList(),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        if (isSelected)
+                                          const Icon(Icons.check_rounded, color: Color(0xFF20C8FF), size: 18),
+                                      ],
+                                    ),
+                                    subtitle: Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        _getFullLocaleName(voice),
+                                        style: TextStyle(
+                                          color: isSelected ? Colors.white54 : Colors.white38,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    onTap: () async {
+                                      setState(() {
+                                        _selectedVoiceName = voice.rawName;
+                                      });
+                                      parentSetState(() {});
+                                      try {
+                                        await _flutterTts.setVoice({
+                                          'name': voice.rawName,
+                                          'locale': voice.rawLocale,
+                                        });
+                                        if (!_isPlaying) {
+                                          await _flutterTts.speak("This is a preview of the selected voice.");
+                                        }
+                                      } catch (e) {
+                                        debugPrint('Error setting voice: $e');
+                                      }
+                                      PersistenceService().setString('tts_voice_name', voice.rawName);
+                                      if (context.mounted) {
+                                        Navigator.pop(context);
+                                      }
+                                    },
+                                  );
+                                } else {
+                                  return const Column(
+                                    children: [
+                                      SizedBox(height: 8),
+                                      Divider(color: Colors.white10, height: 1),
+                                    ],
+                                  );
                                 }
                               },
-                            );
-                          }),
-                          const SizedBox(height: 8),
-                          const Divider(color: Colors.white10, height: 1),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
+                            ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -2827,6 +3213,7 @@ class FriendlyVoice {
   final String languageName;
   final String displayName;
   final bool isOnline;
+  final String countryName;
   
   FriendlyVoice({
     required this.rawName,
@@ -2834,8 +3221,23 @@ class FriendlyVoice {
     required this.languageName,
     required this.displayName,
     required this.isOnline,
+    required this.countryName,
   });
 }
+
+abstract class VoiceSheetItem {}
+
+class VoiceHeaderItem extends VoiceSheetItem {
+  final String title;
+  VoiceHeaderItem(this.title);
+}
+
+class VoiceRowItem extends VoiceSheetItem {
+  final FriendlyVoice voice;
+  VoiceRowItem(this.voice);
+}
+
+class VoiceSeparatorItem extends VoiceSheetItem {}
 
 class _BookmarksBottomSheet extends StatelessWidget {
   final String bookmarksKey;
@@ -3223,5 +3625,150 @@ class DocumentNote {
       title: json['title'] as String,
       body: json['body'] as String,
     );
+  }
+}
+
+class TtsHighlightOverlay extends StatefulWidget {
+  final PdfPage page;
+  final Rect pageRect;
+  final PdfPageText? pageText;
+  final TtsSentence sentence;
+
+  const TtsHighlightOverlay({
+    Key? key,
+    required this.page,
+    required this.pageRect,
+    required this.pageText,
+    required this.sentence,
+  }) : super(key: key);
+
+  @override
+  State<TtsHighlightOverlay> createState() => _TtsHighlightOverlayState();
+}
+
+class _TtsHighlightOverlayState extends State<TtsHighlightOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  TtsSentence? _prevSentence;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    _controller.forward(from: 0.0);
+    _prevSentence = widget.sentence;
+  }
+
+  @override
+  void didUpdateWidget(covariant TtsHighlightOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sentence.start != widget.sentence.start ||
+        oldWidget.sentence.end != widget.sentence.end) {
+      _prevSentence = oldWidget.sentence;
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.pageText == null) {
+      return const SizedBox.shrink();
+    }
+
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return CustomPaint(
+          size: widget.pageRect.size,
+          painter: _TtsHighlightPainter(
+            page: widget.page,
+            pageRect: widget.pageRect,
+            pageText: widget.pageText!,
+            currentSentence: widget.sentence,
+            prevSentence: _prevSentence,
+            progress: _animation.value,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TtsHighlightPainter extends CustomPainter {
+  final PdfPage page;
+  final Rect pageRect;
+  final PdfPageText pageText;
+  final TtsSentence currentSentence;
+  final TtsSentence? prevSentence;
+  final double progress;
+
+  _TtsHighlightPainter({
+    required this.page,
+    required this.pageRect,
+    required this.pageText,
+    required this.currentSentence,
+    this.prevSentence,
+    required this.progress,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const softBlue = Color(0xFF20C8FF);
+    
+    if (prevSentence != null && prevSentence!.start != currentSentence.start) {
+      final opacity = 0.15 * (1.0 - progress);
+      if (opacity > 0.01) {
+        final paint = Paint()
+          ..color = softBlue.withOpacity(opacity)
+          ..style = PaintingStyle.fill;
+        _drawSentenceHighlight(canvas, prevSentence!, paint);
+      }
+    }
+
+    final currentOpacity = 0.15 * progress;
+    if (currentOpacity > 0.01) {
+      final paint = Paint()
+        ..color = softBlue.withOpacity(currentOpacity)
+        ..style = PaintingStyle.fill;
+      _drawSentenceHighlight(canvas, currentSentence, paint);
+    }
+  }
+
+  void _drawSentenceHighlight(Canvas canvas, TtsSentence sentence, Paint paint) {
+    try {
+      final range = PdfPageTextRange(
+        pageText: pageText,
+        start: sentence.start,
+        end: sentence.end,
+      );
+      final fragmentRects = range.enumerateFragmentBoundingRects();
+      for (final fragmentRect in fragmentRects) {
+        final pdfRect = fragmentRect.bounds;
+        final rect = pdfRect.toRect(page: page, scaledPageSize: pageRect.size);
+        final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(3));
+        canvas.drawRRect(rrect, paint);
+      }
+    } catch (e) {
+      debugPrint('Error painting TTS highlight: $e');
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TtsHighlightPainter oldDelegate) {
+    return oldDelegate.currentSentence.start != currentSentence.start ||
+        oldDelegate.currentSentence.end != currentSentence.end ||
+        oldDelegate.progress != progress ||
+        oldDelegate.pageRect.size != pageRect.size;
   }
 }
