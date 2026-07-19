@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -16,6 +17,29 @@ void main() {
     await Firebase.initializeApp();
     SharedPreferences.setMockInitialValues({});
     await PersistenceService().init();
+
+    const channel = MethodChannel('flutter_tts');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'getVoices':
+          return [
+            {'name': 'en-us-x-sfg-local', 'locale': 'en-US'},
+            {'name': 'en-us-x-tpf-local', 'locale': 'en-US'},
+            {'name': 'en-gb-x-rjs-local', 'locale': 'en-GB'},
+            {'name': 'fr-fr-x-xyz-network', 'locale': 'fr-FR'},
+          ];
+        case 'setSpeechRate':
+        case 'setPitch':
+        case 'setVoice':
+        case 'speak':
+        case 'pause':
+        case 'stop':
+          return 1;
+        default:
+          return null;
+      }
+    });
   });
 
   testWidgets('App shows dashboard content', (WidgetTester tester) async {
@@ -348,5 +372,100 @@ void main() {
     // Verify note is deleted
     expect(find.text('Edited Title'), findsNothing);
     expect(find.text('No notes created yet'), findsOneWidget);
+  });
+
+  testWidgets('MaterialViewerScreen Read Aloud bottom sheet works correctly', (WidgetTester tester) async {
+    // Set a realistic screen size to prevent layout overflow on smaller default test windows
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MaterialViewerScreen(
+          title: 'Chemistry Lesson 1',
+          fileUrl: 'test_doc.pdf',
+          unitName: 'Organic Chemistry I',
+          unitCode: 'CHEM 122',
+          category: 'Exam',
+          publicationYear: '2025',
+        ),
+      ),
+    );
+
+    // Let any async setup run
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify Read Aloud button is present in bottom bar and tap it
+    expect(find.text('Read Aloud'), findsOneWidget);
+    await tester.tap(find.text('Read Aloud'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify bottom sheet title is "Read Aloud"
+    expect(find.text('Read Aloud').last, findsOneWidget);
+
+    // Verify presence of playback controls (Play, Skip next, Skip previous, Stop)
+    expect(find.byIcon(Icons.skip_previous_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
+
+    // Verify presence of Speed and Pitch labels
+    expect(find.text('Speed'), findsOneWidget);
+    expect(find.text('Pitch'), findsOneWidget);
+
+    // Verify speed/pitch sliders are present
+    expect(find.byType(Slider), findsNWidgets(2));
+
+    // Tap play button and verify toggle to pause
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+
+    // Tap pause button
+    await tester.tap(find.byIcon(Icons.pause_rounded));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
+    // Verify voice selector is present and shows Default Voice
+    expect(find.text('Voice'), findsOneWidget);
+    expect(find.text('Default Voice'), findsOneWidget);
+
+    // Tap Voice selector to open voice sheet
+    await tester.tap(find.text('Voice'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    // Verify "Select Voice" title is visible
+    expect(find.text('Select Voice'), findsOneWidget);
+
+    // Verify grouped headers and mock voice display names are present
+    expect(find.text('English'), findsOneWidget);
+    expect(find.text('French'), findsOneWidget);
+    expect(find.text('English (US) Voice 1'), findsOneWidget);
+    expect(find.text('English (US) Voice 2'), findsOneWidget);
+    expect(find.text('English (UK)'), findsOneWidget);
+    expect(find.text('French (France)'), findsOneWidget);
+
+    // Select "French (France)"
+    await tester.tap(find.text('French (France)'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify selector sheet closes and voice row updates
+    expect(find.text('Select Voice'), findsNothing);
+    expect(find.text('French (France)'), findsOneWidget);
   });
 }

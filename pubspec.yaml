@@ -67,6 +67,7 @@ dependencies:
   dio: ^5.9.2
   open_filex: ^4.7.0
   uuid: ^4.3.3
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:
