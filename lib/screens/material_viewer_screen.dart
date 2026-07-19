@@ -45,6 +45,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   late final ValueNotifier<List<int>> _bookmarksNotifier;
   final PdfViewerController _pdfController = PdfViewerController();
 
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  int _searchMatchesCount = 0;
+  int _currentMatchIndex = -1;
+  PdfTextSearcher? _textSearcher;
+
   String get _bookmarksKey => 'bookmarks_doc_${widget.title}';
 
   @override
@@ -70,6 +77,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
     // Start tracking reading time
     UsageService().startMaterialTracking(widget.title);
+
 
     _prepareFile();
   }
@@ -229,6 +237,120 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     );
   }
 
+  void _onSearchUpdated() {
+    if (mounted && _textSearcher != null) {
+      setState(() {
+        _searchMatchesCount = _textSearcher!.matches.length;
+        _currentMatchIndex = _textSearcher!.currentIndex ?? -1;
+      });
+    }
+  }
+
+  void _onSearchChanged(String text) {
+    if (_textSearcher == null) return;
+    if (text.isEmpty) {
+      _textSearcher!.resetTextSearch();
+      setState(() {
+        _searchMatchesCount = 0;
+        _currentMatchIndex = -1;
+      });
+    } else {
+      _textSearcher!.startTextSearch(text, caseInsensitive: true);
+    }
+  }
+
+  void _goToPrevMatch() {
+    _textSearcher?.goToPrevMatch();
+  }
+
+  void _goToNextMatch() {
+    _textSearcher?.goToNextMatch();
+  }
+
+  void _startSearchMode() {
+    _searchController.clear();
+    if (_textSearcher == null) {
+      try {
+        _textSearcher = PdfTextSearcher(_pdfController)..addListener(_onSearchUpdated);
+      } catch (e) {
+        debugPrint('Error initializing PdfTextSearcher: $e');
+      }
+    }
+    _textSearcher?.resetTextSearch();
+    setState(() {
+      _isSearching = true;
+      _searchMatchesCount = 0;
+      _currentMatchIndex = -1;
+    });
+  }
+
+  void _stopSearchMode() {
+    _searchController.clear();
+    _textSearcher?.resetTextSearch();
+    setState(() {
+      _isSearching = false;
+      _searchMatchesCount = 0;
+      _currentMatchIndex = -1;
+    });
+  }
+
+  Widget _buildSearchField() {
+    return Row(
+      key: const ValueKey('search_field'),
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            decoration: const InputDecoration(
+              hintText: 'Search...',
+              hintStyle: TextStyle(color: Colors.white38),
+              border: InputBorder.none,
+            ),
+            onChanged: _onSearchChanged,
+          ),
+        ),
+        if (_searchController.text.isNotEmpty) ...[
+          if (_searchMatchesCount > 0) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '${_currentMatchIndex >= 0 ? _currentMatchIndex + 1 : 1}/$_searchMatchesCount',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+            IconButton(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white70, size: 20),
+              onPressed: _goToPrevMatch,
+            ),
+            IconButton(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 20),
+              onPressed: _goToNextMatch,
+            ),
+          ] else ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                'No matches found',
+                style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ],
+        IconButton(
+          icon: const Icon(Icons.close, color: Colors.white70),
+          onPressed: _stopSearchMode,
+        ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _pdfController.removeListener(_onControllerChanged);
@@ -244,7 +366,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       } catch (e) {
         debugPrint('Error saving progress during dispose: $e');
       }
+      if (_textSearcher != null) {
+        _textSearcher!.removeListener(_onSearchUpdated);
+        _textSearcher!.dispose();
+      }
     }
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _progressNotifier.dispose();
     _currentPageNotifier.dispose();
     _bookmarksNotifier.dispose();
@@ -282,36 +410,58 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF141232),
         elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              titleLine,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF20C8FF),
-              ),
-            ),
-            if (subtitleLine.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitleLine,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.white70,
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _isSearching
+              ? _buildSearchField()
+              : Column(
+                  key: const ValueKey('normal_title'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      titleLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF20C8FF),
+                      ),
+                    ),
+                    if (subtitleLine.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            subtitleLine,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          if (_isPdf) ...[
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _startSearchMode,
+                              behavior: HitTestBehavior.translucent,
+                              child: const Icon(
+                                Icons.search,
+                                color: Colors.white70,
+                                size: 16,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-            ],
-          ],
         ),
         actions: [
-          if (_isPdf)
+          if (_isPdf && !_isSearching)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Center(
@@ -477,6 +627,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   }
                 },
                 onPageChanged: _onPdfChanged,
+                pagePaintCallbacks: [
+                  if (_textSearcher != null)
+                    _textSearcher!.pageTextMatchPaintCallback,
+                ],
               ),
             )
           : PdfViewer.uri(
@@ -491,6 +645,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   }
                 },
                 onPageChanged: _onPdfChanged,
+                pagePaintCallbacks: [
+                  if (_textSearcher != null)
+                    _textSearcher!.pageTextMatchPaintCallback,
+                ],
               ),
             );
     } else if (_isImage) {

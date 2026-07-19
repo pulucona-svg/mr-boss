@@ -25,13 +25,9 @@ class ProgressService extends ChangeNotifier {
   }
 
   void updateProgress(String title, double progress) {
-    // Only update if the new progress is higher than the stored one
-    final current = _readingProgress[title] ?? 0.0;
-    if (progress > current) {
-      _readingProgress[title] = progress;
-      _saveProgress();
-      notifyListeners();
-    }
+    _readingProgress[title] = progress;
+    _saveProgress();
+    notifyListeners();
   }
 
   bool hasProgress(String title) => _readingProgress.containsKey(title);
