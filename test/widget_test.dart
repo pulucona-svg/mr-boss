@@ -241,4 +241,112 @@ void main() {
     }
     expect(find.text('Highlighter Mode'), findsNothing);
   });
+
+  testWidgets('MaterialViewerScreen Notes system works correctly', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MaterialViewerScreen(
+          title: 'Chemistry Lesson 1',
+          fileUrl: 'test_doc.pdf',
+          unitName: 'Organic Chemistry I',
+          unitCode: 'CHEM 122',
+          category: 'Exam',
+          publicationYear: '2025',
+        ),
+      ),
+    );
+
+    // Let any async setup run
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify Notes button is present in bottom bar and tap it
+    expect(find.text('Notes'), findsOneWidget);
+    await tester.tap(find.text('Notes'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify bottom sheet title is Notes and "+ New Note" button is present
+    expect(find.text('+ New Note'), findsOneWidget);
+
+    // Tap "+ New Note" to open editor
+    await tester.tap(find.text('+ New Note'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify editor has Title and Body textfields
+    final titleFinder = find.byWidgetPredicate((widget) =>
+        widget is TextField && widget.decoration?.hintText == 'Title (Optional)');
+    final bodyFinder = find.byWidgetPredicate((widget) =>
+        widget is TextField && widget.decoration?.hintText == 'Write your note here...');
+    expect(titleFinder, findsOneWidget);
+    expect(bodyFinder, findsOneWidget);
+
+    // Input title and body
+    await tester.enterText(titleFinder, 'Test Title');
+    await tester.enterText(bodyFinder, 'Test Note Body Content');
+    await tester.pump();
+
+    // Tap Save
+    expect(find.text('Save'), findsOneWidget);
+    await tester.tap(find.text('Save'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify note card is shown in the bottom sheet
+    expect(find.text('Test Title'), findsOneWidget);
+    expect(find.text('Test Note Body Content'), findsOneWidget);
+
+    // Test Search: search for non-matching text
+    final searchFinder = find.byWidgetPredicate((widget) =>
+        widget is TextField && widget.decoration?.hintText == 'Search notes...');
+    await tester.enterText(searchFinder, 'NoMatchText');
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Test Title'), findsNothing);
+    expect(find.text('No matching notes found'), findsOneWidget);
+
+    // Clear search
+    await tester.enterText(searchFinder, '');
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Test Title'), findsOneWidget);
+
+    // Tap edit button to edit the note
+    await tester.tap(find.byIcon(Icons.edit_outlined).last);
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    
+    // Change title and save
+    await tester.enterText(titleFinder, 'Edited Title');
+    await tester.tap(find.text('Save'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Edited Title'), findsOneWidget);
+
+    // Tap delete button
+    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    // Verify confirmation dialog shows
+    expect(find.text('Delete Note'), findsOneWidget);
+    // Tap Delete in confirmation dialog
+    await tester.tap(find.text('Delete'));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // Verify note is deleted
+    expect(find.text('Edited Title'), findsNothing);
+    expect(find.text('No notes created yet'), findsOneWidget);
+  });
 }

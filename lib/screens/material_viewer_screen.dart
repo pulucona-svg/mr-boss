@@ -63,6 +63,11 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   AnnotationType _activeAnnotationType = AnnotationType.none;
   Timer? _scrollTimer;
 
+  // Notes variables
+  List<DocumentNote> _notes = [];
+  int? _highlightedPageNumber;
+  Timer? _highlightTimer;
+
   Color _selectedPenColor = Colors.blue;
   double _selectedPenThickness = 4.0;
 
@@ -71,6 +76,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
   String get _bookmarksKey => 'bookmarks_doc_${widget.title}';
   String get _annotationsKey => 'annotations_doc_${widget.title}';
+  String get _notesKey => 'notes_doc_${widget.title}';
 
   @override
   void initState() {
@@ -90,6 +96,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     if (storedAnnotations != null) {
       _annotations = (storedAnnotations as List)
           .map((item) => AnnotationStroke.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    final storedNotes = PersistenceService().getJson(_notesKey);
+    if (storedNotes != null) {
+      _notes = (storedNotes as List)
+          .map((item) => DocumentNote.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
@@ -381,6 +394,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   @override
   void dispose() {
     _scrollTimer?.cancel();
+    _highlightTimer?.cancel();
     _pdfController.removeListener(_onControllerChanged);
     UsageService().stopMaterialTracking();
     if (_isPdf) {
@@ -747,7 +761,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           buildToolbarItem(
             icon: Icons.note_alt_outlined,
             label: 'Notes',
-            onTap: () => _showComingSoonSnackbar('Notes'),
+            onTap: () => _showNotesBottomSheet(),
           ),
           buildToolbarItem(
             icon: Icons.volume_up_outlined,
@@ -1034,6 +1048,14 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _paintAnnotations(Canvas canvas, Rect pageRect, PdfPage page) {
+    if (page.pageNumber == _highlightedPageNumber) {
+      canvas.drawRect(
+        pageRect,
+        Paint()
+          ..color = const Color(0xFF20C8FF).withOpacity(0.2)
+          ..style = PaintingStyle.fill,
+      );
+    }
     final pageStrokes = _annotations.where((s) => s.pageNumber == page.pageNumber).toList();
     for (final stroke in pageStrokes) {
       if (stroke.normalizedPoints.length < 2) continue;
@@ -1422,28 +1444,64 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   if (_textSearcher != null)
                     _textSearcher!.pageTextMatchPaintCallback,
                 ],
-                pageOverlaysBuilder: _activeAnnotationType != AnnotationType.none
-                    ? (context, pageRect, page) {
-                        return [
-                          PageDrawingOverlay(
-                            pageNumber: page.pageNumber,
-                            pageRect: pageRect,
-                            isDrawingActive: true,
-                            selectedColor: _activeAnnotationType == AnnotationType.highlighter 
-                                ? _selectedHighlightColor 
-                                : _selectedPenColor,
-                            selectedThickness: _activeAnnotationType == AnnotationType.highlighter
-                                ? _selectedHighlightThickness
-                                : _selectedPenThickness,
-                            isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
-                            savedStrokes: const [],
-                            onStrokeAdded: (stroke) {
-                              _addStroke(stroke);
-                            },
+                pageOverlaysBuilder: (context, pageRect, page) {
+                  final pageHasNotes = _notes.any((n) => n.pageNumber == page.pageNumber);
+                  final isDrawing = _activeAnnotationType != AnnotationType.none;
+                  
+                  if (!isDrawing && !pageHasNotes) {
+                    return const [];
+                  }
+                  
+                  return [
+                    if (isDrawing)
+                      PageDrawingOverlay(
+                        pageNumber: page.pageNumber,
+                        pageRect: pageRect,
+                        isDrawingActive: true,
+                        selectedColor: _activeAnnotationType == AnnotationType.highlighter 
+                            ? _selectedHighlightColor 
+                            : _selectedPenColor,
+                        selectedThickness: _activeAnnotationType == AnnotationType.highlighter
+                            ? _selectedHighlightThickness
+                            : _selectedPenThickness,
+                        isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
+                        savedStrokes: const [],
+                        onStrokeAdded: (stroke) {
+                          _addStroke(stroke);
+                        },
+                      ),
+                    if (pageHasNotes)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            _openNotesForPage(page.pageNumber);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF20C8FF),
+                              shape: BoxShape.circle,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black38,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.sticky_note_2_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
-                        ];
-                      }
-                    : null,
+                        ),
+                      ),
+                  ];
+                },
               ),
             )
           : PdfViewer.uri(
@@ -1463,28 +1521,64 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   if (_textSearcher != null)
                     _textSearcher!.pageTextMatchPaintCallback,
                 ],
-                pageOverlaysBuilder: _activeAnnotationType != AnnotationType.none
-                    ? (context, pageRect, page) {
-                        return [
-                          PageDrawingOverlay(
-                            pageNumber: page.pageNumber,
-                            pageRect: pageRect,
-                            isDrawingActive: true,
-                            selectedColor: _activeAnnotationType == AnnotationType.highlighter 
-                                ? _selectedHighlightColor 
-                                : _selectedPenColor,
-                            selectedThickness: _activeAnnotationType == AnnotationType.highlighter
-                                ? _selectedHighlightThickness
-                                : _selectedPenThickness,
-                            isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
-                            savedStrokes: const [],
-                            onStrokeAdded: (stroke) {
-                              _addStroke(stroke);
-                            },
+                pageOverlaysBuilder: (context, pageRect, page) {
+                  final pageHasNotes = _notes.any((n) => n.pageNumber == page.pageNumber);
+                  final isDrawing = _activeAnnotationType != AnnotationType.none;
+                  
+                  if (!isDrawing && !pageHasNotes) {
+                    return const [];
+                  }
+                  
+                  return [
+                    if (isDrawing)
+                      PageDrawingOverlay(
+                        pageNumber: page.pageNumber,
+                        pageRect: pageRect,
+                        isDrawingActive: true,
+                        selectedColor: _activeAnnotationType == AnnotationType.highlighter 
+                            ? _selectedHighlightColor 
+                            : _selectedPenColor,
+                        selectedThickness: _activeAnnotationType == AnnotationType.highlighter
+                            ? _selectedHighlightThickness
+                            : _selectedPenThickness,
+                        isHighlighter: _activeAnnotationType == AnnotationType.highlighter,
+                        savedStrokes: const [],
+                        onStrokeAdded: (stroke) {
+                          _addStroke(stroke);
+                        },
+                      ),
+                    if (pageHasNotes)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            _openNotesForPage(page.pageNumber);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF20C8FF),
+                              shape: BoxShape.circle,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black38,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.sticky_note_2_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
-                        ];
-                      }
-                    : null,
+                        ),
+                      ),
+                  ];
+                },
               ),
             );
     } else if (_isImage) {
@@ -1526,6 +1620,438 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         ),
       );
     }
+  }
+
+  void _saveNotes() {
+    final list = _notes.map((n) => n.toJson()).toList();
+    PersistenceService().setJson(_notesKey, list);
+  }
+
+  void _openNotesForPage(int pageNumber) {
+    _showNotesBottomSheet(filterPageNumber: pageNumber);
+  }
+
+  void _navigateToPageAndHighlight(int pageNumber) {
+    if (!_pdfController.isReady) return;
+    _pdfController.goToPage(
+      pageNumber: pageNumber,
+      duration: const Duration(milliseconds: 300),
+    );
+    setState(() {
+      _highlightedPageNumber = pageNumber;
+    });
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(const Duration(milliseconds: 1500), () {
+      setState(() {
+        _highlightedPageNumber = null;
+      });
+    });
+  }
+
+  void _confirmDeleteNote(DocumentNote note, {StateSetter? setSheetState}) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF141232),
+          title: const Text('Delete Note', style: TextStyle(color: Colors.white)),
+          content: const Text('Are you sure you want to delete this note?', style: TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () {
+                setState(() {
+                  _notes.removeWhere((n) => n.id == note.id);
+                });
+                _saveNotes();
+                if (setSheetState != null) {
+                  setSheetState(() {});
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('Delete', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showNoteEditor({DocumentNote? noteToEdit, int? targetPageNumber, StateSetter? setSheetState}) {
+    final isEdit = noteToEdit != null;
+    final pageNum = targetPageNumber ?? _currentPageNotifier.value;
+    
+    final titleCtrl = TextEditingController(text: noteToEdit?.title ?? '');
+    final bodyCtrl = TextEditingController(text: noteToEdit?.body ?? '');
+    final titleFocus = FocusNode();
+    final bodyFocus = FocusNode();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      titleFocus.requestFocus();
+    });
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF141232),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isEdit ? 'Edit Note (Page $pageNum)' : 'New Note (Page $pageNum)',
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF20C8FF),
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () {
+                            final bodyText = bodyCtrl.text.trim();
+                            if (bodyText.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Note body cannot be empty.')),
+                              );
+                              return;
+                            }
+                            final titleText = titleCtrl.text.trim();
+                            
+                            setState(() {
+                              if (isEdit) {
+                                noteToEdit.title = titleText;
+                                noteToEdit.body = bodyText;
+                                noteToEdit.timestamp = DateTime.now();
+                              } else {
+                                final newNote = DocumentNote(
+                                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                  documentId: widget.title,
+                                  pageNumber: pageNum,
+                                  timestamp: DateTime.now(),
+                                  title: titleText,
+                                  body: bodyText,
+                                );
+                                _notes.add(newNote);
+                              }
+                            });
+                            _saveNotes();
+                            if (setSheetState != null) {
+                              setSheetState(() {});
+                            }
+                            Navigator.pop(context);
+                          },
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: titleCtrl,
+                  focusNode: titleFocus,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  decoration: const InputDecoration(
+                    hintText: 'Title (Optional)',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    border: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF20C8FF)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: bodyCtrl,
+                  focusNode: bodyFocus,
+                  maxLines: null,
+                  minLines: 5,
+                  style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+                  decoration: const InputDecoration(
+                    hintText: 'Write your note here...',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showNotesBottomSheet({int? filterPageNumber}) {
+    String searchQuery = '';
+    String sortType = 'Newest';
+    final searchCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF141232),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            List<DocumentNote> filteredNotes = _notes;
+            if (filterPageNumber != null) {
+              filteredNotes = filteredNotes.where((n) => n.pageNumber == filterPageNumber).toList();
+            }
+            if (searchQuery.isNotEmpty) {
+              final q = searchQuery.toLowerCase();
+              filteredNotes = filteredNotes.where((n) =>
+                n.title.toLowerCase().contains(q) || n.body.toLowerCase().contains(q)
+              ).toList();
+            }
+            
+            if (sortType == 'Newest') {
+              filteredNotes.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            } else if (sortType == 'Oldest') {
+              filteredNotes.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            } else if (sortType == 'Page Number') {
+              filteredNotes.sort((a, b) => a.pageNumber.compareTo(b.pageNumber));
+            }
+
+            final sheetHeight = MediaQuery.of(context).size.height * 0.7;
+
+            return Container(
+              height: sheetHeight,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      filterPageNumber != null ? 'Notes (Page $filterPageNumber)' : 'Notes',
+                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF20C8FF),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () {
+                        _showNoteEditor(
+                          targetPageNumber: filterPageNumber ?? _currentPageNotifier.value,
+                          setSheetState: setSheetState,
+                        );
+                      },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('+ New Note', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: searchCtrl,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Search notes...',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 20),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: (val) {
+                      setSheetState(() {
+                        searchQuery = val.trim();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        const Text('Sort by: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                        const SizedBox(width: 8),
+                        _buildSortChip('Newest', sortType, (selected) {
+                          setSheetState(() => sortType = 'Newest');
+                        }),
+                        const SizedBox(width: 8),
+                        _buildSortChip('Oldest', sortType, (selected) {
+                          setSheetState(() => sortType = 'Oldest');
+                        }),
+                        if (filterPageNumber == null) ...[
+                          const SizedBox(width: 8),
+                          _buildSortChip('Page Number', sortType, (selected) {
+                            setSheetState(() => sortType = 'Page Number');
+                          }),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: filteredNotes.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.note_alt_outlined, size: 48, color: Colors.white24),
+                                const SizedBox(height: 12),
+                                Text(
+                                  searchQuery.isNotEmpty ? 'No matching notes found' : 'No notes created yet',
+                                  style: const TextStyle(color: Colors.white54, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: filteredNotes.length,
+                            itemBuilder: (context, index) {
+                              final note = filteredNotes[index];
+                              return Card(
+                                color: const Color(0xFF1F1B46),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(12),
+                                  title: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          note.title.isNotEmpty ? note.title : 'Untitled Note',
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF20C8FF).withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'Page ${note.pageNumber}',
+                                          style: const TextStyle(color: Color(0xFF20C8FF), fontSize: 10, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        note.body,
+                                        style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.3),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        DateFormat('MMM d, yyyy • h:mm a').format(note.timestamp),
+                                        style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined, color: Colors.white54, size: 18),
+                                        onPressed: () {
+                                          _showNoteEditor(
+                                            noteToEdit: note,
+                                            setSheetState: setSheetState,
+                                          );
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                        onPressed: () {
+                                          _confirmDeleteNote(note, setSheetState: setSheetState);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    _navigateToPageAndHighlight(note.pageNumber);
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSortChip(String label, String selectedType, Function(bool) onSelected) {
+    final isSelected = selectedType == label;
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+      selected: isSelected,
+      onSelected: onSelected,
+      selectedColor: const Color(0xFF20C8FF),
+      backgroundColor: Colors.white.withOpacity(0.05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      side: BorderSide.none,
+      showCheckmark: false,
+    );
   }
 }
 
@@ -1877,5 +2403,43 @@ class _OverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _OverlayPainter oldDelegate) {
     return true;
+  }
+}
+
+class DocumentNote {
+  final String id;
+  final String documentId;
+  final int pageNumber;
+  DateTime timestamp;
+  String title;
+  String body;
+
+  DocumentNote({
+    required this.id,
+    required this.documentId,
+    required this.pageNumber,
+    required this.timestamp,
+    required this.title,
+    required this.body,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'documentId': documentId,
+    'pageNumber': pageNumber,
+    'timestamp': timestamp.toIso8601String(),
+    'title': title,
+    'body': body,
+  };
+
+  factory DocumentNote.fromJson(Map<String, dynamic> json) {
+    return DocumentNote(
+      id: json['id'] as String,
+      documentId: json['documentId'] as String,
+      pageNumber: json['pageNumber'] as int,
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      title: json['title'] as String,
+      body: json['body'] as String,
+    );
   }
 }
