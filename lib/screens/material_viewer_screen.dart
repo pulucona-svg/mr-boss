@@ -166,10 +166,8 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     final totalPages = _pdfController.pageCount;
     if (totalPages > 0) {
       final newProgress = (pageNumber / totalPages).clamp(0.0, 1.0);
-      if ((newProgress - _progressNotifier.value).abs() > 0.05) {
-        _progressNotifier.value = newProgress;
-        ProgressService().updateProgress(widget.title, newProgress);
-      }
+      _progressNotifier.value = newProgress;
+      ProgressService().updateProgress(widget.title, newProgress);
     }
   }
 
@@ -235,6 +233,18 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   void dispose() {
     _pdfController.removeListener(_onControllerChanged);
     UsageService().stopMaterialTracking();
+    if (_isPdf) {
+      try {
+        final page = _pdfController.pageNumber ?? _currentPageNotifier.value;
+        final totalPages = _pdfController.pageCount;
+        if (totalPages > 0) {
+          final finalProgress = (page / totalPages).clamp(0.0, 1.0);
+          ProgressService().updateProgress(widget.title, finalProgress);
+        }
+      } catch (e) {
+        debugPrint('Error saving progress during dispose: $e');
+      }
+    }
     _progressNotifier.dispose();
     _currentPageNotifier.dispose();
     _bookmarksNotifier.dispose();
@@ -283,7 +293,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: Color(0xFF20C8FF),
               ),
             ),
             if (subtitleLine.isNotEmpty) ...[
