@@ -7,6 +7,10 @@ dist/
 # Local environment variables
 .env
 
-# Logs & temp
-*.log
-npm-debug.log*
+# Credentials
+credentials/
+*.json
+!.eslintrc.json
+!package.json
+!tsconfig*.json
+

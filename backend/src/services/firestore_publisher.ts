@@ -1,4 +1,6 @@
 import admin from 'firebase-admin';
+import fs from 'fs';
+import path from 'path';
 import { FirestoreNewsDocument } from '../models/magazine_viewer.model';
 import { StoryCluster, TrendingPackageTopic } from '../models/news_article.model';
 import { Logger } from '../utils/logger';
@@ -17,17 +19,25 @@ export class FirestorePublisher {
     FirestorePublisher.isInitialized = true;
 
     try {
-      const hasCreds = process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIRESTORE_EMULATOR_HOST;
+      const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || config.googleApplicationCredentials;
+      const isEmulator = !!process.env.FIRESTORE_EMULATOR_HOST;
 
-      if (!hasCreds) {
+      if (!credPath && !isEmulator) {
         Logger.info('[FIRESTORE] Credentials not specified in env. Operating in local simulation mode.');
         FirestorePublisher.db = null;
         return null;
       }
 
       if (admin.apps.length === 0) {
-        if (process.env.FIRESTORE_EMULATOR_HOST) {
+        if (isEmulator) {
           admin.initializeApp({ projectId: config.firebaseProjectId });
+        } else if (credPath && fs.existsSync(credPath)) {
+          Logger.info(`[FIRESTORE] Initializing Firebase Admin with service account key: ${credPath}`);
+          const serviceAccount = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: config.firebaseProjectId,
+          });
         } else {
           admin.initializeApp({
             credential: admin.credential.applicationDefault(),
@@ -39,9 +49,9 @@ export class FirestorePublisher {
       const dbInstance = admin.firestore();
       dbInstance.settings({ ignoreUndefinedProperties: true });
       FirestorePublisher.db = dbInstance;
-      Logger.info('[FIRESTORE] Connected to Firebase Firestore successfully.');
+      Logger.info('[FIRESTORE] Connected to live Firebase Firestore successfully!');
     } catch (err: any) {
-      Logger.info('[FIRESTORE] Local environment credentials not set. Operating in fallback mode.');
+      Logger.error('[FIRESTORE] Initialization error:', err.message || err);
       FirestorePublisher.db = null;
     }
 
@@ -105,7 +115,6 @@ export class FirestorePublisher {
     const db = FirestorePublisher.getFirestore();
 
     if (!db) {
-      // Simulated write
       for (const collName of ['latestNews']) {
         if (!FirestorePublisher.simulatedStore.has(collName)) {
           FirestorePublisher.simulatedStore.set(collName, new Map());
@@ -158,15 +167,15 @@ export class FirestorePublisher {
     const db = FirestorePublisher.getFirestore();
 
     if (!db) {
-      if (!FirestorePublisher.simulatedStore.has('trendingTopics')) {
-        FirestorePublisher.simulatedStore.set('trendingTopics', new Map());
+      if (!FirestoreServiceSimulated.simulatedStore.has('trendingTopics')) {
+        FirestoreServiceSimulated.simulatedStore.set('trendingTopics', new Map());
       }
-      trendingTopics.forEach((t) => FirestorePublisher.simulatedStore.get('trendingTopics')!.set(t.id, t));
+      trendingTopics.forEach((t) => FirestoreServiceSimulated.simulatedStore.get('trendingTopics')!.set(t.id, t));
 
-      if (!FirestorePublisher.simulatedStore.has('storyClusters')) {
-        FirestorePublisher.simulatedStore.set('storyClusters', new Map());
+      if (!FirestoreServiceSimulated.simulatedStore.has('storyClusters')) {
+        FirestoreServiceSimulated.simulatedStore.set('storyClusters', new Map());
       }
-      clusters.forEach((c) => FirestorePublisher.simulatedStore.get('storyClusters')!.set(c.clusterId, c));
+      clusters.forEach((c) => FirestoreServiceSimulated.simulatedStore.get('storyClusters')!.set(c.clusterId, c));
 
       return true;
     }
@@ -233,4 +242,8 @@ export class FirestorePublisher {
       return false;
     }
   }
+}
+
+class FirestoreServiceSimulated {
+  static simulatedStore: Map<string, Map<string, any>> = new Map();
 }
