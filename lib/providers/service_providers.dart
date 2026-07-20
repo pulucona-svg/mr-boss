@@ -11,6 +11,7 @@ import '../services/upload_service.dart';
 import 'user_provider.dart';
 
 export 'user_provider.dart' show userProfileProvider, UserProfile;
+export '../repositories/news_repository.dart';
 
 // Service Providers - Consolidated to a single source of truth
 final resourceServiceProvider = ChangeNotifierProvider((ref) => ResourceService());

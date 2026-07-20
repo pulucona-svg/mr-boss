@@ -62,6 +62,18 @@ class NewsArticle {
   final String content;
   final Map<String, String> details;
 
+  // Optional fields for automated news backend & article viewer integration
+  final String? slug;
+  final DateTime? createdAt;
+  final DateTime? expiresAt;
+  final DateTime? updatedAt;
+  final String? viewerDocumentId;
+  final String? viewerUrl;
+  final String? coverImage;
+  final String? status;
+  final int? priority;
+  final String? sourceUrl;
+
   NewsArticle({
     required this.id,
     required this.title,
@@ -71,5 +83,15 @@ class NewsArticle {
     required this.timeAgo,
     this.content = '',
     this.details = const {},
+    this.slug,
+    this.createdAt,
+    this.expiresAt,
+    this.updatedAt,
+    this.viewerDocumentId,
+    this.viewerUrl,
+    this.coverImage,
+    this.status,
+    this.priority,
+    this.sourceUrl,
   });
 }

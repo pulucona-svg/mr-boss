@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/explore_models.dart';
+import '../repositories/news_repository.dart';
 import '../providers/theme_provider.dart';
 import '../services/notification_service.dart';
 import '../providers/chat_provider.dart';
@@ -28,7 +29,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   late PageController _pageController;
   late ScrollController _tabScrollController;
 
-  final List<String> _categories = [
+  StreamSubscription<List<TopStory>>? _topStoriesSub;
+  StreamSubscription<List<TrendingTopic>>? _trendingTopicsSub;
+  StreamSubscription<List<NewsArticle>>? _latestNewsSub;
+  StreamSubscription<List<NewsArticle>>? _allMixedNewsSub;
+  StreamSubscription<List<String>>? _categoriesSub;
+  final Map<String, StreamSubscription<List<NewsArticle>>> _categorySubs = {};
+
+  List<String> _categories = [
     'For You',
     'Trending',
     'Latest',
@@ -47,10 +55,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   late List<TrendingTopic> _trendingTopics;
   late List<NewsArticle> _latestNews;
   late List<NewsArticle> _allMixedNews;
+  final Map<String, List<NewsArticle>> _categoryNewsMap = {};
 
   @override
   void initState() {
     super.initState();
+    _topStories = [];
+    _trendingTopics = [];
+    _latestNews = [];
+    _allMixedNews = [];
+
     final uiState = ref.read(uiStateProvider);
     final initialIndex = _categories.indexOf(uiState.exploreCategory);
     final validInitialIndex = initialIndex != -1 ? initialIndex : 0;
@@ -58,7 +72,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _pageController = PageController(initialPage: validInitialIndex);
     _tabScrollController = ScrollController();
     
-    _loadMockData();
+    _subscribeToNewsStreams();
 
     // Initial scroll sync
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -68,9 +82,22 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   @override
   void dispose() {
+    _cancelNewsSubscriptions();
     _pageController.dispose();
     _tabScrollController.dispose();
     super.dispose();
+  }
+
+  void _cancelNewsSubscriptions() {
+    _topStoriesSub?.cancel();
+    _trendingTopicsSub?.cancel();
+    _latestNewsSub?.cancel();
+    _allMixedNewsSub?.cancel();
+    _categoriesSub?.cancel();
+    for (var sub in _categorySubs.values) {
+      sub.cancel();
+    }
+    _categorySubs.clear();
   }
 
   void _scrollToCategory(int index) {
@@ -95,187 +122,142 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
-  void _loadMockData() async {
-    // ... rest of method ...
-    // Simulate loading
-    await Future.delayed(const Duration(milliseconds: 1500));
-    
-    _topStories = [
-      TopStory(
-        id: '1',
-        title: 'Ruto: Kenya to Create 2M Jobs by 2027',
-        summary: 'The President says the government is focused on economic growth and youth empowerment.',
-        imageUrl: 'https://images.unsplash.com/photo-1591115765373-5056e382d512?q=80&w=2000&auto=format&fit=crop',
-        source: 'Citizen Digital',
-        timeAgo: '2h ago',
-        category: 'TOP STORY',
-      ),
-      TopStory(
-        id: '2',
-        title: 'Tech Giants Announce New AI Hub in Nairobi',
-        summary: 'Major investment aimed at boosting digital infrastructure in East Africa.',
-        imageUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?q=80&w=2000&auto=format&fit=crop',
-        source: 'TechCrunch',
-        timeAgo: '4h ago',
-        category: 'TOP STORY',
-      ),
-    ];
+  void _subscribeToNewsStreams() {
+    if (!mounted) return;
+    _cancelNewsSubscriptions();
 
-    _trendingTopics = [
-      TrendingTopic(
-        id: '1',
-        title: '#FinanceBill2024',
-        icon: Icons.trending_up_rounded,
-        gradientColors: [const Color(0xFF20C8FF), const Color(0xFF287BFF)],
-        imageUrls: ['https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?q=80&w=800&auto=format&fit=crop'],
-        source: 'KBC News',
-        timeAgo: '1h ago',
-        description: 'Nationwide debates intensify as citizens and lawmakers dissect the proposed fiscal measures aimed at economic recovery.',
-      ),
-      TrendingTopic(
-        id: '2',
-        title: 'Raila Odinga',
-        icon: Icons.person_rounded,
-        gradientColors: [const Color(0xFF00A85A), const Color(0xFF00D1FF)],
-        imageUrls: ['https://images.unsplash.com/photo-1591115765373-5056e382d512?q=80&w=800&auto=format&fit=crop'],
-        source: 'Citizen Digital',
-        timeAgo: '2h ago',
-        description: 'The veteran politician makes a bold statement on national unity, sparking fresh conversations about the country\'s political future.',
-      ),
-      TrendingTopic(
-        id: '3',
-        title: 'Premier League',
-        icon: Icons.sports_soccer_rounded,
-        gradientColors: [const Color(0xFF7B5CFF), const Color(0xFFFF4667)],
-        imageUrls: ['https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=800&auto=format&fit=crop'],
-        source: 'Sky Sports',
-        timeAgo: '3h ago',
-        description: 'A thrilling weekend of football as the title race heats up with unexpected upsets and masterclass performances.',
-      ),
-      TrendingTopic(
-        id: '4',
-        title: 'Olympics 2024',
-        icon: Icons.emoji_events_rounded,
-        gradientColors: [const Color(0xFFFF8A00), const Color(0xFFFFD600)],
-        imageUrls: ['https://images.unsplash.com/photo-1569517282132-25d22f4573e6?q=80&w=800&auto=format&fit=crop'],
-        source: 'BBC News',
-        timeAgo: '4h ago',
-        description: 'World records tumble as elite athletes gather for the ultimate display of sporting excellence and human spirit.',
-      ),
-      TrendingTopic(
-        id: '5',
-        title: 'Trending Kenya',
-        icon: Icons.whatshot_rounded,
-        gradientColors: [const Color(0xFFFF4667), const Color(0xFF7B5CFF)],
-        imageUrls: ['https://images.unsplash.com/photo-1489392191049-fc10c97e64b6?q=80&w=800&auto=format&fit=crop'],
-        source: 'Standard News',
-        timeAgo: '5h ago',
-        description: 'From viral challenges to cultural milestones, discover what has captured the collective imagination of the Kenyan digital space.',
-      ),
-      TrendingTopic(
-        id: '6',
-        title: 'World Cup 2026',
-        icon: Icons.emoji_events_rounded,
-        gradientColors: [const Color(0xFF20C8FF), const Color(0xFF7B5CFF)],
-        imageUrls: ['https://images.unsplash.com/photo-1551244072-5d12893278ab?q=80&w=800&auto=format&fit=crop'],
-        source: 'FIFA',
-        timeAgo: '6h ago',
-        description: 'Host cities prepare for a global football extravaganza that promises to be the largest and most inclusive tournament ever.',
-      ),
-      TrendingTopic(
-        id: '7',
-        title: 'Bitcoin Surge',
-        icon: Icons.currency_bitcoin_rounded,
-        gradientColors: [const Color(0xFFFF9900), const Color(0xFFFFCC00)],
-        imageUrls: ['https://images.unsplash.com/photo-1518546305927-5a555bb7020d?q=80&w=800&auto=format&fit=crop'],
-        source: 'CoinDesk',
-        timeAgo: '7h ago',
-        description: 'Digital gold reaches new heights as institutional adoption and market optimism drive the cryptocurrency to record peaks.',
-      ),
-      TrendingTopic(
-        id: '8',
-        title: 'SpaceX Launch',
-        icon: Icons.rocket_launch_rounded,
-        gradientColors: [const Color(0xFF005288), const Color(0xFF00A0E3)],
-        imageUrls: ['https://images.unsplash.com/photo-1517976487492-5750f3195933?q=80&w=800&auto=format&fit=crop'],
-        source: 'SpaceX',
-        timeAgo: '8h ago',
-        description: 'Pushing the boundaries of interstellar travel as another successful mission paves the way for future lunar and Mars expeditions.',
-      ),
-      TrendingTopic(
-        id: '9',
-        title: 'AI Revolution',
-        icon: Icons.psychology_rounded,
-        gradientColors: [const Color(0xFF00F2FF), const Color(0xFF0061FF)],
-        imageUrls: ['https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=800&auto=format&fit=crop'],
-        source: 'Wired',
-        timeAgo: '9h ago',
-        description: 'Artificial intelligence transforms industries overnight, raising profound questions about the future of work and human creativity.',
-      ),
-      TrendingTopic(
-        id: '10',
-        title: 'Climate Action',
-        icon: Icons.eco_rounded,
-        gradientColors: [const Color(0xFF00D1FF), const Color(0xFF00A85A)],
-        imageUrls: ['https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=800&auto=format&fit=crop'],
-        source: 'National Geographic',
-        timeAgo: '10h ago',
-        description: 'Global leaders and activists unite in a critical race against time to implement sustainable solutions for a greener planet.',
-      ),
-    ];
+    final repository = ref.read(newsRepositoryProvider);
 
-    _latestNews = [
-      NewsArticle(
-        id: '1',
-        title: 'Fuel Prices Expected to Drop Next Month - EPRA',
-        category: 'KENYA',
-        imageUrls: [
-          'https://images.unsplash.com/photo-1542224566-6e85f2e6772f?q=80&w=800&auto=format&fit=crop',
-          'https://images.unsplash.com/photo-1613665813446-82a78c44b8fe?q=80&w=800&auto=format&fit=crop',
-        ],
-        source: 'Nation Africa',
-        timeAgo: '1h ago',
-        content: 'The Energy and Petroleum Regulatory Authority (EPRA) has indicated a potential drop in fuel prices starting next month, following a decrease in landed costs of petroleum products.',
-        details: {
-          'What\'s New?': 'Projected price reduction across all petroleum products.',
-          'Who Benefits?': 'Motorists, public transport operators, and general consumers.',
-          'Key Date': 'New prices to be announced on the 14th of next month.',
-          'Stay Informed': 'Follow EPRA official channels for the final price review.'
+    try {
+      _categoriesSub = repository.watchCategories().listen(
+        (categories) {
+          if (mounted && categories.isNotEmpty) {
+            setState(() {
+              _categories = categories;
+            });
+          }
         },
-      ),
-      NewsArticle(
-        id: '2',
-        title: 'Gaza Ceasefire Talks Resume in Cairo',
-        category: 'WORLD',
-        imageUrls: [
-          'https://images.unsplash.com/photo-1534067783941-51c9c23ecefd?q=80&w=800&auto=format&fit=crop',
-          'https://images.unsplash.com/photo-1444723121867-7a241cacace9?q=80&w=800&auto=format&fit=crop',
-        ],
-        source: 'Al Jazeera',
-        timeAgo: '2h ago',
-        content: 'Diplomatic efforts to secure a ceasefire in Gaza have gained momentum as mediators resume high-level talks in Cairo aiming to end the months-long conflict.',
-        details: {
-          'What\'s New?': 'New compromise proposals being discussed by all parties.',
-          'Who Benefits?': 'Civilians in conflict zones and regional stability.',
-          'Key Date': 'Talks expected to continue throughout the week.',
-          'Stay Informed': 'Live updates available on Al Jazeera and global news outlets.'
-        },
-      ),
-    ];
+        onError: (_) {},
+      );
+    } catch (_) {}
 
-    // Mix content from various categories for "All" feed
-    _allMixedNews = [];
-    final otherCategories = _categories.where((c) => c != 'For You' && c != 'Trending' && c != 'Latest').toList();
-    for (var cat in otherCategories) {
-      _allMixedNews.addAll(_generateCategoryNews(cat).take(3));
+    try {
+      _topStoriesSub = repository.watchTopStories().listen(
+        (stories) {
+          if (mounted) setState(() => _topStories = stories);
+        },
+        onError: (_) {
+          if (mounted) setState(() => _topStories = []);
+        },
+      );
+    } catch (_) {
+      _topStories = [];
     }
-    _allMixedNews.shuffle();
+
+    try {
+      _trendingTopicsSub = repository.watchTrendingTopics().listen(
+        (topics) {
+          if (mounted) setState(() => _trendingTopics = topics);
+        },
+        onError: (_) {
+          if (mounted) setState(() => _trendingTopics = []);
+        },
+      );
+    } catch (_) {
+      _trendingTopics = [];
+    }
+
+    try {
+      _latestNewsSub = repository.watchLatestNews().listen(
+        (news) {
+          if (mounted) setState(() => _latestNews = news);
+        },
+        onError: (_) {
+          if (mounted) setState(() => _latestNews = []);
+        },
+      );
+    } catch (_) {
+      _latestNews = [];
+    }
+
+    try {
+      _allMixedNewsSub = repository.watchAllMixedNews().listen(
+        (news) {
+          if (mounted) setState(() => _allMixedNews = news);
+        },
+        onError: (_) {
+          if (mounted) setState(() => _allMixedNews = []);
+        },
+      );
+    } catch (_) {
+      _allMixedNews = [];
+    }
+
+    final otherCategories = _categories
+        .where((c) => c != 'For You' && c != 'Trending' && c != 'Latest')
+        .toList();
+
+    for (var cat in otherCategories) {
+      try {
+        _categorySubs[cat] = repository.watchCategoryNews(cat).listen(
+          (articles) {
+            if (mounted) {
+              setState(() {
+                _categoryNewsMap[cat] = articles;
+              });
+            }
+          },
+          onError: (_) {
+            if (mounted) {
+              setState(() {
+                _categoryNewsMap[cat] = [];
+              });
+            }
+          },
+        );
+      } catch (_) {
+        _categoryNewsMap[cat] = [];
+      }
+    }
 
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
+  }
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String message,
+    required bool isDark,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 48,
+              color: isDark ? Colors.white30 : Colors.black26,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              style: TextStyle(
+                color: isDark ? Colors.white54 : Colors.black45,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showNotifications() {
@@ -536,61 +518,103 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final Widget content;
     
     if (category == 'For You') {
-      content = CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          _buildTopStoryHero(),
-          _buildTrendingNowSection(isDark, textColor),
-          _buildAllFeedSection(isDark, textColor),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      );
+      if (_topStories.isEmpty && _trendingTopics.isEmpty && _allMixedNews.isEmpty) {
+        content = CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: _buildEmptyState(
+                  icon: Icons.newspaper_rounded,
+                  message: 'No news or trending updates available',
+                  isDark: isDark,
+                ),
+              ),
+            ),
+          ],
+        );
+      } else {
+        content = CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildTopStoryHero(),
+            _buildTrendingNowSection(isDark, textColor),
+            _buildAllFeedSection(isDark, textColor),
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          ],
+        );
+      }
     } else if (category == 'Trending') {
-      content = ListView.builder(
-        padding: const EdgeInsets.all(16),
-        physics: const BouncingScrollPhysics(),
-        itemCount: _trendingTopics.length + (_trendingTopics.length ~/ 5),
-        itemBuilder: (context, index) {
-          if (index > 0 && index % 6 == 5) {
-            if (SubscriptionService().isSubscribed) return const SizedBox.shrink();
-            return InlineAdBanner();
-          }
-          final actualIndex = index - (index ~/ 6);
-          final isStretched = actualIndex % 7 == 0;
-          return _buildTrendingCard(context, _trendingTopics[actualIndex], isDark, textColor, isStretched: isStretched);
-        },
-      );
+      if (_trendingTopics.isEmpty) {
+        content = _buildEmptyState(
+          icon: Icons.trending_up_rounded,
+          message: 'No trending topics available',
+          isDark: isDark,
+        );
+      } else {
+        content = ListView.builder(
+          padding: const EdgeInsets.all(16),
+          physics: const BouncingScrollPhysics(),
+          itemCount: _trendingTopics.length + (_trendingTopics.length ~/ 5),
+          itemBuilder: (context, index) {
+            if (index > 0 && index % 6 == 5) {
+              if (SubscriptionService().isSubscribed) return const SizedBox.shrink();
+              return InlineAdBanner();
+            }
+            final actualIndex = index - (index ~/ 6);
+            final isStretched = actualIndex % 7 == 0;
+            return _buildTrendingCard(context, _trendingTopics[actualIndex], isDark, textColor, isStretched: isStretched);
+          },
+        );
+      }
     } else if (category == 'Latest') {
-      content = ListView.builder(
-        padding: const EdgeInsets.all(16),
-        physics: const BouncingScrollPhysics(),
-        itemCount: _latestNews.length + (_latestNews.length ~/ 5),
-        itemBuilder: (context, index) {
-          if (index > 0 && index % 6 == 5) {
-            if (SubscriptionService().isSubscribed) return const SizedBox.shrink();
-            return InlineAdBanner();
-          }
-          final actualIndex = index - (index ~/ 6);
-          final isStretched = actualIndex % 7 == 0;
-          return _buildNewsCard(context, _latestNews[actualIndex], isDark, textColor, isStretched: isStretched);
-        },
-      );
+      if (_latestNews.isEmpty) {
+        content = _buildEmptyState(
+          icon: Icons.newspaper_rounded,
+          message: 'No latest news available',
+          isDark: isDark,
+        );
+      } else {
+        content = ListView.builder(
+          padding: const EdgeInsets.all(16),
+          physics: const BouncingScrollPhysics(),
+          itemCount: _latestNews.length + (_latestNews.length ~/ 5),
+          itemBuilder: (context, index) {
+            if (index > 0 && index % 6 == 5) {
+              if (SubscriptionService().isSubscribed) return const SizedBox.shrink();
+              return InlineAdBanner();
+            }
+            final actualIndex = index - (index ~/ 6);
+            final isStretched = actualIndex % 7 == 0;
+            return _buildNewsCard(context, _latestNews[actualIndex], isDark, textColor, isStretched: isStretched);
+          },
+        );
+      }
     } else {
-      final articles = _generateCategoryNews(category);
-      content = ListView.builder(
-        padding: const EdgeInsets.all(16),
-        physics: const BouncingScrollPhysics(),
-        itemCount: articles.length + (articles.length ~/ 5),
-        itemBuilder: (context, index) {
-          if (index > 0 && index % 6 == 5) {
-            if (SubscriptionService().isSubscribed) return const SizedBox.shrink();
-            return InlineAdBanner();
-          }
-          final actualIndex = index - (index ~/ 6);
-          final isStretched = actualIndex % 7 == 0;
-          return _buildNewsCard(context, articles[actualIndex], isDark, textColor, isStretched: isStretched);
-        },
-      );
+      final articles = _categoryNewsMap[category] ?? [];
+      if (articles.isEmpty) {
+        content = _buildEmptyState(
+          icon: Icons.article_outlined,
+          message: 'No articles available in $category',
+          isDark: isDark,
+        );
+      } else {
+        content = ListView.builder(
+          padding: const EdgeInsets.all(16),
+          physics: const BouncingScrollPhysics(),
+          itemCount: articles.length + (articles.length ~/ 5),
+          itemBuilder: (context, index) {
+            if (index > 0 && index % 6 == 5) {
+              if (SubscriptionService().isSubscribed) return const SizedBox.shrink();
+              return InlineAdBanner();
+            }
+            final actualIndex = index - (index ~/ 6);
+            final isStretched = actualIndex % 7 == 0;
+            return _buildNewsCard(context, articles[actualIndex], isDark, textColor, isStretched: isStretched);
+          },
+        );
+      }
     }
 
     return RefreshIndicator(
@@ -622,7 +646,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           return;
         }
         setState(() => _isLoading = true);
-        _loadMockData();
+        _subscribeToNewsStreams();
       },
       color: const Color(0xFF20C8FF),
       child: content,
@@ -630,6 +654,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Widget _buildTopStoryHero() {
+    if (_topStories.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
     return SliverToBoxAdapter(
       child: Container(
         height: 220,
@@ -770,6 +797,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Widget _buildTrendingNowSection(bool isDark, Color textColor) {
+    if (_trendingTopics.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
     return SliverToBoxAdapter(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -870,6 +900,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Widget _buildAllFeedSection(bool isDark, Color textColor) {
+    if (_allMixedNews.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
     return SliverPadding(
       padding: const EdgeInsets.all(16),
       sliver: SliverList(
@@ -1931,27 +1964,4 @@ Widget _buildTrendingCard(BuildContext context, TrendingTopic topic, bool isDark
       ),
     ),
   );
-}
-
-List<NewsArticle> _generateCategoryNews(String category) {
-  return List.generate(15, (index) {
-    return NewsArticle(
-      id: '${category.toLowerCase()}_$index',
-      title: index == 0 
-          ? 'Major $category Milestone Achieved This Week'
-          : 'Latest Updates in $category: What You Need to Know',
-      category: category.toUpperCase(),
-      imageUrls: [
-        'https://images.unsplash.com/photo-1511497584788-876760111969?q=80&w=800&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop',
-      ],
-      source: 'Global News Network',
-      timeAgo: '${index + 1}h ago',
-      content: 'In-depth analysis of the current trends affecting the $category sector, with insights from industry leaders and experts on the ground.',
-      details: {
-        'Analysis': 'Strategic shift observed across the entire $category landscape.',
-        'Impact': 'Broad reach across multiple demographics and international markets.',
-      },
-    );
-  });
 }

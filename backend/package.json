@@ -1,0 +1,22 @@
+{
+  "name": "mirror-laikipia-backend",
+  "version": "1.0.0",
+  "description": "Backend News Collector Service for Mirror Laikipia",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "npx --no-install tsc",
+    "start": "node dist/index.js",
+    "dev": "npx --no-install ts-node src/index.ts",
+    "collect": "npx --no-install ts-node src/index.ts --run-once"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}
