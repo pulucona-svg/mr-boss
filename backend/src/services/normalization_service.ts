@@ -7,6 +7,7 @@ import { QualityFilterService } from './quality_filter_service';
 import { ClassificationService } from './classification_service';
 import { ScoringService } from './scoring_service';
 import { ExpirationService } from './expiration_service';
+import { EditorialService } from './editorial_service';
 import { StringUtils } from '../utils/string_utils';
 
 export class NormalizationService {
@@ -53,6 +54,19 @@ export class NormalizationService {
       publishedAt
     );
 
+    // 4. Generate Editorial Summary, Reading Time, and Search Keywords
+    const editorialSummary = EditorialService.generateEditorialSummary(
+      title,
+      description,
+      content
+    );
+    const readingTime = EditorialService.calculateReadingTime(content || description);
+    const keywords = EditorialService.extractKeywords(
+      title,
+      description,
+      classification.primaryCategory
+    );
+
     const author = article.author?.trim() || null;
     const slug = StringUtils.slugify(title);
     const id = StringUtils.generateArticleId(sourceUrl, title);
@@ -81,6 +95,12 @@ export class NormalizationService {
       scoreBreakdown: scoreResult.breakdown,
       status: 'published',
       priority: classification.regionScore,
+      importanceScore: 0, // Calculated during ranking phase
+      isTopStory: false,
+      isTrending: false,
+      editorialSummary,
+      readingTime,
+      keywords,
     };
   }
 
@@ -132,6 +152,19 @@ export class NormalizationService {
       publishedAt
     );
 
+    // 4. Generate Editorial Summary, Reading Time, and Search Keywords
+    const editorialSummary = EditorialService.generateEditorialSummary(
+      title,
+      description,
+      content
+    );
+    const readingTime = EditorialService.calculateReadingTime(content || description);
+    const keywords = EditorialService.extractKeywords(
+      title,
+      description,
+      classification.primaryCategory
+    );
+
     const author =
       Array.isArray(article.creator) && article.creator.length > 0
         ? article.creator.join(', ')
@@ -163,6 +196,12 @@ export class NormalizationService {
       scoreBreakdown: scoreResult.breakdown,
       status: 'published',
       priority: classification.regionScore,
+      importanceScore: 0, // Calculated during ranking phase
+      isTopStory: false,
+      isTrending: false,
+      editorialSummary,
+      readingTime,
+      keywords,
     };
   }
 }

@@ -3,16 +3,16 @@ import { config } from '../config/environment';
 
 export class ExpirationService {
   /**
-   * Category specific TTL rules (in hours)
+   * Configurable category-specific TTL rules (in hours)
    */
-  private static readonly CATEGORY_EXPIRY_HOURS: Partial<Record<AppCategory, number>> = {
+  public static categoryExpiryHoursConfig: Record<AppCategory, number> = {
     Breaking: 12,
     Politics: 24,
     Business: 24,
-    Technology: 36,
-    Education: 48,
-    Science: 48,
-    Health: 36,
+    Technology: 48,
+    Education: 72,
+    Science: 72,
+    Health: 48,
     Sports: 24,
     Entertainment: 24,
     World: 24,
@@ -30,7 +30,7 @@ export class ExpirationService {
   ): string {
     const hours =
       customExpiryHours ||
-      ExpirationService.CATEGORY_EXPIRY_HOURS[category] ||
+      ExpirationService.categoryExpiryHoursConfig[category] ||
       config.defaultExpiryHours;
 
     const baseTime = new Date(baseDateIso).getTime();

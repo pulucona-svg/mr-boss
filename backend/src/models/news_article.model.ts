@@ -73,6 +73,17 @@ export interface NormalizedNews {
   status: 'published' | 'draft';
   priority: number;
 
+  // News Ranking & Editorial Engine fields
+  importanceScore: number; // 0 to 100
+  isTopStory: boolean;
+  topStoryRank?: number; // 1 to 5
+  isTrending: boolean;
+  trendingRank?: number; // 1 to 10
+  editorialSummary: string; // 80 - 120 words refined factual summary
+  readingTime: number; // Estimated reading time in minutes
+  keywords: string[]; // Searchable index keywords
+  clusterId?: string; // Story cluster ID
+
   // Phase 2 readiness fields (ImageKit & Firebase Storage / Viewer)
   viewerDocumentId?: string;
   viewerUrl?: string;
@@ -83,6 +94,49 @@ export interface NormalizedNews {
  * Alias for backward compatibility
  */
 export type NormalizedArticle = NormalizedNews;
+
+/**
+ * Grouped Story Cluster representing multiple publishers covering the same event
+ */
+export interface StoryCluster {
+  clusterId: string;
+  topicTitle: string;
+  clusterSize: number;
+  mainArticle: NormalizedNews;
+  relatedArticles: NormalizedNews[];
+  createdAt: string;
+}
+
+/**
+ * Trending Topic Package for Explore Screen feed
+ */
+export interface TrendingPackageTopic {
+  id: string;
+  title: string;
+  clusterSize: number;
+  iconName: string;
+  gradientColors: string[];
+  imageUrls: string[];
+  description: string;
+  details: Record<string, string>;
+  source: string;
+  timeAgo: string;
+  importanceScore: number;
+}
+
+/**
+ * Final Package Output containing top stories, trending, category news, and story clusters
+ */
+export interface NewsPackage {
+  generatedAt: string;
+  stats: CollectionStats;
+  topStories: NormalizedNews[]; // Top 5
+  trendingTopics: TrendingPackageTopic[]; // Top 10
+  latestNews: NormalizedNews[];
+  categoryNews: Record<AppCategory, NormalizedNews[]>;
+  storyClusters: StoryCluster[];
+  totalCleanArticles: number;
+}
 
 /**
  * Raw Article from NewsAPI.org
@@ -145,11 +199,15 @@ export interface CollectionStats {
   filteredLowQuality: number;
   duplicatesRemoved: number;
   finalCount: number;
+  topStoriesCount: number;
+  trendingCount: number;
+  clustersCount: number;
   categoryBreakdown: Record<AppCategory, number>;
   regionBreakdown: Record<RegionPriority, number>;
 }
 
 export interface CollectionResult {
   stats: CollectionStats;
+  package: NewsPackage;
   articles: NormalizedNews[];
 }

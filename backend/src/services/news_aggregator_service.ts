@@ -2,11 +2,14 @@ import { NewsApiCollector } from '../collectors/news_api_collector';
 import { NewsDataCollector } from '../collectors/news_data_collector';
 import { NormalizationService } from './normalization_service';
 import { DeduplicationService } from './deduplication_service';
+import { RankingService } from './ranking_service';
+import { ClusteringService } from './clustering_service';
 import {
   AppCategory,
   APP_CATEGORIES,
   CollectionResult,
   CollectionStats,
+  NewsPackage,
   NormalizedNews,
   RegionPriority,
 } from '../models/news_article.model';
@@ -23,11 +26,12 @@ export class NewsAggregatorService {
   }
 
   /**
-   * Orchestrates news collection, normalization, quality filtering, deduplication, scoring, and classification.
+   * Orchestrates the complete News Ranking & Editorial Engine pipeline.
+   * Produces a unified NewsPackage ready for Phase-3 storage.
    */
   public async collectAndProcess(query?: string): Promise<CollectionResult> {
     const searchQuery = query || config.defaultQuery;
-    Logger.logHeader(`STARTING INTELLIGENT NEWS PIPELINE (Query: "${searchQuery}")`);
+    Logger.logHeader(`STARTING EDITORIAL & RANKING ENGINE (Query: "${searchQuery}")`);
 
     // 1. Fetch from NewsAPI.org
     let rawNewsApiArticles: any[] = [];
@@ -48,10 +52,6 @@ export class NewsAggregatorService {
     const countNewsApi = rawNewsApiArticles.length;
     const countNewsData = rawNewsDataArticles.length;
     const totalFetched = countNewsApi + countNewsData;
-
-    Logger.info(
-      `Raw articles gathered - NewsAPI: ${countNewsApi}, NewsData: ${countNewsData}, Total: ${totalFetched}`
-    );
 
     // 3. Normalize & Quality Filter
     const candidateArticles: NormalizedNews[] = [];
@@ -84,11 +84,36 @@ export class NewsAggregatorService {
       }
     }
 
-    // 4. Intelligent Deduplication & Highest-Scoring Version Selection
+    // 4. Intelligent Deduplication
     const { uniqueArticles, duplicatesRemovedCount } =
       DeduplicationService.deduplicate(candidateArticles);
 
-    // 5. Compute Category & Region Breakdown
+    // 5. Calculate Importance Scores
+    for (const article of uniqueArticles) {
+      article.importanceScore = RankingService.calculateImportanceScore(article);
+    }
+
+    // 6. Story Clustering
+    const storyClusters = ClusteringService.clusterArticles(uniqueArticles);
+
+    // 7. Top Story Selection (Top 5)
+    const topStories = RankingService.selectTopStories(uniqueArticles);
+
+    // 8. Trending Detection (Top 10)
+    const { trendingArticles, trendingPackageTopics } = RankingService.detectTrending(
+      uniqueArticles,
+      storyClusters
+    );
+
+    // 9. Organize Articles into Categories & Regional Priority
+    const categoryNews: Record<AppCategory, NormalizedNews[]> = APP_CATEGORIES.reduce(
+      (acc, cat) => {
+        acc[cat] = [];
+        return acc;
+      },
+      {} as Record<AppCategory, NormalizedNews[]>
+    );
+
     const categoryBreakdown: Record<AppCategory, number> = APP_CATEGORIES.reduce(
       (acc, cat) => {
         acc[cat] = 0;
@@ -108,20 +133,22 @@ export class NewsAggregatorService {
       categoryBreakdown[article.category] = (categoryBreakdown[article.category] || 0) + 1;
       regionBreakdown[article.regionPriority] =
         (regionBreakdown[article.regionPriority] || 0) + 1;
+
+      if (categoryNews[article.category]) {
+        categoryNews[article.category].push(article);
+      }
     }
 
-    // Sort final output: Kenya first, then higher qualityScore, then freshness
-    uniqueArticles.sort((a, b) => {
-      if (b.regionScore !== a.regionScore) {
-        return b.regionScore - a.regionScore;
-      }
-      if (b.qualityScore !== a.qualityScore) {
-        return b.qualityScore - a.qualityScore;
+    // Sort latest news feed by importanceScore and freshness
+    const latestNews = [...uniqueArticles].sort((a, b) => {
+      if (b.importanceScore !== a.importanceScore) {
+        return b.importanceScore - a.importanceScore;
       }
       return b.freshnessScore - a.freshnessScore;
     });
 
-    // 6. Build Stats Summary
+    // 10. Build Final NewsPackage Output
+    const nowIso = new Date().toISOString();
     const stats: CollectionStats = {
       receivedFromNewsApi: countNewsApi,
       receivedFromNewsData: countNewsData,
@@ -130,15 +157,30 @@ export class NewsAggregatorService {
       filteredLowQuality: filteredLowQualityCount,
       duplicatesRemoved: duplicatesRemovedCount,
       finalCount: uniqueArticles.length,
+      topStoriesCount: topStories.length,
+      trendingCount: trendingPackageTopics.length,
+      clustersCount: storyClusters.length,
       categoryBreakdown,
       regionBreakdown,
     };
 
-    // 7. Log Summary
+    const newsPackage: NewsPackage = {
+      generatedAt: nowIso,
+      stats,
+      topStories,
+      trendingTopics: trendingPackageTopics,
+      latestNews,
+      categoryNews,
+      storyClusters,
+      totalCleanArticles: uniqueArticles.length,
+    };
+
+    // 11. Log Summary
     Logger.logSummary(stats);
 
     return {
       stats,
+      package: newsPackage,
       articles: uniqueArticles,
     };
   }

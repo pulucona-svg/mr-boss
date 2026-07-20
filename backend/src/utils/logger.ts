@@ -23,7 +23,7 @@ export class Logger {
   }
 
   public static logSummary(stats: CollectionStats): void {
-    Logger.logHeader('INTELLIGENT NEWS COLLECTION SUMMARY');
+    Logger.logHeader('NEWS RANKING & EDITORIAL ENGINE SUMMARY');
     console.log(`- Articles received from NewsAPI  : ${stats.receivedFromNewsApi}`);
     console.log(`- Articles received from NewsData : ${stats.receivedFromNewsData}`);
     console.log(`- Total raw articles fetched      : ${stats.totalFetched}`);
@@ -31,6 +31,9 @@ export class Logger {
     console.log(`- Articles filtered (low quality) : ${stats.filteredLowQuality}`);
     console.log(`- Duplicate articles removed      : ${stats.duplicatesRemoved}`);
     console.log(`- Final NormalizedNews produced   : ${stats.finalCount}`);
+    console.log(`- Selected Top Stories (Max 5)    : ${stats.topStoriesCount}`);
+    console.log(`- Detected Trending Topics (Top 10): ${stats.trendingCount}`);
+    console.log(`- Total Story Clusters Formed     : ${stats.clustersCount}`);
     
     console.log('\n- Regional Priority Breakdown:');
     for (const [region, count] of Object.entries(stats.regionBreakdown)) {
