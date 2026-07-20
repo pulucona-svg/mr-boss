@@ -1172,6 +1172,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           if (!res.lecturers.any((l) => l.toLowerCase().trim() == normalizedValue)) matchesFilters = false;
         } else if (key == 'courseProgram') {
           if (!res.targetPrograms.any((p) => p.toLowerCase().trim() == normalizedValue)) matchesFilters = false;
+        } else if (key == 'unitCode') {
+          final resCode = res.unitCode.toLowerCase().trim();
+          final isMatch = resCode == normalizedValue || resCode.split('/').map((s) => s.trim()).contains(normalizedValue);
+          if (!isMatch) matchesFilters = false;
         }
       });
 

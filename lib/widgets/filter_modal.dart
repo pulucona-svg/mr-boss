@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/resource_service.dart';
-import '../services/course_service.dart';
-import '../providers/upload_provider.dart';
 import '../providers/service_providers.dart';
 
 class FilterModal extends ConsumerStatefulWidget {
@@ -21,6 +19,7 @@ class FilterModal extends ConsumerStatefulWidget {
 
 class _FilterModalState extends ConsumerState<FilterModal> {
   late Map<String, String> _filters;
+  final TextEditingController _unitCodeController = TextEditingController();
   final TextEditingController _lecturerController = TextEditingController();
   final TextEditingController _programController = TextEditingController();
 
@@ -28,12 +27,14 @@ class _FilterModalState extends ConsumerState<FilterModal> {
   void initState() {
     super.initState();
     _filters = Map.from(widget.initialFilters);
+    _unitCodeController.text = _filters['unitCode'] ?? '';
     _lecturerController.text = _filters['lecturer'] ?? '';
     _programController.text = _filters['courseProgram'] ?? '';
   }
 
   @override
   void dispose() {
+    _unitCodeController.dispose();
     _lecturerController.dispose();
     _programController.dispose();
     super.dispose();
@@ -51,6 +52,13 @@ class _FilterModalState extends ConsumerState<FilterModal> {
   Widget build(BuildContext context) {
     final courseService = ref.watch(courseServiceProvider);
     
+    // Combine unit codes from course data and current resources
+    final allUnitCodes = {
+      ...courseService.courseCodes,
+      ...ResourceService().getUniqueUnitCodes(),
+    }.where((c) => c.isNotEmpty).toList();
+    allUnitCodes.sort();
+
     // Combine lecturers from course data and current resources
     final allLecturers = {
       ...courseService.lecturersList,
@@ -130,6 +138,7 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                           onPressed: () {
                             setState(() {
                               _filters = {};
+                              _unitCodeController.clear();
                               _lecturerController.clear();
                               _programController.clear();
                             });
@@ -142,6 +151,14 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                     
                     _buildSlidingFilterSection('Year of Publication', _getYearOptions(), 'publicationYear'),
                     
+                    _buildSearchFilterSection(
+                      'Unit Code', 
+                      'Type unit code (e.g. COMP 311)...', 
+                      _unitCodeController, 
+                      'unitCode',
+                      allUnitCodes,
+                    ),
+
                     _buildSearchFilterSection(
                       'Search Lecturer', 
                       'Type lecturer name...', 
@@ -270,12 +287,13 @@ class _FilterModalState extends ConsumerState<FilterModal> {
           ),
         ),
         Autocomplete<String>(
+          initialValue: TextEditingValue(text: controller.text),
           optionsBuilder: (TextEditingValue textEditingValue) {
-            if (textEditingValue.text == '') {
+            if (textEditingValue.text.trim().isEmpty) {
               return const Iterable<String>.empty();
             }
             return allOptions.where((String option) {
-              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+              return option.toLowerCase().contains(textEditingValue.text.toLowerCase().trim());
             });
           },
           onSelected: (String selection) {
@@ -285,11 +303,30 @@ class _FilterModalState extends ConsumerState<FilterModal> {
             });
           },
           fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+            if (controller.text != textController.text && controller.text.isEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (textController.text.isNotEmpty) {
+                  textController.clear();
+                }
+              });
+            }
             return TextField(
               controller: textController,
               focusNode: focusNode,
-              textCapitalization: TextCapitalization.sentences,
+              textCapitalization: TextCapitalization.characters,
               style: const TextStyle(color: Colors.white, fontSize: 14),
+              onChanged: (val) {
+                controller.text = val;
+                if (val.trim().isEmpty) {
+                  setState(() {
+                    _filters.remove(key);
+                  });
+                } else {
+                  setState(() {
+                    _filters[key] = val.trim();
+                  });
+                }
+              },
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: const TextStyle(color: Colors.white24),
@@ -300,7 +337,18 @@ class _FilterModalState extends ConsumerState<FilterModal> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                suffixIcon: const Icon(Icons.search, color: Colors.white24, size: 18),
+                suffixIcon: textController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                        onPressed: () {
+                          textController.clear();
+                          controller.clear();
+                          setState(() {
+                            _filters.remove(key);
+                          });
+                        },
+                      )
+                    : const Icon(Icons.search, color: Colors.white24, size: 18),
               ),
             );
           },

@@ -3,10 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'notification_service.dart';
 import 'course_service.dart';
-import '../models/notification.dart';
 import '../models/material_model.dart';
 export '../models/material_model.dart' show Resource;
 
@@ -265,6 +262,7 @@ class ResourceService extends ChangeNotifier {
 
   List<String> getUniqueLecturers() => allResources.expand((r) => r.lecturers).toSet().toList();
   List<String> getUniquePrograms() => allResources.expand((r) => r.targetPrograms).toSet().toList();
+  List<String> getUniqueUnitCodes() => allResources.map((r) => r.unitCode).where((c) => c.isNotEmpty).toSet().toList();
 
   @override
   void dispose() {

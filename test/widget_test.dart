@@ -12,6 +12,7 @@ import 'package:mirror_laikipia/services/persistence_service.dart';
 import 'package:mirror_laikipia/services/progress_service.dart';
 import 'package:mirror_laikipia/widgets/resource_details_modal.dart';
 import 'package:mirror_laikipia/widgets/document_inline_ad_banner.dart';
+import 'package:mirror_laikipia/widgets/filter_modal.dart';
 import 'package:mirror_laikipia/widgets/smart_ad_banner.dart';
 import 'package:mirror_laikipia/services/subscription_service.dart';
 import 'package:mirror_laikipia/providers/upload_provider.dart';
@@ -706,5 +707,39 @@ void main() {
     }
 
     expect(find.byType(DocumentInlineAdBanner, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('FilterModal displays Unit Code field and passes selected unit code on apply', (WidgetTester tester) async {
+    Map<String, String> appliedFilters = {};
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: FilterModal(
+              initialFilters: const {},
+              onApply: (filters) {
+                appliedFilters = filters;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unit Code'), findsOneWidget);
+    expect(find.text('Type unit code (e.g. COMP 311)...'), findsOneWidget);
+
+    final textFieldFinder = find.widgetWithText(TextField, 'Type unit code (e.g. COMP 311)...');
+    expect(textFieldFinder, findsOneWidget);
+
+    await tester.enterText(textFieldFinder, 'COMP 311');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Apply Filters'));
+    await tester.pumpAndSettle();
+
+    expect(appliedFilters['unitCode'], equals('COMP 311'));
   });
 }
