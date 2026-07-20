@@ -11,7 +11,7 @@ export class NewsApiCollector implements BaseCollector<NewsApiArticle> {
     this.apiKey = apiKey;
   }
 
-  public async fetchArticles(query: string = 'Kenya OR Africa'): Promise<NewsApiArticle[]> {
+  public async fetchArticles(query: string = 'Kenya OR Africa OR Technology OR Sports OR Business OR Politics'): Promise<NewsApiArticle[]> {
     if (!this.apiKey) {
       Logger.warn(`[${this.name}] API key is missing or empty. Skipping fetch.`);
       return [];

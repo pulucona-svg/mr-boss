@@ -103,9 +103,16 @@ export class FirestorePublisher {
     return activeUrls;
   }
 
+  public static getSimulatedCollection(collectionName: string): Map<string, any> {
+    if (!FirestorePublisher.simulatedStore.has(collectionName)) {
+      FirestorePublisher.simulatedStore.set(collectionName, new Map());
+    }
+    return FirestorePublisher.simulatedStore.get(collectionName)!;
+  }
+
   /**
    * Publishes lightweight metadata document to Firestore collections (topStories, latestNews, categoryNews).
-   * Firestore NEVER stores full article body text.
+   * Supports multi-category indexing across primary and secondary categories.
    */
   public static async publishArticleMetadata(
     rawDoc: FirestoreNewsDocument
@@ -114,20 +121,24 @@ export class FirestorePublisher {
     const doc = FirestorePublisher.sanitizeObject(rawDoc) as FirestoreNewsDocument;
     const db = FirestorePublisher.getFirestore();
 
+    const targetCategories = Array.from(
+      new Set([doc.category, ...(doc.secondaryCategories || [])])
+    );
+
     if (!db) {
-      for (const collName of ['latestNews']) {
-        if (!FirestorePublisher.simulatedStore.has(collName)) {
-          FirestorePublisher.simulatedStore.set(collName, new Map());
-        }
-        FirestorePublisher.simulatedStore.get(collName)!.set(doc.id, doc);
+      const latestMap = FirestorePublisher.getSimulatedCollection('latestNews');
+      latestMap.set(doc.id, doc);
+
+      for (const cat of targetCategories) {
+        const catMap = FirestorePublisher.getSimulatedCollection(`categoryNews:${cat}`);
+        catMap.set(doc.id, doc);
       }
+
       if (doc.isTopStory) {
-        if (!FirestorePublisher.simulatedStore.has('topStories')) {
-          FirestorePublisher.simulatedStore.set('topStories', new Map());
-        }
-        FirestorePublisher.simulatedStore.get('topStories')!.set(doc.id, doc);
+        const topMap = FirestorePublisher.getSimulatedCollection('topStories');
+        topMap.set(doc.id, doc);
       }
-      Logger.info(`[FIRESTORE_PUBLISH] Simulated Firestore publish complete for ID: ${doc.id}`);
+      Logger.info(`[FIRESTORE_PUBLISH] Simulated Firestore publish complete for ID: ${doc.id} across categories: ${targetCategories.join(', ')}`);
       return true;
     }
 
@@ -138,9 +149,11 @@ export class FirestorePublisher {
       const latestRef = db.collection('latestNews').doc(doc.id);
       batch.set(latestRef, doc, { merge: true });
 
-      // 2. Write to categoryNews collection
-      const categoryRef = db.collection('categoryNews').doc(doc.category).collection('articles').doc(doc.id);
-      batch.set(categoryRef, doc, { merge: true });
+      // 2. Write to categoryNews collection across all assigned categories
+      for (const cat of targetCategories) {
+        const categoryRef = db.collection('categoryNews').doc(cat).collection('articles').doc(doc.id);
+        batch.set(categoryRef, doc, { merge: true });
+      }
 
       // 3. Write to topStories if flagged
       if (doc.isTopStory) {
@@ -149,11 +162,33 @@ export class FirestorePublisher {
       }
 
       await batch.commit();
-      Logger.info(`[FIRESTORE_PUBLISH] Firestore batch write committed successfully for ${doc.id}`);
+      Logger.info(`[FIRESTORE_PUBLISH] Firestore batch write committed successfully for ${doc.id} across categories (${targetCategories.join(', ')})`);
       return true;
     } catch (error: any) {
       Logger.error(`[FIRESTORE_PUBLISH] Firestore write failed for ${doc.id}:`, error.message || error);
       return false;
+    }
+  }
+
+  /**
+   * Returns document count for a category in categoryNews.
+   */
+  public static async getCategoryDocumentCount(category: string): Promise<number> {
+    const db = FirestorePublisher.getFirestore();
+    if (!db) {
+      const catMap = FirestorePublisher.simulatedStore.get(`categoryNews:${category}`);
+      return catMap ? catMap.size : 0;
+    }
+
+    try {
+      const catSnap = await db
+        .collection('categoryNews')
+        .doc(category)
+        .collection('articles')
+        .get();
+      return catSnap.size;
+    } catch (err) {
+      return 0;
     }
   }
 
@@ -214,11 +249,19 @@ export class FirestorePublisher {
   }
 
   /**
-   * Deletes a Firestore document across all collections. Used during cleanup and rollback.
+   * Deletes a Firestore document across all collections and assigned categories. Used during cleanup and rollback.
    */
-  public static async deleteArticleDocument(articleId: string, category?: string): Promise<boolean> {
+  public static async deleteArticleDocument(
+    articleId: string,
+    category?: string,
+    secondaryCategories?: string[]
+  ): Promise<boolean> {
     Logger.info(`[CLEANUP / ROLLBACK] Deleting document from Firestore: ${articleId}`);
     const db = FirestorePublisher.getFirestore();
+
+    const allCategories = Array.from(
+      new Set([...(category ? [category] : []), ...(secondaryCategories || [])])
+    );
 
     if (!db) {
       for (const map of FirestorePublisher.simulatedStore.values()) {
@@ -231,11 +274,15 @@ export class FirestorePublisher {
       const batch = db.batch();
       batch.delete(db.collection('latestNews').doc(articleId));
       batch.delete(db.collection('topStories').doc(articleId));
-      if (category) {
-        batch.delete(db.collection('categoryNews').doc(category).collection('articles').doc(articleId));
+
+      for (const cat of allCategories) {
+        batch.delete(
+          db.collection('categoryNews').doc(cat).collection('articles').doc(articleId)
+        );
       }
+
       await batch.commit();
-      Logger.info(`[CLEANUP] Successfully deleted Firestore document: ${articleId}`);
+      Logger.info(`[CLEANUP] Successfully deleted Firestore document ${articleId} across categories.`);
       return true;
     } catch (err: any) {
       Logger.error(`[CLEANUP] Failed to delete Firestore document ${articleId}:`, err.message || err);

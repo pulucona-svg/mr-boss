@@ -1,4 +1,4 @@
-import { AppCategory, RegionPriority } from '../models/news_article.model';
+import { AppCategory, APP_CATEGORIES, RegionPriority } from '../models/news_article.model';
 
 export interface ClassificationResult {
   primaryCategory: AppCategory;
@@ -16,59 +16,76 @@ export class ClassificationService {
     description: string,
     originalCategory?: string | string[]
   ): ClassificationResult {
-    const text = `${title} ${description} ${
-      Array.isArray(originalCategory) ? originalCategory.join(' ') : originalCategory || ''
-    }`.toLowerCase();
+    const text = `${title} ${description}`.toLowerCase();
 
     const categoryScores: Map<AppCategory, number> = new Map();
 
+    // 0. Boost explicit source categories (from NewsData / NewsAPI metadata)
+    if (originalCategory) {
+      const origCategories = Array.isArray(originalCategory)
+        ? originalCategory
+        : [originalCategory];
+      for (const catStr of origCategories) {
+        const lowerCat = catStr.toLowerCase();
+        for (const appCat of APP_CATEGORIES) {
+          if (
+            lowerCat === appCat.toLowerCase() ||
+            lowerCat.includes(appCat.toLowerCase()) ||
+            appCat.toLowerCase().includes(lowerCat)
+          ) {
+            categoryScores.set(appCat, (categoryScores.get(appCat) || 0) + 5);
+          }
+        }
+      }
+    }
+
     // 1. Keyword rule checks with weights
     ClassificationService.scoreCategory(categoryScores, 'Kenya', text, [
-      /\b(kenya|kenyan|nairobi|mombasa|nakuru|eldoret|laikipia|ruto|raila|knec|tsc|kdf|county|shilling)\b/gi,
+      /\b(kenya|kenyan|nairobi|mombasa|nakuru|eldoret|laikipia|ruto|raila|gachagua|knec|tsc|kdf|county|counties|shilling|sacco|matatu|huduma|bodaboda)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Breaking', text, [
-      /\b(breaking|urgent|alert|just in|flash|disaster|tragedy|state of emergency)\b/gi,
+      /\b(breaking|urgent|alert|just in|flash|disaster|tragedy|state of emergency|explosion|massacre|earthquake|tsunami)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Africa', text, [
-      /\b(africa|african|uganda|tanzania|rwanda|ethiopia|nigeria|south africa|somalia|sudan|ghana|ecowas|au|african union)\b/gi,
+      /\b(africa|african|uganda|tanzania|rwanda|ethiopia|nigeria|south africa|somalia|sudan|south sudan|ghana|zimbabwe|zambia|malawi|mozambique|congo|drc|senegal|mali|burkina faso|angola|cameroon|ecowas|au|african union|eac|sadc|igad|kampala|dodoma|kigali|addis ababa|lagos|cairo|johannesburg|accra)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Politics', text, [
-      /\b(politics|political|government|election|parliament|senate|president|minister|governor|court|supreme court|law|policy|diplomacy|bipartisan)\b/gi,
+      /\b(politics|political|government|election|elections|parliament|senate|president|presidential|minister|governor|court|supreme court|judiciary|law|policy|policies|diplomacy|bipartisan|mp|mps|lawmaker|lawmakers|bill|cabinet|opposition|ruto|raila|gachagua|kenyat|biden|trump|putin|zelensky|white house|kremlin|diplomat|sanctions|treaty|veto|ballot|vote|voting|campaign)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Business', text, [
-      /\b(business|economy|market|stocks|crypto|bitcoin|trade|finance|financial|bank|banking|revenue|profit|startup|investor|gdp|inflation)\b/gi,
+      /\b(business|economy|economic|market|markets|stocks|crypto|bitcoin|trade|trading|finance|financial|bank|banking|revenue|profit|loss|startup|investor|investors|investment|gdp|inflation|central bank|cbk|tax|taxes|taxation|tariff|currency|shilling|dollar|interest rates|commerce|corporate|sales|exporter|importer|treasury)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Technology', text, [
-      /\b(tech|technology|software|ai|artificial intelligence|cyber|cybersecurity|google|apple|microsoft|nvidia|app|smartphone|cloud|gadget|code)\b/gi,
+      /\b(tech|technology|software|hardware|ai|artificial intelligence|machine learning|cyber|cybersecurity|google|apple|microsoft|nvidia|meta|app|apps|smartphone|cloud|gadget|code|coding|digital|mobile|internet|telecom|safaricom|airtel|5g|fintech|semiconductor|microchip|robotics|automation|electric vehicle|ev|satellites|space-x|openai|chatgpt)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Sports', text, [
-      /\b(sports|football|soccer|premier league|champions league|nba|basketball|athletics|marathon|olympics|tennis|golf|rugby|match|tournament|goal|trophy)\b/gi,
+      /\b(sports|sport|football|soccer|premier league|epl|champions league|ucl|nba|basketball|athletics|marathon|olympics|tennis|golf|rugby|match|tournament|goal|trophy|game|player|team|league|coach|stadium|cup|championship|club|transfer|striker|defender|wrc|rally|boxing|racing|f1|formula 1|harambee stars|kpl|afcon|world cup|cricket|chelsea|arsenal|manchester|liverpool|real madrid|barcelona)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Health', text, [
-      /\b(health|hospital|doctor|medicine|medical|virus|disease|vaccine|mental health|who|cancer|treatment|healthcare|outbreak|clinic)\b/gi,
+      /\b(health|healthcare|hospital|doctor|doctors|nurse|nurses|medicine|medical|virus|disease|diseases|vaccine|vaccines|mental health|who|cancer|treatment|outbreak|epidemic|pandemic|clinic|clinical|patient|patients|pharma|pharmaceutical|surgery|surgical|wellness|infection)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Education', text, [
-      /\b(education|school|university|student|teacher|college|academic|learning|curriculum|exam|kcse|kcpe|tuition|scholarship)\b/gi,
+      /\b(education|school|schools|university|universities|student|students|teacher|teachers|college|academic|academics|learning|curriculum|exam|exams|examination|kcse|kcpe|cbc|tuition|scholarship|scholarships|knec|tsc|headmaster|principal|graduates|graduation)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Entertainment', text, [
-      /\b(entertainment|movie|film|music|celebrity|actor|actress|cinema|hollywood|nollywood|song|album|show|concert|artist|grammy|oscar)\b/gi,
+      /\b(entertainment|movie|movies|film|films|music|musical|celebrity|celebrities|actor|actress|cinema|hollywood|nollywood|song|songs|album|show|shows|concert|artist|artists|grammy|oscar|emmy|culture|fashion|lifestyle|theater|streamer|streaming|netflix)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'Science', text, [
-      /\b(science|scientific|space|nasa|astronomy|planet|physics|biology|climate|environment|research|discovery|laboratory|dinosaur)\b/gi,
+      /\b(science|scientific|scientist|scientists|space|nasa|astronomy|planet|planets|physics|biology|chemistry|climate|environment|environmental|research|discovery|laboratory|lab|dinosaur|fossil|evolution|genetics|ecosystem|solar system|telescope)\b/gi,
     ]);
 
     ClassificationService.scoreCategory(categoryScores, 'World', text, [
-      /\b(world|global|international|un|united nations|europe|us|asia|china|foreign)\b/gi,
+      /\b(world|global|international|un|united nations|europe|us|usa|asia|china|russia|ukraine|middle east|gaza|israel|foreign|nato|eu|european union)\b/gi,
     ]);
 
     // Determine sorted categories by match count/score
@@ -158,3 +175,4 @@ export class ClassificationService {
     }
   }
 }
+

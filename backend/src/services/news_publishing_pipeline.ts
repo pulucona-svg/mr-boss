@@ -41,16 +41,13 @@ export class NewsPublishingPipeline {
 
   /**
    * Executes the complete automatic Synchronization & Publishing Pipeline:
-   * Automatic Cleanup -> News Collection -> Intelligence Pipeline -> Transactional Uploads -> Firestore Publish.
+   * News Collection -> Intelligence Pipeline -> Transactional Uploads -> Firestore Publish -> Rolling Retention Cleanup.
    */
   public async executePipeline(query?: string): Promise<CollectionResult> {
     const searchQuery = query || config.defaultQuery;
     Logger.logHeader(`STARTING AUTOMATIC SYNCHRONIZATION PIPELINE (Query: "${searchQuery}")`);
 
-    // 1. STEP 1: AUTOMATIC EXPIRATION CLEANUP (Runs before synchronization cycle)
-    await CleanupService.executeCleanup();
-
-    // 2. STEP 2: FETCH FRESH NEWS FROM APIS
+    // 1. STEP 1: FETCH FRESH NEWS FROM APIS
     let rawNewsApiArticles: any[] = [];
     try {
       rawNewsApiArticles = await this.newsApiCollector.fetchArticles(searchQuery);
@@ -60,7 +57,7 @@ export class NewsPublishingPipeline {
 
     let rawNewsDataArticles: any[] = [];
     try {
-      rawNewsDataArticles = await this.newsDataCollector.fetchArticles('Kenya');
+      rawNewsDataArticles = await this.newsDataCollector.fetchArticles(searchQuery);
     } catch (err: any) {
       Logger.error('[COLLECT] Error during NewsData collection:', err.message || err);
     }
@@ -69,7 +66,7 @@ export class NewsPublishingPipeline {
     const countNewsData = rawNewsDataArticles.length;
     const totalFetched = countNewsApi + countNewsData;
 
-    // 3. STEP 3: NORMALIZE & QUALITY FILTER
+    // 2. STEP 2: NORMALIZE & QUALITY FILTER
     const candidateArticles: NormalizedNews[] = [];
     let filteredIncompleteCount = 0;
     let filteredLowQualityCount = 0;
@@ -100,11 +97,11 @@ export class NewsPublishingPipeline {
       }
     }
 
-    // 4. STEP 4: INTELLIGENT DEDUPLICATION
+    // 3. STEP 3: INTELLIGENT DEDUPLICATION
     const { uniqueArticles, duplicatesRemovedCount } =
       DeduplicationService.deduplicate(candidateArticles);
 
-    // 5. STEP 5: EDITORIAL RANKING & CLUSTERING
+    // 4. STEP 4: EDITORIAL RANKING & CLUSTERING
     for (const article of uniqueArticles) {
       article.importanceScore = RankingService.calculateImportanceScore(article);
     }
@@ -116,7 +113,7 @@ export class NewsPublishingPipeline {
       storyClusters
     );
 
-    // 6. STEP 6: PREVENT DUPLICATE PUBLISHING (Filter out stories active in Firestore)
+    // 5. STEP 5: PREVENT DUPLICATE PUBLISHING (Filter out stories active in Firestore)
     const activeUrls = await FirestorePublisher.getActiveArticleUrls();
     const newArticlesToPublish = uniqueArticles.filter(
       (art) => !activeUrls.has(art.sourceUrl)
@@ -126,20 +123,84 @@ export class NewsPublishingPipeline {
       `[FILTER] Found ${newArticlesToPublish.length} new stories to publish (${uniqueArticles.length - newArticlesToPublish.length} already active in Firestore)`
     );
 
-    // 7. STEP 7: TRANSACTIONAL IMAGEKIT UPLOADS & FIRESTORE PUBLISHING
+    // 6. STEP 6: TRANSACTIONAL IMAGEKIT UPLOADS & FIRESTORE PUBLISHING
     const publishedArticles: NormalizedNews[] = [];
 
-    for (const article of newArticlesToPublish) {
-      const cluster = storyClusters.find((c) => c.clusterId === article.clusterId);
-      const publishResult = await this.publishArticleTransactionally(article, cluster);
+    if (newArticlesToPublish.length > 0) {
+      for (const article of newArticlesToPublish) {
+        const cluster = storyClusters.find((c) => c.clusterId === article.clusterId);
+        const publishResult = await this.publishArticleTransactionally(article, cluster);
 
-      if (publishResult.success) {
-        publishedArticles.push(article);
+        if (publishResult.success) {
+          publishedArticles.push(article);
+        }
+      }
+      Logger.info(`[PUBLISH] Successfully published ${publishedArticles.length} new articles.`);
+    } else {
+      Logger.info('[PUBLISH] No new articles to publish. Existing Firestore content remains intact.');
+    }
+
+    // 7. STEP 7: TARGETED CATEGORY BACKFILL CYCLE (Ensure minimum 20 articles per category)
+    const TARGET_MIN_INVENTORY = 20;
+    Logger.info(`[BACKFILL] Verifying category inventory counts against minimum target (${TARGET_MIN_INVENTORY} articles)...`);
+
+    for (const cat of APP_CATEGORIES) {
+      const currentCount = await FirestorePublisher.getCategoryDocumentCount(cat);
+      if (currentCount < TARGET_MIN_INVENTORY) {
+        const needed = TARGET_MIN_INVENTORY - currentCount;
+        Logger.info(`[BACKFILL] Category '${cat}' has ${currentCount} articles (Needs ${needed} more to reach target ${TARGET_MIN_INVENTORY}). Initiating targeted fetch...`);
+
+        const catQuery = this.getCategorySearchQuery(cat);
+        let backfillNewsApi: any[] = [];
+        let backfillNewsData: any[] = [];
+
+        try {
+          backfillNewsApi = await this.newsApiCollector.fetchArticles(catQuery);
+        } catch (e) {
+          /* ignore */
+        }
+        try {
+          backfillNewsData = await this.newsDataCollector.fetchArticles(catQuery);
+        } catch (e) {
+          /* ignore */
+        }
+
+        const rawBackfill = [...backfillNewsApi, ...backfillNewsData];
+        const normalizedBackfill: NormalizedNews[] = [];
+
+        for (const raw of rawBackfill) {
+          const norm = raw.url
+            ? NormalizationService.normalizeNewsApiArticle(raw)
+            : NormalizationService.normalizeNewsDataArticle(raw);
+          if (norm) normalizedBackfill.push(norm);
+        }
+
+        const { uniqueArticles: uniqueBackfill } = DeduplicationService.deduplicate(normalizedBackfill);
+        const activeUrlsBackfill = await FirestorePublisher.getActiveArticleUrls();
+        const newBackfillToPublish = uniqueBackfill.filter((a) => !activeUrlsBackfill.has(a.sourceUrl));
+
+        Logger.info(`[BACKFILL] '${cat}': Found ${newBackfillToPublish.length} new candidate articles to publish.`);
+
+        for (const article of newBackfillToPublish) {
+          const pubResult = await this.publishArticleTransactionally(article);
+          if (pubResult.success) {
+            publishedArticles.push(article);
+          }
+          const checkCount = await FirestorePublisher.getCategoryDocumentCount(cat);
+          if (checkCount >= TARGET_MIN_INVENTORY) break;
+        }
+
+        const finalCatCount = await FirestorePublisher.getCategoryDocumentCount(cat);
+        Logger.info(`[BACKFILL] Category '${cat}' now has ${finalCatCount} articles in Firestore.`);
       }
     }
 
     // 8. STEP 8: PUBLISH TRENDING TOPICS & CLUSTERS TO FIRESTORE
     await FirestorePublisher.publishTrendingAndClusters(trendingPackageTopics, storyClusters);
+
+    // 9. STEP 9: AUTOMATIC ROLLING RETENTION CLEANUP (Runs ONLY AFTER publishing succeeded)
+    const cleanupStats = await CleanupService.executeCleanup();
+    Logger.info(`[CLEANUP] Post-publish cleanup completed. Deleted ${cleanupStats.documentsDeleted} surplus documents.`);
 
     // 9. STEP 9: ORGANIZE CATEGORIES & REGIONAL BREAKDOWN
     const categoryNews: Record<AppCategory, NormalizedNews[]> = APP_CATEGORIES.reduce(
@@ -334,6 +395,37 @@ export class NewsPublishingPipeline {
         articleId: article.id,
         error: error.message || String(error),
       };
+    }
+  }
+
+  private getCategorySearchQuery(category: AppCategory): string {
+    switch (category) {
+      case 'Politics':
+        return 'politics OR election OR parliament OR president OR government OR policy OR minister';
+      case 'Business':
+        return 'business OR economy OR market OR finance OR trade OR stocks OR inflation OR bank';
+      case 'Technology':
+        return 'technology OR tech OR software OR AI OR cyber OR smartphone OR digital OR app';
+      case 'Education':
+        return 'education OR university OR school OR student OR learning OR exam OR teacher';
+      case 'Health':
+        return 'health OR hospital OR doctor OR medicine OR virus OR vaccine OR medical OR clinic';
+      case 'Sports':
+        return 'sports OR football OR soccer OR basketball OR tennis OR marathon OR league OR match';
+      case 'Entertainment':
+        return 'entertainment OR movie OR music OR film OR celebrity OR show OR song OR artist';
+      case 'Science':
+        return 'science OR space OR NASA OR astronomy OR climate OR research OR physics OR planet';
+      case 'World':
+        return 'world OR global OR international OR Europe OR Asia OR UN OR foreign';
+      case 'Africa':
+        return 'Africa OR African OR Nigeria OR South Africa OR Uganda OR Tanzania OR Ghana';
+      case 'Kenya':
+        return 'Kenya OR Kenyan OR Nairobi OR Mombasa OR Eldoret OR Ruto OR Laikipia';
+      case 'Breaking':
+        return 'breaking OR urgent OR alert OR flash OR disaster OR tragedy';
+      default:
+        return category;
     }
   }
 }

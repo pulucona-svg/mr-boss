@@ -1,8 +1,14 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
-// Load environment variables from .env file
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+const envPath = fs.existsSync(path.resolve(process.cwd(), 'backend/.env'))
+  ? path.resolve(process.cwd(), 'backend/.env')
+  : fs.existsSync(path.resolve(__dirname, '../../.env'))
+  ? path.resolve(__dirname, '../../.env')
+  : path.resolve(process.cwd(), '.env');
+
+dotenv.config({ path: envPath });
 
 export interface EnvironmentConfig {
   newsApiKey: string;
@@ -34,7 +40,9 @@ export const config: EnvironmentConfig = {
   googleApplicationCredentials: process.env.GOOGLE_APPLICATION_CREDENTIALS || undefined,
   fetchIntervalMinutes: parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10),
   cronSchedule: process.env.CRON_SCHEDULE || '*/15 * * * *',
-  defaultQuery: process.env.DEFAULT_QUERY || 'Kenya OR Africa',
+  defaultQuery:
+    process.env.DEFAULT_QUERY ||
+    'Kenya OR Africa OR Technology OR Sports OR Business OR Politics OR Health OR Science OR Education OR Entertainment OR Breaking',
   defaultExpiryHours: parseInt(process.env.DEFAULT_EXPIRY_HOURS || '24', 10),
   minDescriptionLength: parseInt(process.env.MIN_DESCRIPTION_LENGTH || '50', 10),
   minQualityScore: parseInt(process.env.MIN_QUALITY_SCORE || '30', 10),

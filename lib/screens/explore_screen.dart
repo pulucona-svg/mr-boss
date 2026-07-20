@@ -16,6 +16,7 @@ import '../services/subscription_service.dart';
 import '../services/connectivity_service.dart';
 import '../providers/ui_provider.dart';
 import 'more_options_screen.dart';
+import 'full_article_screen.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
@@ -1479,7 +1480,17 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                         ],
                       ),
                       child: ElevatedButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => FullArticleScreen(
+                                article: widget.article,
+                                viewerUrl: widget.article.viewerUrl,
+                              ),
+                            ),
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
@@ -1728,7 +1739,16 @@ class _TrendingDetailScreenState extends State<TrendingDetailScreen> {
                         ],
                       ),
                       child: ElevatedButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => FullArticleScreen(
+                                viewerUrl: null,
+                              ),
+                            ),
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
