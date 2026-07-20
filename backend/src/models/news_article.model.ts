@@ -31,9 +31,24 @@ export const APP_CATEGORIES: AppCategory[] = [
 ];
 
 /**
- * Common Unified News Article Interface for Mirror Laikipia
+ * Regional Priority Hierarchy
  */
-export interface NormalizedArticle {
+export type RegionPriority = 'Kenya' | 'East Africa' | 'Africa' | 'World';
+
+export interface ScoreBreakdown {
+  titleQualityScore: number;
+  imageQualityScore: number;
+  descriptionDepthScore: number;
+  publisherTrustScore: number;
+  freshnessScore: number;
+  totalScore: number;
+}
+
+/**
+ * Final Normalized Pipeline Output: NormalizedNews
+ * Contains all metadata required for Firebase ingestion and ImageKit processing in Phase 2.
+ */
+export interface NormalizedNews {
   id: string;
   title: string;
   summary: string;
@@ -43,10 +58,18 @@ export interface NormalizedArticle {
   publishedAt: string;
   sourceName: string;
   author: string | null;
-  category: AppCategory;
+  category: AppCategory; // Primary Category
+  secondaryCategories: AppCategory[]; // Secondary Categories
+  regionPriority: RegionPriority;
+  regionScore: number; // 4 = Kenya, 3 = East Africa, 2 = Africa, 1 = World
   slug: string;
   createdAt: string;
   updatedAt: string;
+  expiresAt: string;
+  collectedAt: string;
+  qualityScore: number;
+  freshnessScore: number;
+  scoreBreakdown?: ScoreBreakdown;
   status: 'published' | 'draft';
   priority: number;
 
@@ -55,6 +78,11 @@ export interface NormalizedArticle {
   viewerUrl?: string;
   coverImage?: string;
 }
+
+/**
+ * Alias for backward compatibility
+ */
+export type NormalizedArticle = NormalizedNews;
 
 /**
  * Raw Article from NewsAPI.org
@@ -114,12 +142,14 @@ export interface CollectionStats {
   receivedFromNewsData: number;
   totalFetched: number;
   filteredIncomplete: number;
+  filteredLowQuality: number;
   duplicatesRemoved: number;
   finalCount: number;
   categoryBreakdown: Record<AppCategory, number>;
+  regionBreakdown: Record<RegionPriority, number>;
 }
 
 export interface CollectionResult {
   stats: CollectionStats;
-  articles: NormalizedArticle[];
+  articles: NormalizedNews[];
 }

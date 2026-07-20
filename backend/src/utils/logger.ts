@@ -1,3 +1,5 @@
+import { CollectionStats } from '../models/news_article.model';
+
 export class Logger {
   private static formatTime(): string {
     return new Date().toISOString();
@@ -16,24 +18,31 @@ export class Logger {
   }
 
   public static logHeader(title: string): void {
-    const border = '='.repeat(60);
+    const border = '='.repeat(64);
     console.log(`\n${border}\n ${title}\n${border}`);
   }
 
-  public static logSummary(stats: any): void {
-    Logger.logHeader('NEWS COLLECTION SUMMARY');
+  public static logSummary(stats: CollectionStats): void {
+    Logger.logHeader('INTELLIGENT NEWS COLLECTION SUMMARY');
     console.log(`- Articles received from NewsAPI  : ${stats.receivedFromNewsApi}`);
     console.log(`- Articles received from NewsData : ${stats.receivedFromNewsData}`);
     console.log(`- Total raw articles fetched      : ${stats.totalFetched}`);
     console.log(`- Articles filtered (incomplete)  : ${stats.filteredIncomplete}`);
+    console.log(`- Articles filtered (low quality) : ${stats.filteredLowQuality}`);
     console.log(`- Duplicate articles removed      : ${stats.duplicatesRemoved}`);
-    console.log(`- Final clean articles produced   : ${stats.finalCount}`);
-    console.log('- Category Breakdown:');
+    console.log(`- Final NormalizedNews produced   : ${stats.finalCount}`);
+    
+    console.log('\n- Regional Priority Breakdown:');
+    for (const [region, count] of Object.entries(stats.regionBreakdown)) {
+      console.log(`    * ${region.padEnd(15)} : ${count}`);
+    }
+
+    console.log('\n- Category Breakdown:');
     for (const [cat, count] of Object.entries(stats.categoryBreakdown)) {
       if ((count as number) > 0) {
         console.log(`    * ${cat.padEnd(15)} : ${count}`);
       }
     }
-    console.log('='.repeat(60) + '\n');
+    console.log('='.repeat(64) + '\n');
   }
 }

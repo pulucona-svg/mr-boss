@@ -7,7 +7,8 @@ import {
   APP_CATEGORIES,
   CollectionResult,
   CollectionStats,
-  NormalizedArticle,
+  NormalizedNews,
+  RegionPriority,
 } from '../models/news_article.model';
 import { Logger } from '../utils/logger';
 import { config } from '../config/environment';
@@ -22,13 +23,13 @@ export class NewsAggregatorService {
   }
 
   /**
-   * Orchestrates news collection, normalization, filtering, and deduplication.
+   * Orchestrates news collection, normalization, quality filtering, deduplication, scoring, and classification.
    */
   public async collectAndProcess(query?: string): Promise<CollectionResult> {
     const searchQuery = query || config.defaultQuery;
-    Logger.logHeader(`STARTING NEWS COLLECTION (Query: "${searchQuery}")`);
+    Logger.logHeader(`STARTING INTELLIGENT NEWS PIPELINE (Query: "${searchQuery}")`);
 
-    // 1. Fetch from NewsAPI.org with fallback error handling
+    // 1. Fetch from NewsAPI.org
     let rawNewsApiArticles: any[] = [];
     try {
       rawNewsApiArticles = await this.newsApiCollector.fetchArticles(searchQuery);
@@ -36,7 +37,7 @@ export class NewsAggregatorService {
       Logger.error('Error during NewsAPI collection:', err.message || err);
     }
 
-    // 2. Fetch from NewsData.io with fallback error handling
+    // 2. Fetch from NewsData.io
     let rawNewsDataArticles: any[] = [];
     try {
       rawNewsDataArticles = await this.newsDataCollector.fetchArticles('Kenya');
@@ -52,33 +53,42 @@ export class NewsAggregatorService {
       `Raw articles gathered - NewsAPI: ${countNewsApi}, NewsData: ${countNewsData}, Total: ${totalFetched}`
     );
 
-    // 3. Normalize & filter incomplete articles
-    const normalizedArticles: NormalizedArticle[] = [];
+    // 3. Normalize & Quality Filter
+    const candidateArticles: NormalizedNews[] = [];
     let filteredIncompleteCount = 0;
+    let filteredLowQualityCount = 0;
 
     for (const rawArticle of rawNewsApiArticles) {
+      if (!rawArticle.title || !rawArticle.url) {
+        filteredIncompleteCount++;
+        continue;
+      }
       const normalized = NormalizationService.normalizeNewsApiArticle(rawArticle);
       if (normalized) {
-        normalizedArticles.push(normalized);
+        candidateArticles.push(normalized);
       } else {
-        filteredIncompleteCount++;
+        filteredLowQualityCount++;
       }
     }
 
     for (const rawArticle of rawNewsDataArticles) {
+      if (!rawArticle.title || !rawArticle.link) {
+        filteredIncompleteCount++;
+        continue;
+      }
       const normalized = NormalizationService.normalizeNewsDataArticle(rawArticle);
       if (normalized) {
-        normalizedArticles.push(normalized);
+        candidateArticles.push(normalized);
       } else {
-        filteredIncompleteCount++;
+        filteredLowQualityCount++;
       }
     }
 
-    // 4. Intelligently remove duplicates
+    // 4. Intelligent Deduplication & Highest-Scoring Version Selection
     const { uniqueArticles, duplicatesRemovedCount } =
-      DeduplicationService.deduplicate(normalizedArticles);
+      DeduplicationService.deduplicate(candidateArticles);
 
-    // 5. Compute category breakdown
+    // 5. Compute Category & Region Breakdown
     const categoryBreakdown: Record<AppCategory, number> = APP_CATEGORIES.reduce(
       (acc, cat) => {
         acc[cat] = 0;
@@ -87,22 +97,44 @@ export class NewsAggregatorService {
       {} as Record<AppCategory, number>
     );
 
+    const regionBreakdown: Record<RegionPriority, number> = {
+      Kenya: 0,
+      'East Africa': 0,
+      Africa: 0,
+      World: 0,
+    };
+
     for (const article of uniqueArticles) {
       categoryBreakdown[article.category] = (categoryBreakdown[article.category] || 0) + 1;
+      regionBreakdown[article.regionPriority] =
+        (regionBreakdown[article.regionPriority] || 0) + 1;
     }
 
-    // 6. Build stats summary
+    // Sort final output: Kenya first, then higher qualityScore, then freshness
+    uniqueArticles.sort((a, b) => {
+      if (b.regionScore !== a.regionScore) {
+        return b.regionScore - a.regionScore;
+      }
+      if (b.qualityScore !== a.qualityScore) {
+        return b.qualityScore - a.qualityScore;
+      }
+      return b.freshnessScore - a.freshnessScore;
+    });
+
+    // 6. Build Stats Summary
     const stats: CollectionStats = {
       receivedFromNewsApi: countNewsApi,
       receivedFromNewsData: countNewsData,
       totalFetched,
       filteredIncomplete: filteredIncompleteCount,
+      filteredLowQuality: filteredLowQualityCount,
       duplicatesRemoved: duplicatesRemovedCount,
       finalCount: uniqueArticles.length,
       categoryBreakdown,
+      regionBreakdown,
     };
 
-    // 7. Log summary
+    // 7. Log Summary
     Logger.logSummary(stats);
 
     return {
