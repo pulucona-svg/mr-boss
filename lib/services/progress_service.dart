@@ -31,5 +31,9 @@ class ProgressService extends ChangeNotifier {
   }
 
   bool hasProgress(String title) => _readingProgress.containsKey(title);
+
+  void clear() {
+    _readingProgress.clear();
+  }
 }
 

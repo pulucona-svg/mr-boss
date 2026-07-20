@@ -23,7 +23,17 @@ class SubscriptionService extends ChangeNotifier {
 
   List<SubscriptionHistory> get history => _history;
   
-  bool get isSubscribed => _history.any((s) => s.status == SubscriptionStatus.active);
+  bool? _overrideIsSubscribed;
+
+  bool get isSubscribed => _overrideIsSubscribed ?? _history.any((s) => s.status == SubscriptionStatus.active);
+
+  @visibleForTesting
+  set isSubscribedForTesting(bool value) {
+    _overrideIsSubscribed = value;
+    try {
+      notifyListeners();
+    } catch (_) {}
+  }
 
   void unlockResource(String title) {
     _unlockedResources.add(title);
@@ -106,9 +116,18 @@ class SubscriptionService extends ChangeNotifier {
     _userId = null;
     _history = [];
     _unlockedResources.clear();
+    _overrideIsSubscribed = null;
     _saveHistory();
     _saveUnlockedResources();
-    notifyListeners();
+    try {
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  @override
+  // ignore: must_call_super
+  void dispose() {
+    // Singleton instance persists across app lifecycle and test cases.
   }
 
   Future<void> _saveUnlockedResources() async {

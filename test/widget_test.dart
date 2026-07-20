@@ -11,6 +11,9 @@ import 'package:mirror_laikipia/screens/material_viewer_screen.dart';
 import 'package:mirror_laikipia/services/persistence_service.dart';
 import 'package:mirror_laikipia/services/progress_service.dart';
 import 'package:mirror_laikipia/widgets/resource_details_modal.dart';
+import 'package:mirror_laikipia/widgets/document_inline_ad_banner.dart';
+import 'package:mirror_laikipia/widgets/smart_ad_banner.dart';
+import 'package:mirror_laikipia/services/subscription_service.dart';
 import 'package:mirror_laikipia/providers/upload_provider.dart';
 import 'package:mirror_laikipia/models/material_model.dart';
 import 'dart:io';
@@ -589,5 +592,119 @@ void main() {
 
     final stateMix = statePdf.copyWith(error: 'Some error');
     expect(stateMix.isValid, isFalse);
+  });
+
+  testWidgets('DocumentInlineAdBanner renders when unsubscribed and hides when subscribed', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    SubscriptionService().clear();
+    SubscriptionService().isSubscribedForTesting = false;
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: DocumentInlineAdBanner(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(SmartAdBanner), findsOneWidget);
+
+    SubscriptionService().isSubscribedForTesting = true;
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: DocumentInlineAdBanner(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(SmartAdBanner), findsNothing);
+    SubscriptionService().isSubscribedForTesting = false;
+    await tester.pump();
+  });
+
+  testWidgets('MaterialViewerScreen displays inline banner ad in multi-image document when unsubscribed', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    SubscriptionService().clear();
+    ProgressService().clear();
+    SubscriptionService().isSubscribedForTesting = false;
+
+    final multiImageJson = '["https://example.com/1.png", "https://example.com/2.png", "https://example.com/3.png", "https://example.com/4.png", "https://example.com/5.png", "https://example.com/6.png"]';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MaterialViewerScreen(
+          title: 'Multi Image Doc',
+          fileUrl: multiImageJson,
+        ),
+      ),
+    );
+
+    // Pump multiple times to allow async _prepareFile() to complete and set _isLoading = false
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Scroll down to reveal item index 5 (DocumentInlineAdBanner)
+    await tester.drag(find.byType(ListView), const Offset(0, -7000));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Verify DocumentInlineAdBanner widget exists in multi-image list view
+    expect(find.byType(DocumentInlineAdBanner), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets('MaterialViewerScreen does not show ad after the last page in a 5-page document', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    SubscriptionService().clear();
+    ProgressService().clear();
+    SubscriptionService().isSubscribedForTesting = false;
+
+    // Exactly 5 pages -> no ad should be added after page 5 because it is the last page
+    final multiImage5Json = '["https://example.com/1.png", "https://example.com/2.png", "https://example.com/3.png", "https://example.com/4.png", "https://example.com/5.png"]';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MaterialViewerScreen(
+          title: '5 Page Doc',
+          fileUrl: multiImage5Json,
+        ),
+      ),
+    );
+
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.byType(DocumentInlineAdBanner, skipOffstage: false), findsNothing);
   });
 }

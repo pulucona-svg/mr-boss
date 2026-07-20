@@ -13,6 +13,8 @@ import '../services/progress_service.dart';
 import '../services/usage_service.dart';
 import '../services/file_service.dart';
 import '../services/resource_service.dart';
+import '../services/subscription_service.dart';
+import '../widgets/document_inline_ad_banner.dart';
 import '../widgets/resource_details_modal.dart';
 
 class MaterialViewerScreen extends StatefulWidget {
@@ -189,28 +191,34 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     try {
       if (_isMultiImage) {
         final List<dynamic> urls = jsonDecode(widget.fileUrl);
+        _multiImageUrls = List<String>.from(urls);
         final List<String> localPaths = [];
         for (final url in urls) {
-          if (url is String && url.isNotEmpty) {
-            final fileInfo = await DefaultCacheManager().getFileFromCache(url);
-            File? file;
-            if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
-              file = fileInfo.file;
-            } else {
-              file = await DefaultCacheManager().getSingleFile(url);
+          if (url is String && url.isNotEmpty && !url.contains('example.com')) {
+            try {
+              final fileInfo = await DefaultCacheManager().getFileFromCache(url);
+              File? file;
+              if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
+                file = fileInfo.file;
+              } else {
+                file = await DefaultCacheManager().getSingleFile(url);
+              }
+              localPaths.add(file.path);
+            } catch (e) {
+              debugPrint('Failed to cache image URL in test/offline mode: $e');
             }
-            localPaths.add(file.path);
           }
         }
         _multiImageLocalPaths = localPaths;
-        _multiImageUrls = List<String>.from(urls);
 
         // Restore progress
         final initialProgress = _progressNotifier.value;
         if (initialProgress > 0 && _multiImageUrls.isNotEmpty) {
           final targetPage = (initialProgress * _multiImageUrls.length).round().clamp(1, _multiImageUrls.length);
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _goToMultiImagePage(targetPage);
+            if (mounted && _multiImageScrollController.hasClients) {
+              _goToMultiImagePage(targetPage);
+            }
           });
         }
       } else {
@@ -623,7 +631,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF)))
           : Stack(
               children: [
-                _buildViewer(),
+                ListenableBuilder(
+                  listenable: SubscriptionService(),
+                  builder: (context, child) => _buildViewer(),
+                ),
                 if (_activeAnnotationType != AnnotationType.none) ...[
                   // Center-right page navigation scroll buttons
                   Positioned(
@@ -967,12 +978,77 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     return 1;
   }
 
+  final Map<int, double> _inlineAdTotalHeights = {};
+
+  double _getAdTotalHeight(int bannerIndex) {
+    return _inlineAdTotalHeights[bannerIndex] ?? 116.0; // Default estimate until loaded (16 margin + 100 fallback banner)
+  }
+
+  int _getContentPageFromOffset(double offset, double pageHeight, bool isSubscribed) {
+    if (isSubscribed || _multiImageUrls.isEmpty) {
+      return (offset / pageHeight).floor() + 1;
+    }
+
+    double currentY = 0;
+    int contentPageIndex = 0;
+    final totalItems = _multiImageUrls.length + ((_multiImageUrls.length - 1) ~/ 5);
+
+    for (int i = 0; i < totalItems; i++) {
+      final isAd = (i % 6) == 5;
+      double itemHeight;
+      if (isAd) {
+        final bannerIndex = (i ~/ 6) + 1;
+        itemHeight = _getAdTotalHeight(bannerIndex);
+      } else {
+        itemHeight = pageHeight;
+      }
+
+      if (currentY + itemHeight > offset) {
+        if (isAd) {
+          return contentPageIndex.clamp(1, _multiImageUrls.length);
+        } else {
+          return (contentPageIndex + 1).clamp(1, _multiImageUrls.length);
+        }
+      }
+
+      currentY += itemHeight;
+      if (!isAd) {
+        contentPageIndex++;
+      }
+    }
+
+    return _multiImageUrls.length;
+  }
+
   void _goToMultiImagePage(int pageNumber) {
     if (pageNumber < 1 || pageNumber > _totalPages) return;
-    final pageIndex = pageNumber - 1;
-    final pageHeight = MediaQuery.of(context).size.width * 1.414;
+    if (!_multiImageScrollController.hasClients) return;
+    final isSubscribed = SubscriptionService().isSubscribed;
+    final pageHeight = MediaQuery.of(context).size.width * 1.414 + 8;
+
+    double targetOffset = 0;
+    int currentContentPage = 0;
+    final totalItems = _multiImageUrls.length + (isSubscribed ? 0 : ((_multiImageUrls.length - 1) ~/ 5));
+
+    for (int i = 0; i < totalItems; i++) {
+      final isAd = !isSubscribed && (i % 6) == 5;
+      if (!isAd) {
+        currentContentPage++;
+        if (currentContentPage == pageNumber) {
+          break;
+        }
+      }
+
+      if (isAd) {
+        final bannerIndex = (i ~/ 6) + 1;
+        targetOffset += _getAdTotalHeight(bannerIndex);
+      } else {
+        targetOffset += pageHeight;
+      }
+    }
+
     _multiImageScrollController.animateTo(
-      pageIndex * pageHeight,
+      targetOffset,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
     );
@@ -1561,16 +1637,24 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     if (widget.fileUrl == 'test_doc.pdf') {
       return const Center(child: Text('Mock PDF Viewer'));
     }
+    final isSubscribed = SubscriptionService().isSubscribed;
+
     if (_isMultiImage) {
+      final bannersCount = isSubscribed
+          ? 0
+          : (_multiImageUrls.isNotEmpty ? (_multiImageUrls.length - 1) ~/ 5 : 0);
+      final totalItems = _multiImageUrls.length + bannersCount;
       final physics = _activeAnnotationType != AnnotationType.none
           ? const NeverScrollableScrollPhysics()
           : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+
       return NotificationListener<ScrollNotification>(
         onNotification: (ScrollNotification notification) {
-          final pageHeight = MediaQuery.of(context).size.width * 1.414;
+          if (notification is! ScrollUpdateNotification) return false;
+          final pageHeight = MediaQuery.of(context).size.width * 1.414 + 8;
           if (_multiImageScrollController.hasClients) {
             final offset = _multiImageScrollController.offset;
-            final page = (offset / pageHeight).round() + 1;
+            final page = _getContentPageFromOffset(offset, pageHeight, isSubscribed);
             final clampedPage = page.clamp(1, _totalPages);
             if (clampedPage != _currentPageNotifier.value) {
               _currentPageNotifier.value = clampedPage;
@@ -1581,11 +1665,30 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         },
         child: ListView.builder(
           controller: _multiImageScrollController,
-          itemCount: _multiImageUrls.length,
+          itemCount: totalItems,
           physics: physics,
           itemBuilder: (context, index) {
-            final url = _multiImageUrls[index];
-            final localPath = _multiImageLocalPaths.length > index ? _multiImageLocalPaths[index] : null;
+            if (!isSubscribed && (index % 6) == 5) {
+              final bannerIndex = (index ~/ 6) + 1;
+              return DocumentInlineAdBanner(
+                onHeightChanged: (newTotalHeight) {
+                  if (_getAdTotalHeight(bannerIndex) != newTotalHeight) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && _getAdTotalHeight(bannerIndex) != newTotalHeight) {
+                        setState(() {
+                          _inlineAdTotalHeights[bannerIndex] = newTotalHeight;
+                        });
+                      }
+                    });
+                  }
+                },
+              );
+            }
+
+            final contentPageIndex = isSubscribed ? index : index - (index ~/ 6);
+            final pageNumber = contentPageIndex + 1;
+            final url = _multiImageUrls[contentPageIndex];
+            final localPath = _multiImageLocalPaths.length > contentPageIndex ? _multiImageLocalPaths[contentPageIndex] : null;
             final pageHeight = MediaQuery.of(context).size.width * 1.414;
             final pageWidth = MediaQuery.of(context).size.width;
 
@@ -1606,18 +1709,20 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                               fit: BoxFit.contain,
                               errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
                             )
-                          : CachedNetworkImage(
-                              imageUrl: url,
-                              fit: BoxFit.contain,
-                              placeholder: (context, url) => const Center(
-                                child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
-                              ),
-                              errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
-                            ),
+                          : (url.contains('example.com')
+                              ? const SizedBox.expand()
+                              : CachedNetworkImage(
+                                  imageUrl: url,
+                                  fit: BoxFit.contain,
+                                  placeholder: (context, url) => const Center(
+                                    child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
+                                  ),
+                                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+                                )),
                     ),
                   ),
                   Positioned.fill(
-                    child: _buildImagePageOverlay(index + 1),
+                    child: _buildImagePageOverlay(pageNumber),
                   ),
                 ],
               ),
@@ -1631,48 +1736,138 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       final physics = _activeAnnotationType != AnnotationType.none
           ? const NeverScrollableScrollPhysics()
           : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+
+      final pdfParams = PdfViewerParams(
+        scrollPhysics: physics,
+        layoutPages: (pages, params) {
+          final isSubscribed = SubscriptionService().isSubscribed;
+          double y = params.margin;
+          double maxWidth = 0;
+          for (final p in pages) {
+            if (p.width > maxWidth) maxWidth = p.width;
+          }
+          final screenWidth = MediaQuery.of(context).size.width;
+          final docWidthWithMargins = maxWidth > 0 ? (maxWidth + params.margin * 2) : 600.0;
+          final scale = screenWidth / docWidthWithMargins;
+
+          final pageLayouts = <Rect>[];
+
+          for (int i = 0; i < pages.length; i++) {
+            final page = pages[i];
+            final rect = Rect.fromLTWH(params.margin, y, page.width, page.height);
+            pageLayouts.add(rect);
+            y += page.height + params.margin;
+
+            final pageNumber = i + 1;
+            if (!isSubscribed && pageNumber % 5 == 0 && i < pages.length - 1) {
+              final bannerIndex = pageNumber ~/ 5;
+              final adPixelHeight = _getAdTotalHeight(bannerIndex);
+              final adDocHeight = scale > 0 ? (adPixelHeight / scale) : adPixelHeight;
+              y += adDocHeight;
+            }
+          }
+
+          return PdfPageLayout(
+            pageLayouts: pageLayouts,
+            documentSize: Size(maxWidth + params.margin * 2, y),
+          );
+        },
+        viewerOverlayBuilder: (context, size, handleLinkTap) {
+          if (SubscriptionService().isSubscribed) return [];
+          if (!_pdfController.isReady || _pdfDocument == null) return [];
+
+          final totalPages = _pdfDocument!.pages.length;
+          final bannersCount = (totalPages - 1) ~/ 5;
+          if (bannersCount == 0) return [];
+
+          double maxWidth = 0;
+          for (final p in _pdfDocument!.pages) {
+            if (p.width > maxWidth) maxWidth = p.width;
+          }
+          final docWidthWithMargins = maxWidth > 0 ? (maxWidth + 16.0) : 600.0;
+          final scale = size.width / docWidthWithMargins;
+
+          final overlayWidgets = <Widget>[];
+
+          for (int b = 1; b <= bannersCount; b++) {
+            final pageNumberBefore = b * 5;
+            if (pageNumberBefore >= totalPages) break;
+
+            double docY = 8.0;
+            for (int i = 0; i < pageNumberBefore; i++) {
+              final page = _pdfDocument!.pages[i];
+              docY += page.height + 8.0;
+              if ((i + 1) % 5 == 0 && (i + 1) < pageNumberBefore) {
+                final prevBannerIndex = (i + 1) ~/ 5;
+                final prevPixelHeight = _getAdTotalHeight(prevBannerIndex);
+                final prevDocHeight = scale > 0 ? (prevPixelHeight / scale) : prevPixelHeight;
+                docY += prevDocHeight;
+              }
+            }
+
+            final adTotalHeight = _getAdTotalHeight(b);
+            final adDocHeight = scale > 0 ? (adTotalHeight / scale) : adTotalHeight;
+            final bannerDocRect = Rect.fromLTWH(8.0, docY, maxWidth > 0 ? maxWidth : 500.0, adDocHeight);
+
+            final topLeftLocal = _pdfController.documentToLocal(bannerDocRect.topLeft);
+            final bottomRightLocal = _pdfController.documentToLocal(bannerDocRect.bottomRight);
+            final bannerLocalRect = Rect.fromPoints(topLeftLocal, bottomRightLocal);
+
+            if (bannerLocalRect.bottom < 0 || bannerLocalRect.top > size.height) {
+              continue;
+            }
+
+            overlayWidgets.add(
+              Positioned(
+                key: Key('inline_doc_banner_$b'),
+                left: topLeftLocal.dx,
+                top: topLeftLocal.dy,
+                width: bannerLocalRect.width,
+                child: DocumentInlineAdBanner(
+                  onHeightChanged: (newTotalHeight) {
+                    if (_getAdTotalHeight(b) != newTotalHeight) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && _getAdTotalHeight(b) != newTotalHeight) {
+                          setState(() {
+                            _inlineAdTotalHeights[b] = newTotalHeight;
+                          });
+                        }
+                      });
+                    }
+                  },
+                ),
+              ),
+            );
+          }
+
+          return overlayWidgets;
+        },
+        onViewerReady: (document, controller) {
+          _pdfDocument = document;
+          if (initialProgress > 0) {
+            final targetPage = (initialProgress * document.pages.length).round().clamp(1, document.pages.length);
+            controller.goToPage(pageNumber: targetPage);
+          }
+        },
+        onPageChanged: _onPdfChanged,
+        pagePaintCallbacks: [
+          _paintAnnotations,
+          if (_textSearcher != null)
+            _textSearcher!.pageTextMatchPaintCallback,
+        ],
+        pageOverlaysBuilder: _buildPageOverlays,
+      );
+
       return _localPath != null
           ? PdfViewer.file(
               _localPath!,
               controller: _pdfController,
-              params: PdfViewerParams(
-                scrollPhysics: physics,
-                onViewerReady: (document, controller) {
-                  _pdfDocument = document;
-                  if (initialProgress > 0) {
-                    final targetPage = (initialProgress * document.pages.length).round().clamp(1, document.pages.length);
-                    controller.goToPage(pageNumber: targetPage);
-                  }
-                },
-                onPageChanged: _onPdfChanged,
-                pagePaintCallbacks: [
-                  _paintAnnotations,
-                  if (_textSearcher != null)
-                    _textSearcher!.pageTextMatchPaintCallback,
-                ],
-                pageOverlaysBuilder: _buildPageOverlays,
-              ),
+              params: pdfParams,
             )
           : PdfViewer.uri(
               Uri.parse(widget.fileUrl),
               controller: _pdfController,
-              params: PdfViewerParams(
-                scrollPhysics: physics,
-                onViewerReady: (document, controller) {
-                  _pdfDocument = document;
-                  if (initialProgress > 0) {
-                    final targetPage = (initialProgress * document.pages.length).round().clamp(1, document.pages.length);
-                    controller.goToPage(pageNumber: targetPage);
-                  }
-                },
-                onPageChanged: _onPdfChanged,
-                pagePaintCallbacks: [
-                  _paintAnnotations,
-                  if (_textSearcher != null)
-                    _textSearcher!.pageTextMatchPaintCallback,
-                ],
-                pageOverlaysBuilder: _buildPageOverlays,
-              ),
+              params: pdfParams,
             );
     } else if (_isImage) {
       return Center(

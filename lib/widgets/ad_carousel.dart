@@ -204,6 +204,8 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
             final ad = _ads[index % _ads.length];
             final color = ad['color'] as Color;
 
+            final isCompact = widget.height < 140;
+
             return Stack(
               children: [
                 if (ad['type'] == 'video' && 
@@ -263,30 +265,32 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
                 ),
 
                 Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: isCompact ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8) : const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: isCompact 
+                                ? const EdgeInsets.symmetric(horizontal: 8, vertical: 2) 
+                                : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: color,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               (ad['title'] as String).toUpperCase(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 10,
+                                fontSize: isCompact ? 9 : 10,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 1.2,
                               ),
                             ),
                           ),
                           const Spacer(),
-                          const Icon(Icons.trending_up, color: Colors.white24, size: 20),
+                          Icon(Icons.trending_up, color: Colors.white24, size: isCompact ? 16 : 20),
                         ],
                       ),
                       const Spacer(),
@@ -296,14 +300,14 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
                           Expanded(
                             child: Text(
                               ad['subtitle']!,
-                              maxLines: 2,
+                              maxLines: isCompact ? 1 : 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 18,
+                                fontSize: isCompact ? 13 : 18,
                                 height: 1.2,
                                 fontWeight: FontWeight.w600,
-                                shadows: [
+                                shadows: const [
                                   Shadow(
                                     color: Colors.black45,
                                     offset: Offset(0, 2),
@@ -315,14 +319,16 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
                           ),
                           if (ad['contactUrl'] != null)
                             Padding(
-                              padding: const EdgeInsets.only(left: 12),
+                              padding: const EdgeInsets.only(left: 8),
                               child: ElevatedButton(
                                 onPressed: () => _launchContactUrl(ad['contactUrl']),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white.withValues(alpha: 0.2),
                                   foregroundColor: Colors.white,
                                   elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  padding: isCompact
+                                      ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+                                      : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   minimumSize: Size.zero,
                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   shape: RoundedRectangleBorder(
@@ -330,15 +336,15 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
                                     side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                                   ),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    FaIcon(FontAwesomeIcons.whatsapp, size: 14),
-                                    SizedBox(width: 4),
+                                    FaIcon(FontAwesomeIcons.whatsapp, size: isCompact ? 12 : 14),
+                                    const SizedBox(width: 4),
                                     Text(
                                       'Contact Us',
                                       style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: isCompact ? 11 : 13,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),

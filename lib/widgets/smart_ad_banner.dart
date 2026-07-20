@@ -5,7 +5,14 @@ import '../services/connectivity_service.dart';
 import 'ad_carousel.dart';
 
 class SmartAdBanner extends StatefulWidget {
-  const SmartAdBanner({super.key});
+  final double fallbackHeight;
+  final ValueChanged<Size>? onSizeChanged;
+
+  const SmartAdBanner({
+    super.key,
+    this.fallbackHeight = 100,
+    this.onSizeChanged,
+  });
 
   @override
   State<SmartAdBanner> createState() => _SmartAdBannerState();
@@ -13,39 +20,94 @@ class SmartAdBanner extends StatefulWidget {
 
 class _SmartAdBannerState extends State<SmartAdBanner> {
   BannerAd? _bannerAd;
+  AdSize? _loadedAdSize;
   bool _isAdLoaded = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadBannerAd();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadBannerAd();
+      }
+    });
   }
 
-  void _loadBannerAd() {
-    // Only load AdMob if online and NOT subscribed
-    if (!ConnectivityService().isOffline && !SubscriptionService().isSubscribed) {
+  Future<void> _loadBannerAd() async {
+    if (_isLoading) return;
+    if (ConnectivityService().isOffline || SubscriptionService().isSubscribed) {
+      if (mounted) {
+        widget.onSizeChanged?.call(Size(double.infinity, widget.fallbackHeight));
+      }
+      return;
+    }
+
+    _isLoading = true;
+    final double widthDouble = context.size?.width ?? (MediaQuery.maybeOf(context)?.size.width ?? 360.0);
+    final int width = widthDouble.truncate().clamp(1, 10000);
+
+    AdSize? adaptiveSize;
+    try {
+      adaptiveSize = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(width);
+    } catch (e) {
+      debugPrint('SmartAdBanner: [DEBUG] Failed to get adaptive banner size: $e');
+    }
+    if (!mounted) return;
+    final adSize = adaptiveSize ?? AdSize.banner;
+
+    try {
       _bannerAd = BannerAd(
         adUnitId: 'ca-app-pub-3940256099942544/6300978111', // Test ID
-        size: AdSize.banner,
+        size: adSize,
         request: const AdRequest(),
         listener: BannerAdListener(
           onAdLoaded: (ad) {
-            setState(() {
-              _isAdLoaded = true;
-            });
+            if (mounted) {
+              final loadedBanner = ad as BannerAd;
+              final size = Size(
+                loadedBanner.size.width.toDouble(),
+                loadedBanner.size.height.toDouble(),
+              );
+              setState(() {
+                _loadedAdSize = loadedBanner.size;
+                _isAdLoaded = true;
+                _isLoading = false;
+              });
+              widget.onSizeChanged?.call(size);
+            }
           },
           onAdFailedToLoad: (ad, error) {
             ad.dispose();
-            _isAdLoaded = false;
+            if (mounted) {
+              setState(() {
+                _isAdLoaded = false;
+                _bannerAd = null;
+                _isLoading = false;
+              });
+              widget.onSizeChanged?.call(Size(widthDouble, widget.fallbackHeight));
+            }
           },
         ),
-      )..load();
+      );
+      await _bannerAd!.load();
+    } catch (e) {
+      debugPrint('SmartAdBanner: [DEBUG] Failed to load AdMob banner: $e');
+      if (mounted) {
+        setState(() {
+          _isAdLoaded = false;
+          _isLoading = false;
+        });
+        widget.onSizeChanged?.call(Size(widthDouble, widget.fallbackHeight));
+      }
     }
   }
 
   @override
   void dispose() {
-    _bannerAd?.dispose();
+    try {
+      _bannerAd?.dispose().catchError((_) {});
+    } catch (_) {}
     super.dispose();
   }
 
@@ -57,27 +119,23 @@ class _SmartAdBannerState extends State<SmartAdBanner> {
         final isSubscribed = SubscriptionService().isSubscribed;
         final isOffline = ConnectivityService().isOffline;
 
-        // Requirement:
-        // Offline -> Manual asset ads
-        // Online + no package -> AdMob banner ads
-        // Active package -> Manual asset ads (REVERTED TO ASSET ADS)
-
-        // 1. If Online and NOT subscribed, try AdMob
-        if (!isOffline && !isSubscribed) {
-          if (_isAdLoaded && _bannerAd != null) {
-            return Container(
-              alignment: Alignment.center,
-              width: double.infinity,
-              height: _bannerAd!.size.height.toDouble(),
-              child: AdWidget(ad: _bannerAd!),
-            );
-          }
-          // Fallback to manual ads while loading or if AdMob fails
-          return const AdCarousel();
+        if (isSubscribed) {
+          return const SizedBox.shrink();
         }
 
-        // 2. If Offline OR Active Package, show ONLY manual asset ads
-        return const AdCarousel();
+        if (!isOffline && _isAdLoaded && _bannerAd != null && _loadedAdSize != null) {
+          return Center(
+            child: SizedBox(
+              width: _loadedAdSize!.width.toDouble(),
+              height: _loadedAdSize!.height.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            ),
+          );
+        }
+
+        return Center(
+          child: AdCarousel(height: widget.fallbackHeight),
+        );
       },
     );
   }
