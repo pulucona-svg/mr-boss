@@ -1,122 +1,106 @@
-import { NewsAggregatorService } from './services/news_aggregator_service';
+import { ImageKitUploadService } from './services/imagekit_upload_service';
+import { ViewerDocumentBuilder } from './services/viewer_document_builder';
+import { FirestorePublisher } from './services/firestore_publisher';
+import { CleanupService } from './services/cleanup_service';
+import { SyncScheduler } from './scheduler/sync_scheduler';
+import { NewsPublishingPipeline } from './services/news_publishing_pipeline';
 import { NormalizationService } from './services/normalization_service';
-import { DeduplicationService } from './services/deduplication_service';
 import { RankingService } from './services/ranking_service';
 import { ClusteringService } from './services/clustering_service';
 import { Logger } from './utils/logger';
-import { NewsApiArticle, NewsDataArticle, NormalizedNews, StoryCluster } from './models/news_article.model';
+import { NewsApiArticle, NormalizedNews } from './models/news_article.model';
 
-async function testEditorialEngine() {
-  Logger.logHeader('TESTING EDITORIAL & RANKING ENGINE PIPELINE');
+async function testCompleteStorageAndPublishingPipeline() {
+  Logger.logHeader('TESTING COMPLETE PHASE 3 STORAGE, PUBLISHING & SYNC PIPELINE');
 
-  const sampleNewsApiArticles: NewsApiArticle[] = [
-    // 1. Kenya Government & Education Story (Publisher A)
-    {
-      source: { id: 'daily-nation', name: 'Daily Nation' },
-      author: 'John Doe',
-      title: 'State House Announces National AI Curriculum for All Kenyan Universities',
-      description: 'The Government of Kenya has launched a nationwide artificial intelligence degree program across all public universities in Nairobi.',
-      url: 'https://nation.africa/kenya/news/state-house-announces-ai-curriculum-1001',
-      urlToImage: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3',
-      publishedAt: new Date(Date.now() - 3600 * 1000 * 1).toISOString(), // 1 hr ago
-      content: 'State House Nairobi has officially launched a nationwide AI degree program across public universities.',
-    },
-    // 2. Same story reported by Publisher B (Cluster match)
-    {
-      source: { id: 'the-star', name: 'The Star Kenya' },
-      author: 'Jane Smith',
-      title: 'Kenyan Universities Adopt National Artificial Intelligence Curriculum',
-      description: 'Higher education institutions in Kenya adopt national AI degree program.',
-      url: 'https://the-star.co.ke/news/2026-07-20-kenyan-universities-ai-curriculum',
-      urlToImage: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f',
-      publishedAt: new Date(Date.now() - 3600 * 1000 * 2).toISOString(),
-      content: 'Kenyan universities are adopting AI curriculum.',
-    },
-    // 3. Breaking Emergency Disaster Alert
-    {
-      source: { id: 'capital-fm', name: 'Capital FM' },
-      author: 'Alert Desk',
-      title: 'BREAKING: Heavy Floods Trigger Emergency Evacuations in Tana River County',
-      description: 'Emergency response teams have deployed boats as rising river levels flood villages in Tana River county.',
-      url: 'https://capitalfm.co.ke/news/breaking-heavy-floods-tana-river-1002',
-      urlToImage: 'https://images.unsplash.com/photo-1547683905-f686c993aae5',
-      publishedAt: new Date(Date.now() - 3600 * 1000 * 0.5).toISOString(), // 30 mins ago
-      content: 'Heavy flooding has forced hundreds of families to evacuate higher ground in Tana River.',
-    },
-    // 4. Technology Breakthrough Story
-    {
-      source: { id: 'techcrunch', name: 'TechCrunch' },
-      author: 'Alex Wilhelm',
-      title: 'Global Tech Breakthrough: Quantum Chip Achieves Record Processing Speeds',
-      description: 'Scientists announce a major breakthrough in quantum computing architecture.',
-      url: 'https://techcrunch.com/2026/07/20/quantum-chip-breakthrough',
-      urlToImage: 'https://images.unsplash.com/photo-1518770660439-4636190af475',
-      publishedAt: new Date(Date.now() - 3600 * 1000 * 5).toISOString(),
-      content: 'Researchers have built a room-temperature quantum processor.',
-    },
-    // 5. Health Alert Story
-    {
-      source: { id: 'business-daily', name: 'Business Daily' },
-      author: 'Mary Wanjiku',
-      title: 'Ministry of Health Issues National Advisory on Cholera Outbreak',
-      description: 'Health officials in Kenya urge strict sanitation standards across hospitals and food establishments.',
-      url: 'https://businessdailyafrica.com/bd/news/moh-advisory-cholera-1003',
-      urlToImage: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982',
-      publishedAt: new Date(Date.now() - 3600 * 1000 * 3).toISOString(),
-      content: 'The Ministry of Health has released safety directives for all counties.',
-    },
-  ];
+  const sampleArticle: NewsApiArticle = {
+    source: { id: 'standard-media', name: 'Standard Media' },
+    author: 'Jane Doe',
+    title: 'Kenya Unveils New Renewable Solar Grid Infrastructure in Rift Valley',
+    description: 'The Ministry of Energy has launched a massive solar grid expansion connecting rural schools and medical centres.',
+    url: 'https://standardmedia.co.ke/kenya/article/998877/new-solar-grid-rift-valley',
+    urlToImage: 'https://images.unsplash.com/photo-1509391365360-2e959784a276',
+    publishedAt: new Date().toISOString(),
+    content: 'The Ministry of Energy has officially commissioned a 50MW solar grid facility in the Rift Valley region. Local leaders commended the sustainable development initiative.',
+  };
 
-  const candidateArticles: NormalizedNews[] = [];
-
-  for (const raw of sampleNewsApiArticles) {
-    const norm = NormalizationService.normalizeNewsApiArticle(raw);
-    if (norm) {
-      candidateArticles.push(norm);
-    }
+  // 1. Normalize & Rank
+  const normalized: NormalizedNews | null = NormalizationService.normalizeNewsApiArticle(sampleArticle);
+  if (!normalized) {
+    Logger.error('Sample article normalization failed.');
+    return;
   }
 
-  // Calculate Importance Scores
-  for (const art of candidateArticles) {
-    art.importanceScore = RankingService.calculateImportanceScore(art);
-  }
+  normalized.importanceScore = RankingService.calculateImportanceScore(normalized);
+  const clusters = ClusteringService.clusterArticles([normalized]);
 
-  // Story Clustering
-  const clusters = ClusteringService.clusterArticles(candidateArticles);
+  // 2. Test ViewerDocumentBuilder
+  console.log('\n--- 1. TESTING ViewerDocumentBuilder ---');
+  const viewerDoc = ViewerDocumentBuilder.buildViewerDocument(
+    normalized,
+    normalized.imageUrl,
+    clusters[0]
+  );
+  console.log(JSON.stringify(viewerDoc, null, 2));
 
-  // Top Stories (Top 5)
-  const topStories = RankingService.selectTopStories(candidateArticles);
+  // 3. Test ImageKitUploadService
+  console.log('\n--- 2. TESTING ImageKitUploadService (Image & Viewer Upload) ---');
+  const imageResult = await ImageKitUploadService.uploadArticleImage(
+    normalized.imageUrl,
+    normalized.id
+  );
+  console.log('ImageUploadResult:', imageResult);
 
-  // Trending Topics (Top 10)
-  const { trendingPackageTopics } = RankingService.detectTrending(candidateArticles, clusters);
+  const viewerResult = await ImageKitUploadService.uploadViewerDocument(viewerDoc);
+  console.log('ViewerUploadResult:', viewerResult);
 
-  console.log('--- EDITORIAL ENGINE OUTPUT SUMMARY ---');
-  console.log(`- Total Candidate Articles : ${candidateArticles.length}`);
-  console.log(`- Total Clusters Formed    : ${clusters.length}`);
-  console.log(`- Top Stories Selected     : ${topStories.length}`);
-  console.log(`- Trending Topics Detected : ${trendingPackageTopics.length}`);
-
-  console.log('\n--- TOP 5 TOP STORIES ---');
-  topStories.forEach((art, i) => {
-    console.log(`[#${i + 1}] Importance: ${art.importanceScore} | ${art.title} (${art.sourceName})`);
-    console.log(`     Category: ${art.category} | Region: ${art.regionPriority} | ReadingTime: ${art.readingTime} min`);
-    console.log(`     ExpiresAt: ${art.expiresAt}`);
-    console.log(`     Keywords: ${art.keywords.join(', ')}`);
-    console.log(`     Summary (${art.editorialSummary.split(' ').length} words): ${art.editorialSummary}`);
-    console.log('---');
+  // 4. Test FirestorePublisher
+  console.log('\n--- 3. TESTING FirestorePublisher (Lightweight Metadata Document) ---');
+  const firestorePublished = await FirestorePublisher.publishArticleMetadata({
+    id: normalized.id,
+    title: normalized.title,
+    category: normalized.category,
+    secondaryCategories: normalized.secondaryCategories || [],
+    summary: normalized.summary,
+    editorialSummary: normalized.editorialSummary || normalized.summary,
+    thumbnailUrl: imageResult?.url || normalized.imageUrl,
+    imageKitFileId: imageResult?.fileId || 'ik_img_test',
+    viewerDocumentUrl: viewerResult?.url || 'ik_doc_test',
+    viewerDocumentId: viewerResult?.fileId || 'ik_doc_test',
+    source: normalized.sourceName,
+    publishedAt: normalized.publishedAt,
+    expiresAt: normalized.expiresAt,
+    collectedAt: normalized.collectedAt,
+    importanceScore: normalized.importanceScore || 0,
+    qualityScore: normalized.qualityScore || 0,
+    freshnessScore: normalized.freshnessScore || 0,
+    readingTime: normalized.readingTime || 2,
+    keywords: normalized.keywords || [],
+    regionPriority: normalized.regionPriority,
+    regionScore: normalized.regionScore,
+    clusterId: normalized.clusterId,
+    isTopStory: true,
+    topStoryRank: 1,
+    isTrending: true,
+    trendingRank: 1,
+    originalSourceUrl: normalized.sourceUrl,
+    status: 'published',
+    priority: 4,
   });
+  console.log('FirestorePublished:', firestorePublished);
 
-  console.log('\n--- STORY CLUSTERS & MORE COVERAGE ---');
-  clusters.forEach((cluster: StoryCluster) => {
-    console.log(`Cluster ID: ${cluster.clusterId} | Size: ${cluster.clusterSize}`);
-    console.log(`  Main Story: ${cluster.mainArticle.title} (${cluster.mainArticle.sourceName})`);
-    if (cluster.relatedArticles.length > 0) {
-      console.log(`  Related Coverage:`);
-      cluster.relatedArticles.forEach((r: NormalizedNews) => {
-        console.log(`    - ${r.title} (${r.sourceName})`);
-      });
-    }
-  });
+  // 5. Test CleanupService
+  console.log('\n--- 4. TESTING CleanupService (Expiration Cleanup) ---');
+  const cleanupStats = await CleanupService.executeCleanup();
+  console.log('CleanupStats:', cleanupStats);
+
+  // 6. Test NewsPublishingPipeline
+  console.log('\n--- 5. TESTING NewsPublishingPipeline & SyncScheduler ---');
+  const pipeline = new NewsPublishingPipeline();
+  console.log('NewsPublishingPipeline instance initialized successfully.');
+
+  const scheduler = new SyncScheduler();
+  console.log('SyncScheduler instance initialized successfully.');
 }
 
-testEditorialEngine();
+testCompleteStorageAndPublishingPipeline();
