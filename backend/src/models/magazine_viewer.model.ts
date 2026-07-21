@@ -113,4 +113,12 @@ export interface FirestoreNewsDocument {
   originalSourceUrl: string;
   status: 'published' | 'draft';
   priority: number;
+  imageUrls?: string[];
+  headline?: string;
+  article?: string;
+  background?: string;
+  analysis?: string;
+  whyItMatters?: string;
+  whatNext?: string;
+  aiGenerated?: boolean;
 }

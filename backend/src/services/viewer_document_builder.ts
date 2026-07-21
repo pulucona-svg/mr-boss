@@ -24,13 +24,21 @@ export class ViewerDocumentBuilder {
     const paragraphs =
       rawParagraphs.length > 0 ? rawParagraphs : [article.editorialSummary || article.summary];
 
-    // Images list
-    const images: ViewerImageItem[] = [
-      {
-        url: imageKitUrl || article.imageUrl,
-        caption: `Photo: ${article.sourceName} / ${article.title}`,
-      },
-    ];
+    // Images list (all unique relevant article images)
+    const imagesSet = new Set<string>();
+    if (imageKitUrl) imagesSet.add(imageKitUrl);
+    if (article.coverImage) imagesSet.add(article.coverImage);
+    if (article.imageUrl) imagesSet.add(article.imageUrl);
+    if (article.imageUrls) {
+      article.imageUrls.forEach((u) => {
+        if (u && u.trim().length > 0) imagesSet.add(u.trim());
+      });
+    }
+
+    const images: ViewerImageItem[] = Array.from(imagesSet).map((url) => ({
+      url,
+      caption: `Photo: ${article.sourceName} / ${article.title}`,
+    }));
 
     // Build structured Content Blocks (paragraphs & images positioned between paragraphs)
     const contentBlocks: ViewerContentBlock[] = [];
@@ -71,23 +79,8 @@ export class ViewerDocumentBuilder {
       }
     });
 
-    // Build Sections
-    const sections: ViewerSection[] = [
-      {
-        heading: "What's New?",
-        paragraphs: [article.editorialSummary || article.summary],
-      },
-      {
-        heading: 'Key Impact & Context',
-        paragraphs: [
-          `This ${article.category} report was published by ${article.sourceName} with regional priority on ${article.regionPriority}.`,
-        ],
-      },
-      {
-        heading: 'Detailed Coverage',
-        paragraphs: paragraphs,
-      },
-    ];
+    // Clean Sections (Preview cards appear strictly on Preview Screen, not in Full Article Viewer)
+    const sections: ViewerSection[] = [];
 
     // Related Articles from Story Cluster
     const relatedArticles: RelatedArticleSummary[] = [];

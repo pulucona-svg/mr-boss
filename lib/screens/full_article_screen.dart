@@ -153,6 +153,10 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
         ),
         actions: [
           IconButton(
+            icon: Icon(Icons.bookmark_border_rounded, color: textColor, size: 22),
+            onPressed: () {},
+          ),
+          IconButton(
             icon: Icon(Icons.share_outlined, color: textColor, size: 22),
             onPressed: () {},
           ),
@@ -453,11 +457,13 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
                 ),
               )),
 
-          // Structured Sections
-          if (doc.sections.isNotEmpty) ...[
+          // Structured Sections (excluding preview screen info cards)
+          if (doc.sections.where((s) => s.heading != "What's New?" && s.heading != "Key Impact & Context" && s.heading != "Detailed Coverage" && s.heading != "Who Benefits?").isNotEmpty) ...[
             const SizedBox(height: 16),
-            ...doc.sections.map((section) => _buildSection(
-                section, isDark, textColor, secondaryTextColor)),
+            ...doc.sections
+                .where((s) => s.heading != "What's New?" && s.heading != "Key Impact & Context" && s.heading != "Detailed Coverage" && s.heading != "Who Benefits?")
+                .map((section) => _buildSection(
+                    section, isDark, textColor, secondaryTextColor)),
           ],
 
           const SizedBox(height: 32),

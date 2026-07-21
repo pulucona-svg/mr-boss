@@ -86,14 +86,15 @@ export class RankingService {
       return b.qualityScore - a.qualityScore;
     });
 
-    const top5 = sorted.slice(0, 5);
+    const count = Math.min(sorted.length, Math.max(4, Math.min(5, sorted.length)));
+    const topStories = sorted.slice(0, count);
 
-    top5.forEach((art, index) => {
+    topStories.forEach((art, index) => {
       art.isTopStory = true;
       art.topStoryRank = index + 1;
     });
 
-    return top5;
+    return topStories;
   }
 
   /**

@@ -1,4 +1,5 @@
 import { ImageKitUploadService } from './services/imagekit_upload_service';
+import { GeminiService } from './services/gemini_service';
 import { ViewerDocumentBuilder } from './services/viewer_document_builder';
 import { FirestorePublisher } from './services/firestore_publisher';
 import { CleanupService } from './services/cleanup_service';
@@ -34,11 +35,20 @@ async function testCompleteStorageAndPublishingPipeline() {
   normalized.importanceScore = RankingService.calculateImportanceScore(normalized);
   const clusters = ClusteringService.clusterArticles([normalized]);
 
+  // 1b. Test GeminiService Enrichment
+  console.log('\n--- 0. TESTING GeminiService (AI Enrichment) ---');
+  const enrichedArticle = await GeminiService.generateMagazineArticle(normalized);
+  console.log('Enriched Headline:', enrichedArticle.headline);
+  console.log('Enriched Summary:', enrichedArticle.summary);
+  console.log('AI Generated Flag:', enrichedArticle.aiGenerated);
+  console.log('Why It Matters:', enrichedArticle.whyItMatters);
+  console.log('What Next:', enrichedArticle.whatNext);
+
   // 2. Test ViewerDocumentBuilder
   console.log('\n--- 1. TESTING ViewerDocumentBuilder ---');
   const viewerDoc = ViewerDocumentBuilder.buildViewerDocument(
-    normalized,
-    normalized.imageUrl,
+    enrichedArticle,
+    enrichedArticle.imageUrl,
     clusters[0]
   );
   console.log(JSON.stringify(viewerDoc, null, 2));

@@ -5,6 +5,8 @@ import { DeduplicationService } from './deduplication_service';
 import { RankingService } from './ranking_service';
 import { ClusteringService } from './clustering_service';
 import { ImageKitUploadService } from './imagekit_upload_service';
+import { ImageEnrichmentService } from './image_enrichment_service';
+import { GeminiService } from './gemini_service';
 import { ViewerDocumentBuilder } from './viewer_document_builder';
 import { FirestorePublisher } from './firestore_publisher';
 import { CleanupService } from './cleanup_service';
@@ -305,6 +307,14 @@ export class NewsPublishingPipeline {
     let firestorePublished = false;
 
     try {
+      // 0a. Gemini AI Enrichment Stage (Runs after classification, before ImageKit & Firestore publishing)
+      article = await GeminiService.generateMagazineArticle(article);
+
+      // 0b. Enrich article images dynamically (minimum 4 relevant images)
+      const clusterImages = cluster ? cluster.relatedArticles.map((r) => r.imageUrl).filter(Boolean) : [];
+      const enrichedImageUrls = await ImageEnrichmentService.enrichArticleImages(article, clusterImages);
+      article.imageUrls = enrichedImageUrls;
+
       // 1. Upload Cover Image to ImageKit (/mirror_laikipia/news/images/)
       uploadedImageResult = await ImageKitUploadService.uploadArticleImage(
         article.imageUrl,
@@ -317,6 +327,13 @@ export class NewsPublishingPipeline {
 
       const finalCoverImageUrl = uploadedImageResult.url;
       article.coverImage = finalCoverImageUrl;
+
+      // Ensure cover image is first in article.imageUrls
+      if (article.imageUrls && article.imageUrls.length > 0) {
+        article.imageUrls[0] = finalCoverImageUrl;
+      } else {
+        article.imageUrls = [finalCoverImageUrl];
+      }
 
       // 2. Build Article Viewer JSON Document & Upload to ImageKit (/mirror_laikipia/news/viewers/)
       const viewerDoc = ViewerDocumentBuilder.buildViewerDocument(
@@ -365,6 +382,14 @@ export class NewsPublishingPipeline {
         originalSourceUrl: article.sourceUrl,
         status: article.status || 'published',
         priority: article.priority || article.regionScore,
+        imageUrls: article.imageUrls,
+        headline: article.headline,
+        article: article.article,
+        background: article.background,
+        analysis: article.analysis,
+        whyItMatters: article.whyItMatters,
+        whatNext: article.whatNext,
+        aiGenerated: article.aiGenerated,
       };
 
       // 4. Publish Metadata to Firestore

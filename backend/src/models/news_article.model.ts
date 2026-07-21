@@ -88,10 +88,20 @@ export interface NormalizedNews {
   keywords: string[]; // Searchable index keywords
   clusterId?: string; // Story cluster ID
 
-  // Phase 2 readiness fields (ImageKit & Firebase Storage / Viewer)
+  // Phase 2 & AI Enrichment fields
   viewerDocumentId?: string;
   viewerUrl?: string;
   coverImage?: string;
+  imageUrls?: string[];
+
+  // Optional Gemini AI Enrichment fields
+  headline?: string;
+  article?: string;
+  background?: string;
+  analysis?: string;
+  whyItMatters?: string;
+  whatNext?: string;
+  aiGenerated?: boolean;
 }
 
 /**

@@ -13,6 +13,7 @@ dotenv.config({ path: envPath });
 export interface EnvironmentConfig {
   newsApiKey: string;
   newsDataApiKey: string;
+  geminiApiKey: string;
   imagekitPublicKey: string;
   imagekitPrivateKey: string;
   imagekitUrlEndpoint: string;
@@ -31,6 +32,7 @@ export interface EnvironmentConfig {
 export const config: EnvironmentConfig = {
   newsApiKey: process.env.NEWS_API_KEY || '',
   newsDataApiKey: process.env.NEWSDATA_API_KEY || '',
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
   imagekitPublicKey: process.env.IMAGEKIT_PUBLIC_KEY || 'public_9d7+UUqP7VYTwGH6jX21WoqlV24=',
   imagekitPrivateKey: process.env.IMAGEKIT_PRIVATE_KEY || 'private_JqSyDrlIVskksrPc2IhCmg00E8Y=',
   imagekitUrlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || 'https://ik.imagekit.io/ubgbitinve',

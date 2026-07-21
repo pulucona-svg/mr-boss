@@ -28,7 +28,9 @@ class ExploreScreen extends ConsumerStatefulWidget {
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   bool _isLoading = true;
   late PageController _pageController;
+  late PageController _topStoryPageController;
   late ScrollController _tabScrollController;
+  Timer? _topStoriesTimer;
 
   StreamSubscription<List<TopStory>>? _topStoriesSub;
   StreamSubscription<List<TrendingTopic>>? _trendingTopicsSub;
@@ -71,6 +73,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final validInitialIndex = initialIndex != -1 ? initialIndex : 0;
     
     _pageController = PageController(initialPage: validInitialIndex);
+    _topStoryPageController = PageController(initialPage: 1000);
     _tabScrollController = ScrollController();
     
     _subscribeToNewsStreams();
@@ -83,10 +86,28 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   @override
   void dispose() {
+    _topStoriesTimer?.cancel();
     _cancelNewsSubscriptions();
     _pageController.dispose();
+    _topStoryPageController.dispose();
     _tabScrollController.dispose();
     super.dispose();
+  }
+
+  void _startTopStoriesTimer() {
+    _topStoriesTimer?.cancel();
+    if (_topStories.length >= 2) {
+      _topStoriesTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (mounted && _topStoryPageController.hasClients && _topStories.isNotEmpty) {
+          final currentPage = _topStoryPageController.page?.round() ?? 1000;
+          _topStoryPageController.animateToPage(
+            currentPage + 1,
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    }
   }
 
   void _cancelNewsSubscriptions() {
@@ -151,7 +172,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     try {
       _topStoriesSub = repository.watchTopStories().listen(
         (stories) {
-          if (mounted) setState(() => _topStories = stories);
+          if (mounted) {
+            final Map<String, TopStory> uniqueMap = {};
+            for (final s in stories) {
+              if (!uniqueMap.containsKey(s.id)) {
+                uniqueMap[s.id] = s;
+              }
+            }
+            setState(() {
+              _topStories = uniqueMap.values.toList();
+            });
+            _startTopStoriesTimer();
+          }
         },
         onError: (_) {
           if (mounted) setState(() => _topStories = []);
@@ -696,9 +728,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         height: 220,
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         child: PageView.builder(
-          itemCount: _topStories.length,
+          controller: _topStoryPageController,
+          itemCount: 10000,
           itemBuilder: (context, index) {
-            final story = _topStories[index];
+            final realIndex = index % _topStories.length;
+            final story = _topStories[realIndex];
             return GestureDetector(
               onTap: () async {
                 final repository = ref.read(newsRepositoryProvider);
@@ -834,12 +868,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: List.generate(_topStories.length, (i) {
+                            final isSelected = i == realIndex;
                             return Container(
-                              width: i == index ? 16 : 6,
+                              width: isSelected ? 16 : 6,
                               height: 3,
                               margin: const EdgeInsets.symmetric(horizontal: 2),
                               decoration: BoxDecoration(
-                                color: i == index ? const Color(0xFF20C8FF) : Colors.white38,
+                                color: isSelected ? const Color(0xFF20C8FF) : Colors.white38,
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             );
