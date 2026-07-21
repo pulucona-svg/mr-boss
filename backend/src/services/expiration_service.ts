@@ -13,6 +13,8 @@ export class ExpirationService {
     Education: 72,
     Science: 72,
     Health: 48,
+    Nature: 48,
+    Culture: 48,
     Sports: 24,
     Entertainment: 24,
     World: 24,

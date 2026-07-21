@@ -172,14 +172,20 @@ export class NewsPublishingPipeline {
           const norm = raw.url
             ? NormalizationService.normalizeNewsApiArticle(raw)
             : NormalizationService.normalizeNewsDataArticle(raw);
-          if (norm) normalizedBackfill.push(norm);
+          if (norm) {
+            // Quality Preservation (Objective 7): Only include if article genuinely belongs to category 'cat'
+            const isRelevant = norm.category === cat || (norm.secondaryCategories && norm.secondaryCategories.includes(cat));
+            if (isRelevant) {
+              normalizedBackfill.push(norm);
+            }
+          }
         }
 
         const { uniqueArticles: uniqueBackfill } = DeduplicationService.deduplicate(normalizedBackfill);
         const activeUrlsBackfill = await FirestorePublisher.getActiveArticleUrls();
         const newBackfillToPublish = uniqueBackfill.filter((a) => !activeUrlsBackfill.has(a.sourceUrl));
 
-        Logger.info(`[BACKFILL] '${cat}': Found ${newBackfillToPublish.length} new candidate articles to publish.`);
+        Logger.info(`[BACKFILL] '${cat}': Found ${newBackfillToPublish.length} new genuinely relevant candidate articles to publish.`);
 
         for (const article of newBackfillToPublish) {
           const pubResult = await this.publishArticleTransactionally(article);
@@ -227,12 +233,18 @@ export class NewsPublishingPipeline {
     };
 
     for (const article of publishedArticles) {
-      categoryBreakdown[article.category] = (categoryBreakdown[article.category] || 0) + 1;
       regionBreakdown[article.regionPriority] =
         (regionBreakdown[article.regionPriority] || 0) + 1;
 
-      if (categoryNews[article.category]) {
-        categoryNews[article.category].push(article);
+      const assignedCategories = Array.from(
+        new Set([article.category, ...(article.secondaryCategories || [])])
+      );
+
+      for (const cat of assignedCategories) {
+        categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+        if (categoryNews[cat]) {
+          categoryNews[cat].push(article);
+        }
       }
     }
 
@@ -405,17 +417,21 @@ export class NewsPublishingPipeline {
       case 'Business':
         return 'business OR economy OR market OR finance OR trade OR stocks OR inflation OR bank';
       case 'Technology':
-        return 'technology OR tech OR software OR AI OR cyber OR smartphone OR digital OR app';
+        return 'technology OR tech OR software OR AI OR cyber OR smartphone OR digital OR app OR computing OR startups';
       case 'Education':
-        return 'education OR university OR school OR student OR learning OR exam OR teacher';
+        return 'education OR university OR school OR scholarship OR student OR learning OR exam OR KNEC OR KUCCPS';
       case 'Health':
-        return 'health OR hospital OR doctor OR medicine OR virus OR vaccine OR medical OR clinic';
+        return 'health OR hospital OR doctor OR medicine OR virus OR vaccine OR medical OR clinic OR healthcare';
       case 'Sports':
         return 'sports OR football OR soccer OR basketball OR tennis OR marathon OR league OR match';
       case 'Entertainment':
-        return 'entertainment OR movie OR music OR film OR celebrity OR show OR song OR artist';
+        return 'entertainment OR movie OR music OR film OR celebrity OR show OR song OR artist OR streaming';
       case 'Science':
-        return 'science OR space OR NASA OR astronomy OR climate OR research OR physics OR planet';
+        return 'science OR research OR astronomy OR biology OR physics OR planet OR laboratory OR space';
+      case 'Nature':
+        return 'wildlife OR conservation OR forests OR biodiversity OR climate OR environment OR parks OR oceans OR pollution';
+      case 'Culture':
+        return 'culture OR heritage OR festival OR museum OR traditions OR religion OR languages OR arts OR fashion';
       case 'World':
         return 'world OR global OR international OR Europe OR Asia OR UN OR foreign';
       case 'Africa':
@@ -423,7 +439,7 @@ export class NewsPublishingPipeline {
       case 'Kenya':
         return 'Kenya OR Kenyan OR Nairobi OR Mombasa OR Eldoret OR Ruto OR Laikipia';
       case 'Breaking':
-        return 'breaking OR urgent OR alert OR flash OR disaster OR tragedy';
+        return 'breaking OR urgent OR alert OR flash OR disaster OR tragedy OR emergency';
       default:
         return category;
     }

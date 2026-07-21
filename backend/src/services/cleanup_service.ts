@@ -16,6 +16,8 @@ export const CATEGORY_RETENTION_LIMITS: Record<string, number> = {
   Entertainment: 20,
   Education: 20,
   Science: 20,
+  Nature: 20,
+  Culture: 20,
   Breaking: 20,
   trendingTopics: 10,
   topStories: 5,

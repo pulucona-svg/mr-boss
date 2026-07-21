@@ -123,35 +123,78 @@ class NewsRepositoryImpl implements NewsRepository {
           return dateB.compareTo(dateA);
         });
 
-        return mergedList;
+        return _interleaveByCategory(mergedList);
       } catch (_) {
-        return latestArticles;
+        return _interleaveByCategory(latestArticles);
       }
     });
+  }
+
+  List<NewsArticle> _interleaveByCategory(List<NewsArticle> articles) {
+    if (articles.length <= 2) return articles;
+
+    final List<NewsArticle> result = [];
+    final List<NewsArticle> remaining = List.from(articles);
+
+    while (remaining.isNotEmpty) {
+      final first = remaining.removeAt(0);
+      result.add(first);
+
+      if (remaining.isEmpty) break;
+
+      final lastCategory = first.category;
+      int nextIdx = remaining.indexWhere((art) => art.category != lastCategory);
+
+      if (nextIdx != -1) {
+        result.add(remaining.removeAt(nextIdx));
+      } else {
+        result.add(remaining.removeAt(0));
+      }
+    }
+
+    return result;
   }
 
   @override
   Stream<List<String>> watchCategories() {
     return _firestore.collection('categoryNews').snapshots().map((snapshot) {
-      final categories = snapshot.docs
+      final backendCategories = snapshot.docs
           .map((doc) => doc.id)
           .where((id) => id.isNotEmpty)
           .toList();
 
-      if (categories.isEmpty) {
-        return const [
-          'Breaking',
-          'Politics',
-          'Business',
-          'Technology',
-          'Health',
-          'Sports',
-          'Kenya',
-          'Africa',
-          'World'
-        ];
+      final List<String> allCategories = ['For You', 'Trending', 'Latest'];
+
+      const defaultCategoryOrder = [
+        'Kenya',
+        'World',
+        'Sports',
+        'Technology',
+        'Business',
+        'Health',
+        'Education',
+        'Science',
+        'Nature',
+        'Culture',
+        'Entertainment',
+        'Africa',
+        'Politics',
+        'Breaking',
+      ];
+
+      for (final cat in defaultCategoryOrder) {
+        if (!allCategories.contains(cat)) {
+          allCategories.add(cat);
+        }
       }
-      return categories;
+
+      for (final cat in backendCategories) {
+        if (!allCategories.contains(cat)) {
+          allCategories.add(cat);
+        }
+      }
+
+      return allCategories;
     });
   }
 

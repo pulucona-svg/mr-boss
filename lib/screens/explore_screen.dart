@@ -133,8 +133,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _categoriesSub = repository.watchCategories().listen(
         (categories) {
           if (mounted && categories.isNotEmpty) {
+            final List<String> safeCategories = ['For You', 'Trending', 'Latest'];
+            for (final cat in categories) {
+              if (!safeCategories.contains(cat)) {
+                safeCategories.add(cat);
+              }
+            }
             setState(() {
-              _categories = categories;
+              _categories = safeCategories;
             });
           }
         },
@@ -226,6 +232,33 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  String _getShortTrendingTitle(String title) {
+    final clean = title.trim();
+    if (clean.length <= 20) return clean;
+
+    final lower = clean.toLowerCase();
+    if (lower.contains('manchester united') || lower.contains('man united')) {
+      return 'Man United';
+    }
+    if (lower.contains('rhino') || lower.contains('conservation')) {
+      return 'Rhino Conservation';
+    }
+    if (lower.contains('university') || lower.contains('funding')) {
+      return 'University Funding';
+    }
+
+    String t = clean.replaceAll(RegExp(r'^(Government|Kenya|Ministry|Official|Breaking|Update|New|Report|Launches|Announces|Unveils)\s+', caseSensitive: false), '');
+    final words = t.split(RegExp(r'\s+'));
+    if (words.length <= 3) return words.join(' ');
+
+    String shortStr = '${words[0]} ${words[1]}';
+    if (words.length > 2 && (shortStr.length + words[2].length + 1) <= 20) {
+      shortStr += ' ${words[2]}';
+    }
+
+    return shortStr;
   }
 
   Widget _buildEmptyState({
@@ -612,7 +645,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             }
             final actualIndex = index - (index ~/ 6);
             final isStretched = actualIndex % 7 == 0;
-            return _buildNewsCard(context, articles[actualIndex], isDark, textColor, isStretched: isStretched);
+            return _buildNewsCard(context, articles[actualIndex], isDark, textColor, isStretched: isStretched, displayedCategory: category);
           },
         );
       }
@@ -666,128 +699,155 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           itemCount: _topStories.length,
           itemBuilder: (context, index) {
             final story = _topStories[index];
-            return Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Stack(
-                  children: [
-                    CachedNetworkImage(
-                      imageUrl: story.imageUrl,
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => const Skeleton(borderRadius: 24),
-                      errorWidget: (context, url, error) => Container(
-                        color: Colors.grey.shade900,
-                        child: const Icon(Icons.error, color: Colors.white38),
+            return GestureDetector(
+              onTap: () async {
+                final repository = ref.read(newsRepositoryProvider);
+                NewsArticle? article = await repository.getArticle(story.id);
+                article ??= NewsArticle(
+                  id: story.id,
+                  title: story.title,
+                  category: story.category,
+                  imageUrls: story.imageUrl.isNotEmpty ? [story.imageUrl] : [],
+                  source: story.source,
+                  timeAgo: story.timeAgo,
+                  content: story.summary,
+                  coverImage: story.imageUrl,
+                );
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => NewsDetailScreen(
+                        article: article!,
+                        initialImageIndex: 0,
                       ),
                     ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.85),
-                          ],
+                  );
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Stack(
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: story.imageUrl,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const Skeleton(borderRadius: 24),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey.shade900,
+                          child: const Icon(Icons.error, color: Colors.white38),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF20C8FF),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          children: [
-                            Text(
-                              'TOP STORY',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.auto_awesome, color: Colors.white, size: 10),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const Positioned(
-                      top: 12,
-                      right: 12,
-                      child: Icon(Icons.more_vert, color: Colors.white, size: 20),
-                    ),
-                    Positioned(
-                      bottom: 20,
-                      left: 16,
-                      right: 16,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            story.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${story.source} • ${story.timeAgo}',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 11,
-                                ),
-                              ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.85),
                             ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      bottom: 8,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(_topStories.length, (i) {
-                          return Container(
-                            width: i == index ? 16 : 6,
-                            height: 3,
-                            margin: const EdgeInsets.symmetric(horizontal: 2),
-                            decoration: BoxDecoration(
-                              color: i == index ? const Color(0xFF20C8FF) : Colors.white38,
-                              borderRadius: BorderRadius.circular(2),
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF20C8FF),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Text(
+                                'TOP STORY',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.auto_awesome, color: Colors.white, size: 10),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Icon(Icons.more_vert, color: Colors.white, size: 20),
+                      ),
+                      Positioned(
+                        bottom: 20,
+                        left: 16,
+                        right: 16,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              story.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          );
-                        }),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${story.source} • ${story.timeAgo}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        bottom: 8,
+                        left: 0,
+                        right: 0,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(_topStories.length, (i) {
+                            return Container(
+                              width: i == index ? 16 : 6,
+                              height: 3,
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              decoration: BoxDecoration(
+                                color: i == index ? const Color(0xFF20C8FF) : Colors.white38,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -879,7 +939,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                           Icon(topic.icon, color: topic.gradientColors[0], size: 16),
                           const SizedBox(width: 8),
                           Text(
-                            topic.title,
+                            _getShortTrendingTitle(topic.title),
                             style: TextStyle(
                               color: textColor,
                               fontSize: 13,
@@ -951,7 +1011,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 }
 
-Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Color textColor, {bool isStretched = false}) {
+Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Color textColor, {bool isStretched = false, String? displayedCategory}) {
+  final categoryBadgeText = displayedCategory ?? article.category;
   if (isStretched) {
     return GestureDetector(
       onTap: () {
@@ -1003,7 +1064,7 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      article.category,
+                      categoryBadgeText,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 9,
@@ -1092,7 +1153,7 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  article.category,
+                  categoryBadgeText,
                   style: const TextStyle(
                     color: Color(0xFF20C8FF),
                     fontSize: 10,
@@ -1244,30 +1305,80 @@ class NewsDetailScreen extends StatefulWidget {
 
 class _NewsDetailScreenState extends State<NewsDetailScreen> {
   late PageController _pageController;
+  late ScrollController _scrollController;
   late int _currentPage;
+  bool _hasAutoScrolled = false;
 
   @override
   void initState() {
     super.initState();
     _currentPage = widget.initialImageIndex;
     _pageController = PageController(initialPage: widget.initialImageIndex);
+    _scrollController = ScrollController();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasAutoScrolled && mounted) {
+        _hasAutoScrolled = true;
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (_scrollController.hasClients && mounted) {
+            final maxScroll = _scrollController.position.maxScrollExtent;
+            _scrollController.animateTo(
+              maxScroll,
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOut,
+            );
+          }
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final galleryImages = getFourRelevantImages(
+      widget.article.imageUrls,
+      widget.article.category,
+      widget.article.title,
+    );
+
+    final Map<String, String> infoCards = {};
+    if (widget.article.details.containsKey("What's New?")) {
+      infoCards["What's New?"] = widget.article.details["What's New?"]!;
+    } else {
+      infoCards["What's New?"] = "Key highlights and latest developments surrounding ${widget.article.title}.";
+    }
+
+    if (widget.article.details.containsKey("Key Impact & Context")) {
+      infoCards["Key Impact & Context"] = widget.article.details["Key Impact & Context"]!;
+    } else if (widget.article.details.containsKey("Who Benefits?")) {
+      infoCards["Key Impact & Context"] = widget.article.details["Who Benefits?"]!;
+    } else {
+      infoCards["Key Impact & Context"] = "Broader economic, social, and policy implications for ${widget.article.category} stakeholders.";
+    }
+
+    if (widget.article.details.containsKey("Detailed Coverage")) {
+      infoCards["Detailed Coverage"] = widget.article.details["Detailed Coverage"]!;
+    } else if (widget.article.details.containsKey("Stay Informed")) {
+      infoCards["Detailed Coverage"] = widget.article.details["Stay Informed"]!;
+    } else {
+      infoCards["Detailed Coverage"] = "Comprehensive analysis, verified sources, and real-time updates provided by ${widget.article.source}.";
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF070716),
       body: CustomScrollView(
+        controller: _scrollController,
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
-            expandedHeight: 400, // Increased height for better "fully open" feel
+            expandedHeight: 400,
             pinned: true,
             stretch: true,
             backgroundColor: const Color(0xFF070716),
@@ -1295,7 +1406,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                 children: [
                   PageView.builder(
                     controller: _pageController,
-                    itemCount: widget.article.imageUrls.length,
+                    itemCount: galleryImages.length,
                     onPageChanged: (index) {
                       setState(() {
                         _currentPage = index;
@@ -1303,7 +1414,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                     },
                     itemBuilder: (context, index) {
                       return CachedNetworkImage(
-                        imageUrl: widget.article.imageUrls[index],
+                        imageUrl: galleryImages[index],
                         fit: BoxFit.cover,
                         placeholder: (context, url) => const Skeleton(),
                         errorWidget: (context, url, error) => Container(
@@ -1321,7 +1432,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.transparent,
-                            const Color(0xFF070716).withOpacity(0.5),
+                            const Color(0xFF070716).withValues(alpha: 0.5),
                             const Color(0xFF070716),
                           ],
                           stops: const [0.7, 0.9, 1.0],
@@ -1329,29 +1440,28 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                       ),
                     ),
                   ),
-                  if (widget.article.imageUrls.length > 1)
-                    Positioned(
-                      bottom: 20,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(
-                          widget.article.imageUrls.length,
-                          (index) => Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _currentPage == index
-                                  ? const Color(0xFF20C8FF)
-                                  : Colors.white.withOpacity(0.4),
-                            ),
+                  Positioned(
+                    bottom: 20,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        galleryImages.length,
+                        (index) => Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _currentPage == index
+                                ? const Color(0xFF20C8FF)
+                                : Colors.white.withValues(alpha: 0.4),
                           ),
                         ),
                       ),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -1362,106 +1472,134 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.article.category,
-                    style: const TextStyle(
-                      color: Color(0xFF20C8FF),
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                  // 1. Headline
                   Text(
                     widget.article.title,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'More Information',
-                    style: TextStyle(
-                      color: Color(0xFF20C8FF),
-                      fontSize: 18,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
+                      height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  // 2. Category
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF20C8FF).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF20C8FF).withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Text(
+                      widget.article.category.toUpperCase(),
+                      style: const TextStyle(
+                        color: Color(0xFF20C8FF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 3. Source & Time
+                  Row(
+                    children: [
+                      const Icon(Icons.newspaper_rounded, color: Colors.white70, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${widget.article.source} • ${widget.article.timeAgo}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 4. Article Preview Summary
                   Text(
                     widget.article.content,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 14,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 15,
                       height: 1.6,
                     ),
                   ),
                   const SizedBox(height: 24),
-                  ...widget.article.details.entries.map((entry) {
+
+                  // 5. Information Cards (What's New?, Key Impact & Context, Detailed Coverage)
+                  const Divider(color: Colors.white10, height: 32),
+                  ...infoCards.entries.map((entry) {
                     IconData icon;
-                    switch (entry.key) {
-                      case 'What\'s New?':
-                        icon = Icons.group_outlined;
-                        break;
-                      case 'Who Benefits?':
-                        icon = Icons.shield_outlined;
-                        break;
-                      case 'Key Date':
-                        icon = Icons.calendar_today_outlined;
-                        break;
-                      case 'Stay Informed':
-                        icon = Icons.info_outline;
-                        break;
-                      default:
-                        icon = Icons.info_outline;
+                    if (entry.key == "What's New?") {
+                      icon = Icons.auto_awesome_rounded;
+                    } else if (entry.key == "Key Impact & Context") {
+                      icon = Icons.insights_rounded;
+                    } else {
+                      icon = Icons.library_books_rounded;
                     }
+
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF181739),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white10),
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF12122A),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF181739),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFF20C8FF).withValues(alpha: 0.3)),
+                              ),
+                              child: Icon(icon, color: const Color(0xFF20C8FF), size: 20),
                             ),
-                            child: Icon(icon, color: const Color(0xFF20C8FF), size: 20),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    entry.key,
+                                    style: const TextStyle(
+                                      color: Color(0xFF20C8FF),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  entry.value,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontSize: 13,
-                                    height: 1.4,
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    entry.value,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.8),
+                                      fontSize: 13,
+                                      height: 1.45,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   }),
-                  const Divider(color: Colors.white10, height: 40),
+
+                  const SizedBox(height: 16),
+
+                  // 6. Read Article Button
                   Center(
                     child: Container(
                       width: double.infinity,
@@ -1473,7 +1611,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF20C8FF).withOpacity(0.3),
+                            color: const Color(0xFF20C8FF).withValues(alpha: 0.3),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -1498,14 +1636,21 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: const Text(
-                          'Read Article...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Read Article',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                          ],
                         ),
                       ),
                     ),

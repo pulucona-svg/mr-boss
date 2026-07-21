@@ -3,31 +3,35 @@
  */
 export type AppCategory =
   | 'Breaking'
+  | 'Kenya'
+  | 'Africa'
+  | 'World'
   | 'Politics'
   | 'Business'
   | 'Technology'
+  | 'Science'
   | 'Education'
   | 'Health'
-  | 'Sports'
+  | 'Nature'
+  | 'Culture'
   | 'Entertainment'
-  | 'Science'
-  | 'World'
-  | 'Africa'
-  | 'Kenya';
+  | 'Sports';
 
 export const APP_CATEGORIES: AppCategory[] = [
   'Breaking',
+  'Kenya',
+  'Africa',
+  'World',
   'Politics',
   'Business',
   'Technology',
+  'Science',
   'Education',
   'Health',
-  'Sports',
+  'Nature',
+  'Culture',
   'Entertainment',
-  'Science',
-  'World',
-  'Africa',
-  'Kenya',
+  'Sports',
 ];
 
 /**

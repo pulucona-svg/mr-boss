@@ -35,7 +35,7 @@ export class NormalizationService {
     }
 
     // 2. Perform Multi-Category & Regional Classification
-    const classification = ClassificationService.classifyDetailed(title, description);
+    const classification = ClassificationService.classifyDetailed(title, description, undefined, content);
 
     // 3. Calculate Quality & Freshness Scores
     const publishedAt = article.publishedAt || new Date().toISOString();
@@ -132,7 +132,8 @@ export class NormalizationService {
     const classification = ClassificationService.classifyDetailed(
       title,
       description,
-      article.category || undefined
+      article.category || undefined,
+      content
     );
 
     // 3. Calculate Quality & Freshness Scores

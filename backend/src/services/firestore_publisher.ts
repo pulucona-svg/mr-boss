@@ -2,7 +2,7 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import path from 'path';
 import { FirestoreNewsDocument } from '../models/magazine_viewer.model';
-import { StoryCluster, TrendingPackageTopic } from '../models/news_article.model';
+import { APP_CATEGORIES, StoryCluster, TrendingPackageTopic } from '../models/news_article.model';
 import { Logger } from '../utils/logger';
 import { config } from '../config/environment';
 
@@ -131,7 +131,7 @@ export class FirestorePublisher {
 
       for (const cat of targetCategories) {
         const catMap = FirestorePublisher.getSimulatedCollection(`categoryNews:${cat}`);
-        catMap.set(doc.id, doc);
+        catMap.set(doc.id, { ...doc, category: cat });
       }
 
       if (doc.isTopStory) {
@@ -149,10 +149,11 @@ export class FirestorePublisher {
       const latestRef = db.collection('latestNews').doc(doc.id);
       batch.set(latestRef, doc, { merge: true });
 
-      // 2. Write to categoryNews collection across all assigned categories
+      // 2. Write to categoryNews collection across all assigned categories (category set to container cat)
       for (const cat of targetCategories) {
         const categoryRef = db.collection('categoryNews').doc(cat).collection('articles').doc(doc.id);
-        batch.set(categoryRef, doc, { merge: true });
+        const categoryDoc = { ...doc, category: cat };
+        batch.set(categoryRef, categoryDoc, { merge: true });
       }
 
       // 3. Write to topStories if flagged
@@ -260,7 +261,7 @@ export class FirestorePublisher {
     const db = FirestorePublisher.getFirestore();
 
     const allCategories = Array.from(
-      new Set([...(category ? [category] : []), ...(secondaryCategories || [])])
+      new Set([...APP_CATEGORIES, ...(category ? [category] : []), ...(secondaryCategories || [])])
     );
 
     if (!db) {
