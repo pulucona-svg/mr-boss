@@ -6,6 +6,7 @@ import { RankingService } from './ranking_service';
 import { ClusteringService } from './clustering_service';
 import { ImageKitUploadService } from './imagekit_upload_service';
 import { ImageEnrichmentService } from './image_enrichment_service';
+import { SearchGroundingService } from './search_grounding_service';
 import { GeminiService } from './gemini_service';
 import { ViewerDocumentBuilder } from './viewer_document_builder';
 import { FirestorePublisher } from './firestore_publisher';
@@ -307,13 +308,74 @@ export class NewsPublishingPipeline {
     let firestorePublished = false;
 
     try {
-      // 0a. Gemini AI Enrichment Stage (Runs after classification, before ImageKit & Firestore publishing)
-      article = await GeminiService.generateMagazineArticle(article);
+      // 0a. Search Grounding Stage (Gather trustworthy context from verified publishers)
+      const searchStartTime = Date.now();
+      const groundingResult = await SearchGroundingService.performGroundingSearch(
+        article.title,
+        article.category,
+        article.keywords,
+        article.regionPriority
+      );
+      const searchDurationMs = Date.now() - searchStartTime;
 
-      // 0b. Enrich article images dynamically (minimum 4 relevant images)
+      // 0b. Gemini AI Enrichment Stage (Grounded magazine synthesis)
+      let retryCount = 0;
+      const geminiStartTime = Date.now();
+      article = await GeminiService.generateMagazineArticle(article, groundingResult);
+      let geminiDurationMs = Date.now() - geminiStartTime;
+
+      // 0c. Multi-Image Enrichment & Quality Validation Stage
       const clusterImages = cluster ? cluster.relatedArticles.map((r) => r.imageUrl).filter(Boolean) : [];
-      const enrichedImageUrls = await ImageEnrichmentService.enrichArticleImages(article, clusterImages);
-      article.imageUrls = enrichedImageUrls;
+      const imageStartTime = Date.now();
+      let imageResult = await ImageEnrichmentService.enrichArticleImagesDetailed(article, clusterImages);
+      let imageSearchDurationMs = Date.now() - imageStartTime;
+
+      article.imageUrls = imageResult.imageUrls;
+      article.images = imageResult.images;
+      article.imageSearchStatus = imageResult.status;
+
+      // 0d. Article Quality Validation & Single Retry
+      let isValid = this.validateEnrichedArticle(article);
+
+      if (!isValid && retryCount < 1) {
+        retryCount++;
+        Logger.warn(
+          `[QUALITY_VALIDATION_RETRY] Validation failed for article ID ${article.id}. Retrying Gemini AI & Image enrichment (Retry ${retryCount}/1)...`
+        );
+
+        const retryGeminiStart = Date.now();
+        article = await GeminiService.generateMagazineArticle(article, groundingResult);
+        geminiDurationMs += Date.now() - retryGeminiStart;
+
+        const retryImageStart = Date.now();
+        imageResult = await ImageEnrichmentService.enrichArticleImagesDetailed(article, clusterImages);
+        imageSearchDurationMs += Date.now() - retryImageStart;
+
+        article.imageUrls = imageResult.imageUrls;
+        article.images = imageResult.images;
+        article.imageSearchStatus = imageResult.status;
+
+        isValid = this.validateEnrichedArticle(article);
+      }
+
+      if (!isValid) {
+        Logger.warn(
+          `[QUALITY_VALIDATION_FALLBACK] Article ID ${article.id} did not pass strict AI quality checks after retry. Publishing original article content as fallback.`
+        );
+      }
+
+      const totalEnrichmentDurationMs = searchDurationMs + geminiDurationMs + imageSearchDurationMs;
+
+      // Detailed Logging of Enrichment Execution Metrics
+      Logger.info(`[ENRICHMENT_LOG] Article ID ${article.id}:
+        • Search Duration: ${searchDurationMs}ms
+        • Gemini Duration: ${geminiDurationMs}ms
+        • Image Search Duration: ${imageSearchDurationMs}ms
+        • Images Accepted: ${imageResult.imagesAccepted}
+        • Images Rejected: ${imageResult.imagesRejected}
+        • Sources Used: ${groundingResult.sourcesUsed.join(', ') || article.sourceName}
+        • Retry Count: ${retryCount}
+        • Total Enrichment Time: ${totalEnrichmentDurationMs}ms`);
 
       // 1. Upload Cover Image to ImageKit (/mirror_laikipia/news/images/)
       uploadedImageResult = await ImageKitUploadService.uploadArticleImage(
@@ -390,6 +452,11 @@ export class NewsPublishingPipeline {
         whyItMatters: article.whyItMatters,
         whatNext: article.whatNext,
         aiGenerated: article.aiGenerated,
+        groundedSources: article.groundedSources || groundingResult.sourcesUsed,
+        images: article.images,
+        imageCredits: article.images?.map((i) => i.credit || i.source).filter(Boolean) as string[],
+        imageSearchStatus: article.imageSearchStatus,
+        enrichmentVersion: article.enrichmentVersion || 'v2.0-grounded',
       };
 
       // 4. Publish Metadata to Firestore
@@ -468,5 +535,30 @@ export class NewsPublishingPipeline {
       default:
         return category;
     }
+  }
+
+  private validateEnrichedArticle(article: NormalizedNews): boolean {
+    const wordCount = (article.article || '').trim().split(/\s+/).length;
+    const hasHeadline = Boolean(article.headline && article.headline.trim().length > 0);
+    const hasSummary = Boolean(article.summary && article.summary.trim().length > 0);
+    const hasWordCount = wordCount >= 300;
+    const hasSixImages = Boolean(article.images && article.images.length >= 6);
+    const hasBackground = Boolean(article.background && article.background.trim().length > 0);
+    const hasAnalysis = Boolean(article.analysis && article.analysis.trim().length > 0);
+    const hasWhyItMatters = Boolean(article.whyItMatters && article.whyItMatters.trim().length > 0);
+    const hasWhatNext = Boolean(article.whatNext && article.whatNext.trim().length > 0);
+    const isAiGenerated = article.aiGenerated === true;
+
+    return (
+      hasHeadline &&
+      hasSummary &&
+      hasWordCount &&
+      hasSixImages &&
+      hasBackground &&
+      hasAnalysis &&
+      hasWhyItMatters &&
+      hasWhatNext &&
+      isAiGenerated
+    );
   }
 }

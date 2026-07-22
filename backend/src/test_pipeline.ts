@@ -1,4 +1,6 @@
 import { ImageKitUploadService } from './services/imagekit_upload_service';
+import { SearchGroundingService } from './services/search_grounding_service';
+import { ImageEnrichmentService } from './services/image_enrichment_service';
 import { GeminiService } from './services/gemini_service';
 import { ViewerDocumentBuilder } from './services/viewer_document_builder';
 import { FirestorePublisher } from './services/firestore_publisher';
@@ -35,14 +37,32 @@ async function testCompleteStorageAndPublishingPipeline() {
   normalized.importanceScore = RankingService.calculateImportanceScore(normalized);
   const clusters = ClusteringService.clusterArticles([normalized]);
 
-  // 1b. Test GeminiService Enrichment
-  console.log('\n--- 0. TESTING GeminiService (AI Enrichment) ---');
-  const enrichedArticle = await GeminiService.generateMagazineArticle(normalized);
+  // 1b. Test SearchGroundingService
+  console.log('\n--- 0a. TESTING SearchGroundingService ---');
+  const grounding = await SearchGroundingService.performGroundingSearch(
+    normalized.title,
+    normalized.category,
+    normalized.keywords,
+    normalized.regionPriority
+  );
+  console.log('Grounded Items Count:', grounding.items.length);
+  console.log('Sources Used:', grounding.sourcesUsed);
+
+  // 1c. Test GeminiService Enrichment with Grounded Research
+  console.log('\n--- 0b. TESTING GeminiService (AI Enrichment with Grounded Research) ---');
+  const enrichedArticle = await GeminiService.generateMagazineArticle(normalized, grounding);
   console.log('Enriched Headline:', enrichedArticle.headline);
   console.log('Enriched Summary:', enrichedArticle.summary);
   console.log('AI Generated Flag:', enrichedArticle.aiGenerated);
   console.log('Why It Matters:', enrichedArticle.whyItMatters);
   console.log('What Next:', enrichedArticle.whatNext);
+
+  // 1d. Test ImageEnrichmentService Detailed
+  console.log('\n--- 0c. TESTING ImageEnrichmentService (Multi-Image 6-10 Validation) ---');
+  const imageEnrichment = await ImageEnrichmentService.enrichArticleImagesDetailed(enrichedArticle);
+  console.log('Images Accepted:', imageEnrichment.imagesAccepted);
+  console.log('Images Rejected:', imageEnrichment.imagesRejected);
+  console.log('Image Search Status:', imageEnrichment.status);
 
   // 2. Test ViewerDocumentBuilder
   console.log('\n--- 1. TESTING ViewerDocumentBuilder ---');

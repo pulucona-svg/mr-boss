@@ -121,4 +121,16 @@ export interface FirestoreNewsDocument {
   whyItMatters?: string;
   whatNext?: string;
   aiGenerated?: boolean;
+  groundedSources?: string[];
+  images?: Array<{
+    url: string;
+    width?: number;
+    height?: number;
+    caption?: string;
+    credit?: string;
+    source?: string;
+  }>;
+  imageCredits?: string[];
+  imageSearchStatus?: 'completed' | 'partial' | 'failed';
+  enrichmentVersion?: string;
 }

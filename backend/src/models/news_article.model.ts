@@ -102,6 +102,20 @@ export interface NormalizedNews {
   whyItMatters?: string;
   whatNext?: string;
   aiGenerated?: boolean;
+
+  // Search Grounding & Multi-Image Enrichment fields
+  groundedSources?: string[];
+  images?: Array<{
+    url: string;
+    width?: number;
+    height?: number;
+    caption?: string;
+    credit?: string;
+    source?: string;
+  }>;
+  imageCredits?: string[];
+  imageSearchStatus?: 'completed' | 'partial' | 'failed';
+  enrichmentVersion?: string;
 }
 
 /**

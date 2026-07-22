@@ -1,5 +1,6 @@
 import { NormalizedNews } from '../models/news_article.model';
 import { Logger } from '../utils/logger';
+import { GroundedResearchResult } from './search_grounding_service';
 
 export interface GeminiMagazineOutput {
   headline: string;
@@ -17,11 +18,12 @@ export class GeminiService {
   private static readonly TIMEOUT_MS = 20000;
 
   /**
-   * Enriches a classified news article into an AI-powered magazine article using Google's Gemini API.
+   * Enriches a classified news article into an AI-powered magazine article using Google's Gemini API and grounded research.
    * If Gemini is unavailable, times out, or fails after retries, returns the original article intact.
    */
   public static async generateMagazineArticle(
-    article: NormalizedNews
+    article: NormalizedNews,
+    groundedResearch?: GroundedResearchResult
   ): Promise<NormalizedNews> {
     // 1. Performance check: Never process already enriched articles
     if (article.aiGenerated === true) {
@@ -40,7 +42,7 @@ export class GeminiService {
     const startTime = Date.now();
     Logger.info(`[GEMINI_START] Starting Gemini AI enrichment for article ID: ${article.id} ("${article.title}")`);
 
-    const prompt = GeminiService.buildPrompt(article);
+    const prompt = GeminiService.buildPrompt(article, groundedResearch);
 
     let attempt = 0;
     let delayMs = GeminiService.INITIAL_BACKOFF_MS;
@@ -59,6 +61,9 @@ export class GeminiService {
         }
 
         const parsed = result.output;
+        const groundedSourcesList = groundedResearch?.sourcesUsed && groundedResearch.sourcesUsed.length > 0
+          ? groundedResearch.sourcesUsed
+          : [article.sourceName];
 
         return {
           ...article,
@@ -72,6 +77,8 @@ export class GeminiService {
           whyItMatters: parsed.whyItMatters || '',
           whatNext: parsed.whatNext || '',
           aiGenerated: true,
+          groundedSources: groundedSourcesList,
+          enrichmentVersion: 'v2.0-grounded',
         };
       } catch (err: any) {
         const errorMsg = err.message || String(err);
@@ -96,39 +103,59 @@ export class GeminiService {
     return article;
   }
 
-  private static buildPrompt(article: NormalizedNews): string {
+  private static buildPrompt(
+    article: NormalizedNews,
+    groundedResearch?: GroundedResearchResult
+  ): string {
+    const researchFormatted = groundedResearch?.items && groundedResearch.items.length > 0
+      ? groundedResearch.items
+          .map(
+            (item, i) =>
+              `Grounding Source #${i + 1} (${item.publication}): "${item.headline}" - Summary: ${item.summary} [URL: ${item.url}]`
+          )
+          .join('\n')
+      : 'No additional external research items.';
+
     return `You are an elite, award-winning international magazine journalist and senior editor writing for a high-end digital publication.
 
 CRITICAL INSTRUCTIONS:
-1. Preserve absolute factual accuracy based on the source material provided below.
-2. NEVER fabricate facts, invent quotes, or create false statistics.
-3. NEVER copy copyrighted wording verbatim; rewrite with original, elegant editorial prose.
-4. Expand on the core facts using well-established public context, background knowledge, and expert analysis.
-5. Explain the historical or strategic background clearly.
-6. Explain why this story matters to readers, stakeholders, and the broader region.
-7. Outline likely future consequences, developments, or next steps ("What Next").
-8. Write in an engaging, sophisticated magazine style, producing between 300 and 500 words total across all section fields.
-9. Use natural, highly readable paragraphs that hook the reader immediately while maintaining a neutral, authoritative journalistic tone.
+1. Combine the primary article source AND the provided Google Grounded Research into ONE cohesive, comprehensive magazine article.
+2. Preserve absolute factual accuracy based on all provided source materials.
+3. NEVER fabricate facts, invent quotes, or create false statistics or imaginary interviewees.
+4. NEVER copy copyrighted wording verbatim; write with original, elegant editorial prose.
+5. Produce between 300 and 600 words total across all output fields.
+6. Write in natural, highly readable paragraphs with a strong hook, neutral journalistic tone, and sophisticated magazine style.
+7. Fill every section field with meaningful, high-value content:
+   - "headline": Strong, captivating magazine-style headline
+   - "summary": 2-sentence executive summary hooking the reader
+   - "article": Feature story (300-600 words, elegant prose, multi-paragraph)
+   - "background": Historical context, strategic backdrop, or key factors leading up to this event
+   - "analysis": Expert breakdown of broader economic, social, political, or policy implications
+   - "whyItMatters": Clear explanation of why this story is significant for readers and regional stakeholders
+   - "whatNext": Forward-looking assessment of likely future developments, upcoming decisions, or next steps
 
-SOURCE MATERIAL:
+PRIMARY ARTICLE SOURCE:
 - Title: "${article.title}"
 - Category: "${article.category}"
 - Region: "${article.regionPriority}"
-- Source Publisher: "${article.sourceName}"
+- Publisher: "${article.sourceName}"
 - Summary: "${article.summary}"
-- Existing Content / Details: "${article.content || article.editorialSummary || article.summary}"
+- Full Text / Snippet: "${article.content || article.editorialSummary || article.summary}"
+
+GOOGLE GROUNDED RESEARCH ITEMS:
+${researchFormatted}
 
 OUTPUT REQUIREMENT:
 Return STRICT JSON ONLY. Do NOT use markdown code fences (no \`\`\`json). Do NOT include HTML tags. Return a single JSON object matching this exact schema:
 
 {
-  "headline": "A captivating, magazine-style headline for the article",
+  "headline": "A captivating, magazine-style headline",
   "summary": "A polished 2-sentence executive summary hooking the reader",
-  "article": "The main feature story written in elegant, engaging magazine prose (2 to 3 paragraphs)",
+  "article": "The main feature story written in elegant, engaging magazine prose (300 to 600 words)",
   "background": "Historical context, strategic backdrop, or key factors leading up to this development",
-  "analysis": "In-depth expert analysis explaining the broader economic, social, or policy implications",
-  "whyItMatters": "Clear breakdown of why this event is significant for readers and regional stakeholders",
-  "whatNext": "Forward-looking assessment of anticipated upcoming actions, key decisions, or developments"
+  "analysis": "In-depth expert analysis explaining broader implications",
+  "whyItMatters": "Clear breakdown of why this event is significant",
+  "whatNext": "Forward-looking assessment of anticipated upcoming actions or next steps"
 }`;
   }
 
