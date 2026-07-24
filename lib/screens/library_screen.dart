@@ -1297,6 +1297,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               (context, index) {
                 final res = chunk[index];
                 return ResourceCard(
+                  key: ValueKey('${res.id}_${res.thumbnailStatus}_${res.thumbnailUrl}'),
                   resource: res,
                   showDownload: false,
                   onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),

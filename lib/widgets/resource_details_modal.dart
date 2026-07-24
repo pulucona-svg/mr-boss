@@ -285,8 +285,9 @@ class ResourceDetailsModal extends ConsumerWidget {
                       border: Border.all(color: dividerColor),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: thumbnailUrl.startsWith('http')
+                    child: thumbnailUrl.startsWith('http://') || thumbnailUrl.startsWith('https://')
                       ? CachedNetworkImage(
+                          key: ValueKey(thumbnailUrl),
                           imageUrl: thumbnailUrl,
                           fit: BoxFit.cover,
                           cacheKey: thumbnailUrl,
@@ -294,21 +295,27 @@ class ResourceDetailsModal extends ConsumerWidget {
                             color: dividerColor,
                             child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                           ),
-                          errorWidget: (context, url, error) => Container(
-                            color: dividerColor,
-                            child: Icon(Icons.broken_image, color: subTextColor),
-                          ),
+                          errorWidget: (context, url, error) {
+                            CachedNetworkImageProvider(url).evict();
+                            return Container(
+                              color: dividerColor,
+                              child: Icon(Icons.school_rounded, color: subTextColor),
+                            );
+                          },
                         )
-                      : thumbnailUrl.isNotEmpty 
+                      : (thumbnailUrl.isNotEmpty && File(thumbnailUrl).existsSync())
                           ? Image.file(
                               File(thumbnailUrl), 
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
                                 color: dividerColor,
-                                child: Icon(Icons.broken_image, color: subTextColor),
+                                child: Icon(Icons.school_rounded, color: subTextColor),
                               ),
                             )
-                          : Icon(Icons.description, color: subTextColor),
+                          : Container(
+                              color: dividerColor,
+                              child: Icon(Icons.school_rounded, color: subTextColor),
+                            ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(

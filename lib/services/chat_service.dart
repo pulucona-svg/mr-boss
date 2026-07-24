@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/message.dart';
 import 'persistence_service.dart';
 
@@ -96,8 +96,12 @@ class ChatService extends ChangeNotifier {
     // Simulate Status Transitions
     _simulateMessageStatus(messageId);
 
-    // Mock Admin Response Flow
-    _simulateAdminResponse();
+    // TASK 2: Gemini AI Help & Support Assistant Response
+    if (text.trim().isNotEmpty) {
+      _fetchGeminiAdminResponse(text.trim());
+    } else if (imageFile != null) {
+      _fetchGeminiAdminResponse("I uploaded an image regarding my issue.");
+    }
   }
 
   void _simulateMessageStatus(String messageId) async {
@@ -135,16 +139,46 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  void _simulateAdminResponse() async {
-    await Future.delayed(const Duration(seconds: 1));
+  /// TASK 2 — AI Powered Help & Support Assistant
+  void _fetchGeminiAdminResponse(String userText) async {
+    await Future.delayed(const Duration(milliseconds: 400));
     _isAdminTyping = true;
     notifyListeners();
 
-    await Future.delayed(const Duration(seconds: 5));
-    _isAdminTyping = false;
-    _receiveAdminMessage("Thank you for contacting Mirror Laikipia support. How can we help you today?");
-    notifyListeners();
+    try {
+      final history = _messages
+          .where((m) => !m.isDeleted && m.text.isNotEmpty)
+          .take(10)
+          .map((m) => {
+                'isMe': m.isMe,
+                'text': m.text,
+              })
+          .toList();
+
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('askGeminiHelpSupport')
+          .call({
+        'message': userText,
+        'history': history,
+      });
+
+      _isAdminTyping = false;
+
+      if (result.data != null && result.data['reply'] != null) {
+        final replyText = result.data['reply'].toString();
+        _receiveAdminMessage(replyText);
+      } else {
+        _receiveAdminMessage(
+            "Hello! I am the Mirror Laikipia AI Assistant. How can I help you with your account, uploads, downloads, or subscriptions today?");
+      }
+    } catch (e) {
+      _isAdminTyping = false;
+      debugPrint("Gemini Help Assistant error: $e");
+      _receiveAdminMessage(
+          "I'm having trouble connecting to the AI assistant right now. Please check your network connection and try again.");
+    }
   }
+
 
   void _receiveAdminMessage(String text) {
     final message = Message(

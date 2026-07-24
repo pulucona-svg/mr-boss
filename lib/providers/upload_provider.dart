@@ -382,10 +382,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
         resourceTitle = state.material.unitName;
       }
 
-      // Generate a thematic thumbnail URL based on the unit name
-      final thumbnailUrl = _getThematicThumbnail(state.material.unitName, state.material.unitCode);
-
-      // Perform the upload and get ImageKit data
+      // Perform main material upload to ImageKit
       final uploadResult = await _uploadService.uploadMaterial(
         state.material,
         (progress) {
@@ -396,10 +393,14 @@ class UploadNotifier extends StateNotifier<UploadState> {
       final String finalFileUrl = uploadResult['fileUrl'] ?? '';
       final String finalFileId = uploadResult['fileId'] ?? '';
       final String finalFileName = uploadResult['fileName'] ?? '';
-      final String finalThumbUrl = uploadResult['thumbnailUrl'] ?? thumbnailUrl;
-      final String finalThumbId = uploadResult['thumbnailId'] ?? '';
+      
+      // If user selected a custom thumbnail file, use it directly; otherwise set thumbnailStatus = "pending" and thumbnailUrl = ""
+      final bool hasCustomThumbnail = uploadResult['thumbnailUrl'] != null && (uploadResult['thumbnailUrl'] as String).isNotEmpty;
+      final String finalThumbUrl = hasCustomThumbnail ? uploadResult['thumbnailUrl']! : '';
+      final String finalThumbId = hasCustomThumbnail ? (uploadResult['thumbnailId'] ?? '') : '';
+      final String finalThumbStatus = hasCustomThumbnail ? 'completed' : 'pending';
 
-      // Create a Resource object and add to ResourceService
+      // Create a Resource object with pending thumbnailStatus for asynchronous background processing
       final resource = Resource(
         title: resourceTitle,
         fileName: finalFileName,
@@ -408,6 +409,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
         fileUrl: finalFileUrl,
         fileId: finalFileId,
         thumbnailId: finalThumbId,
+        thumbnailStatus: finalThumbStatus,
         unitName: state.material.unitName,
         unitCode: state.material.unitCode,
         year: state.material.yearOfUpload.toString(),
@@ -430,12 +432,13 @@ class UploadNotifier extends StateNotifier<UploadState> {
         isAnonymous: state.uploadMode == 'timetable' ? false : state.material.isAnonymous,
       );
 
+      // Publish to Firestore immediately
       await ResourceService().addUpload(resource, _courseService);
       
       // Force immediate refresh of user uploads to update list in UI
       await ResourceService().fetchUserUploadsOnce(state.material.uploaderId);
 
-      // Reset fields after successful upload
+      // Reset fields after successful upload and return success immediately
       reset();
       
       state = state.copyWith(
@@ -446,33 +449,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
     } catch (e) {
       state = state.copyWith(isUploading: false, error: e.toString());
     }
-  }
-
-  String _getThematicThumbnail(String unitName, String unitCode) {
-    final name = unitName.toLowerCase();
-    final code = unitCode.toLowerCase();
-    
-    // Map keywords to Unsplash search terms for academic subjects
-    if (name.contains('comput') || name.contains('digital') || name.contains('software') || code.startsWith('comp')) {
-      return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&q=80'; // Tech/CPU
-    } else if (name.contains('math') || name.contains('calculus') || name.contains('stat') || code.startsWith('math')) {
-      return 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=400&q=80'; // Math/Blackboard
-    } else if (name.contains('physics') || name.contains('electron') || code.startsWith('phys')) {
-      return 'https://images.unsplash.com/photo-1635070041078-e363dbe004041078e363dbe00?w=400&q=80'; // Physics/Atom
-    } else if (name.contains('biolog') || name.contains('anatomy') || name.contains('health') || code.startsWith('biol')) {
-      return 'https://images.unsplash.com/photo-1530213786676-41ad9f7736f6?w=400&q=80'; // Biology/Cells
-    } else if (name.contains('chem') || code.startsWith('chem')) {
-      return 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=400&q=80'; // Chemistry/Lab
-    } else if (name.contains('business') || name.contains('econom') || name.contains('account') || code.startsWith('bcom') || code.startsWith('econ')) {
-      return 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80'; // Business/Charts
-    } else if (name.contains('law') || name.contains('huri') || code.startsWith('huri')) {
-      return 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=400&q=80'; // Law/Gavel
-    } else if (name.contains('literat') || name.contains('hist') || name.contains('psychol')) {
-      return 'https://images.unsplash.com/photo-1491841573634-28140fc7ced7?w=400&q=80'; // Arts/Books
-    }
-    
-    // Default academic thumbnail
-    return 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=400&q=80';
   }
 
   void reset() {

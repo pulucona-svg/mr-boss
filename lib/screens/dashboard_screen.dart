@@ -892,6 +892,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                (context, index) {
                  final res = chunk[index];
                  return ResourceCard(
+                   key: ValueKey('${res.id}_${res.thumbnailStatus}_${res.thumbnailUrl}'),
                    resource: res,
                    onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
                    onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),

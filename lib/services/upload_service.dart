@@ -110,4 +110,37 @@ class UploadService {
         return 'GENERAL';
     }
   }
+
+  /// TASK 1: Intelligent Thumbnail Search for Uploaded Materials
+  Future<Map<String, String>?> fetchIntelligentThumbnail({
+    required String unitName,
+    required String materialType,
+    String? catType,
+    String? unitCode,
+  }) async {
+    try {
+      final result = await _functions.httpsCallable('searchThumbnailWithGemini').call({
+        'unitName': unitName,
+        'materialType': materialType,
+        'catType': catType,
+        'unitCode': unitCode,
+      });
+
+      if (result.data != null && result.data['success'] == true) {
+        final String? url = result.data['thumbnailUrl'];
+        final String? fileId = result.data['thumbnailId'];
+        if (url != null && url.isNotEmpty) {
+          return {
+            'thumbnailUrl': url,
+            'thumbnailId': fileId ?? '',
+          };
+        }
+      }
+    } catch (e) {
+      // Failure handling: thumbnail search error must never disrupt upload
+      print('Intelligent thumbnail search error: $e');
+    }
+    return null;
+  }
 }
+

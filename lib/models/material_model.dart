@@ -8,6 +8,7 @@ class Resource {
   final String type;
   final String thumbnailUrl;
   final String? thumbnailId;
+  final String thumbnailStatus;
   final String fileUrl;
   final String fileId;
   final String unitName;
@@ -44,6 +45,7 @@ class Resource {
     required this.type,
     required this.thumbnailUrl,
     this.thumbnailId,
+    this.thumbnailStatus = 'completed',
     required this.fileUrl,
     required this.fileId,
     required this.unitName,
@@ -86,13 +88,17 @@ class Resource {
 
   factory Resource.fromMap(Map<String, dynamic> map, String docId, {String? currentUserId}) {
     final likedByList = List<String>.from(map['likedBy'] ?? []);
+    final url = (map['thumbnailUrl'] ?? '').toString();
+    final status = (map['thumbnailStatus'] ?? (url.trim().isNotEmpty ? 'completed' : 'pending')).toString();
+
     return Resource(
       id: docId,
       title: map['title'] ?? '',
       fileName: map['fileName'] ?? '',
       type: map['type'] ?? '',
-      thumbnailUrl: map['thumbnailUrl'] ?? '',
+      thumbnailUrl: url,
       thumbnailId: map['thumbnailId'],
+      thumbnailStatus: status,
       fileUrl: map['fileUrl'] ?? '',
       fileId: map['fileId'] ?? '',
       unitName: map['unitName'] ?? '',
@@ -131,6 +137,7 @@ class Resource {
       'type': type,
       'thumbnailUrl': thumbnailUrl,
       'thumbnailId': thumbnailId,
+      'thumbnailStatus': thumbnailStatus,
       'fileUrl': fileUrl,
       'fileId': fileId,
       'unitName': unitName,
@@ -169,6 +176,7 @@ class Resource {
       type: type,
       thumbnailUrl: thumbnailUrl,
       thumbnailId: thumbnailId,
+      thumbnailStatus: thumbnailStatus,
       fileUrl: fileUrl,
       fileId: fileId,
       unitName: unitName,

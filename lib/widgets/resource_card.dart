@@ -263,6 +263,8 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('UPLOAD CARD:\nid=${widget.resource.id}\n\nstatus=${widget.resource.thumbnailStatus}\n\nthumbnailUrl=${widget.resource.thumbnailUrl}');
+
     final resourceService = ref.watch(resourceServiceProvider);
     final downloadService = ref.watch(downloadServiceProvider);
     final viewService = ref.watch(viewServiceProvider);
@@ -318,28 +320,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        widget.resource.thumbnailUrl.startsWith('http')
-                          ? CachedNetworkImage(
-                              imageUrl: widget.resource.thumbnailUrl,
-                              fit: BoxFit.cover,
-                              cacheKey: widget.resource.thumbnailUrl,
-                              placeholder: (context, url) => Container(
-                                color: Colors.white10,
-                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: Colors.white10,
-                                child: const Icon(Icons.broken_image, color: Colors.white24),
-                              ),
-                            )
-                          : Image.file(
-                              File(widget.resource.thumbnailUrl),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.white10,
-                                child: const Icon(Icons.broken_image, color: Colors.white24),
-                              ),
-                            ),
+                        _buildThumbnailWidget(),
                         
                         if (widget.isSelectionMode)
                           Container(
@@ -644,6 +625,106 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
           fontSize: 10,
           fontWeight: FontWeight.w900,
         ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailWidget() {
+    final url = widget.resource.thumbnailUrl.trim();
+
+    // 1. Priority 1: if thumbnailUrl exists (valid HTTP/HTTPS network URL) -> show thumbnailUrl
+    if (url.isNotEmpty && (url.startsWith('http://') || url.startsWith('https://'))) {
+      return CachedNetworkImage(
+        key: ValueKey(url),
+        imageUrl: url,
+        fit: BoxFit.cover,
+        cacheKey: url,
+        placeholder: (context, url) => Container(
+          color: const Color(0xFF140C37),
+          child: const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF20C8FF)),
+            ),
+          ),
+        ),
+        errorWidget: (context, url, error) {
+          // Evict failed cache entry on error so subsequent retries fetch fresh ImageKit URL
+          CachedNetworkImageProvider(url).evict();
+          return _buildPendingPlaceholder();
+        },
+      );
+    }
+
+    // 2. Priority 2: else if custom uploaded thumbnail exists (valid local file) -> show it
+    if (url.isNotEmpty) {
+      final localFile = File(url);
+      if (localFile.existsSync()) {
+        return Image.file(
+          localFile,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPendingPlaceholder(),
+        );
+      }
+    }
+
+    // 3. Priority 3: else -> show placeholder asset
+    return _buildPendingPlaceholder();
+  }
+
+  Widget _buildPendingPlaceholder() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1A1938), Color(0xFF0F0E26)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            Icons.menu_book_rounded,
+            size: 40,
+            color: Colors.white.withValues(alpha: 0.15),
+          ),
+          Positioned(
+            bottom: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF20C8FF).withValues(alpha: 0.3), width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: Color(0xFF20C8FF),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'AI Thumbnail...',
+                    style: TextStyle(
+                      color: const Color(0xFF20C8FF).withValues(alpha: 0.9),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
