@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'course_service.dart';
+import 'offline_upload_queue_service.dart';
 import '../models/material_model.dart';
 export '../models/material_model.dart' show Resource;
 
@@ -102,7 +103,12 @@ class ResourceService extends ChangeNotifier {
   }
 
   List<Resource> get userUploads {
-    return _userUploads;
+    final queued = OfflineUploadQueueService().queuedResources;
+    final combined = [...queued, ..._userUploads];
+    final seen = <String>{};
+    final unique = combined.where((r) => seen.add(r.id)).toList();
+    unique.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
+    return unique;
   }
 
   List<Resource> get trashedUploads => _userUploads.where((r) => r.status == 'declined').toList();

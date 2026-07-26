@@ -1123,8 +1123,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       
       bool matchesCategory;
       if (isAllCategory) {
-        // "All" now acts as a "Materials" tab, excluding timetables
-        matchesCategory = !isTimetableType;
+        // "All" displays every uploaded resource, including timetables
+        matchesCategory = true;
       } else if (isTimetableCategory) {
         // "Time tables" category only shows timetables
         matchesCategory = isTimetableType;

@@ -14,61 +14,81 @@ class UploadBottomSheet extends ConsumerStatefulWidget {
 }
 
 class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
-  final _unitNameController = TextEditingController();
-  final _unitCodeController = TextEditingController();
-  final _programController = TextEditingController();
-  final _programCodeController = TextEditingController();
-  final _lecturerController = TextEditingController();
-  final _yearOfPubController = TextEditingController();
+  String _activeTab = 'material'; // 'material' or 'timetable'
+
+  // Isolated Controllers for Materials Tab
+  final _materialUnitNameController = TextEditingController();
+  final _materialUnitCodeController = TextEditingController();
+  final _materialProgramController = TextEditingController();
+  final _materialLecturerController = TextEditingController();
+  final _materialYearOfPubController = TextEditingController();
+
+  // Isolated Controllers for Timetables Tab
+  final _timetableProgramController = TextEditingController();
+  final _timetableProgramCodeController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // Ensure the provider is reset every time the bottom sheet is opened
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.invalidate(uploadProvider);
+      ref.invalidate(materialUploadProvider);
+      ref.invalidate(timetableUploadProvider);
     });
   }
 
   @override
   void dispose() {
-    _unitNameController.dispose();
-    _unitCodeController.dispose();
-    _programController.dispose();
-    _programCodeController.dispose();
-    _lecturerController.dispose();
-    _yearOfPubController.dispose();
+    _materialUnitNameController.dispose();
+    _materialUnitCodeController.dispose();
+    _materialProgramController.dispose();
+    _materialLecturerController.dispose();
+    _materialYearOfPubController.dispose();
+
+    _timetableProgramController.dispose();
+    _timetableProgramCodeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final uploadState = ref.watch(uploadProvider);
-    final notifier = ref.read(uploadProvider.notifier);
+    final bool isMaterialMode = _activeTab == 'material';
 
-    // Synchronize controllers with state (for auto-fill and reset)
-    if (_unitNameController.text != uploadState.material.unitName) {
-      _unitNameController.text = uploadState.material.unitName;
-    }
-    if (_unitCodeController.text != uploadState.material.unitCode) {
-      _unitCodeController.text = uploadState.material.unitCode;
-    }
-    
-    // Synchronize programs and codes
-    if (uploadState.material.programs.isNotEmpty && _programController.text != uploadState.material.programs.first) {
-      _programController.text = uploadState.material.programs.first;
-    } else if (uploadState.material.programs.isEmpty && _programController.text.isNotEmpty) {
-      _programController.clear();
-    }
-    
-    if (uploadState.material.programCodes.isNotEmpty && _programCodeController.text != uploadState.material.programCodes.first) {
-      _programCodeController.text = uploadState.material.programCodes.first;
-    } else if (uploadState.material.programCodes.isEmpty && _programCodeController.text.isNotEmpty) {
-      _programCodeController.clear();
-    }
+    final uploadState = isMaterialMode
+        ? ref.watch(materialUploadProvider)
+        : ref.watch(timetableUploadProvider);
 
-    if (uploadState.material.lecturers.isEmpty && _lecturerController.text.isNotEmpty) {
-      _lecturerController.clear();
+    final notifier = isMaterialMode
+        ? ref.read(materialUploadProvider.notifier)
+        : ref.read(timetableUploadProvider.notifier);
+
+    // Synchronize controllers per tab
+    if (isMaterialMode) {
+      if (_materialUnitNameController.text != uploadState.material.unitName) {
+        _materialUnitNameController.text = uploadState.material.unitName;
+      }
+      if (_materialUnitCodeController.text != uploadState.material.unitCode) {
+        _materialUnitCodeController.text = uploadState.material.unitCode;
+      }
+      if (uploadState.material.programs.isNotEmpty && _materialProgramController.text != uploadState.material.programs.first) {
+        _materialProgramController.text = uploadState.material.programs.first;
+      } else if (uploadState.material.programs.isEmpty && _materialProgramController.text.isNotEmpty) {
+        _materialProgramController.clear();
+      }
+      if (uploadState.material.lecturers.isEmpty && _materialLecturerController.text.isNotEmpty) {
+        _materialLecturerController.clear();
+      }
+    } else {
+      if (uploadState.material.programs.isNotEmpty && _timetableProgramController.text != uploadState.material.programs.first) {
+        _timetableProgramController.text = uploadState.material.programs.first;
+      } else if (uploadState.material.programs.isEmpty && _timetableProgramController.text.isNotEmpty) {
+        _timetableProgramController.clear();
+      }
+
+      if (uploadState.material.programCodes.isNotEmpty && _timetableProgramCodeController.text != uploadState.material.programCodes.first) {
+        _timetableProgramCodeController.text = uploadState.material.programCodes.first;
+      } else if (uploadState.material.programCodes.isEmpty && _timetableProgramCodeController.text.isNotEmpty) {
+        _timetableProgramCodeController.clear();
+      }
     }
 
     return Container(
@@ -117,7 +137,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    _buildModeToggle(uploadState, notifier),
+                    _buildModeToggle(),
                   ],
                 ),
               ),
@@ -128,7 +148,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (uploadState.uploadMode == 'material') ...[
+                      if (isMaterialMode) ...[
                         _sectionTitle('Course Details'),
                         const SizedBox(height: 16),
                         
@@ -136,11 +156,11 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildTextField(
                           label: 'Unit Name',
                           hint: 'e.g. Digital Electronics',
-                          controller: _unitNameController,
+                          controller: _materialUnitNameController,
                           textCapitalization: TextCapitalization.sentences,
                           icon: Icons.book_outlined,
                           onChanged: notifier.updateUnitName,
-                          suggestions: ref.watch(unitNameSuggestionsProvider(_unitNameController.text)),
+                          suggestions: ref.watch(unitNameSuggestionsProvider(_materialUnitNameController.text)),
                         ),
                         
                         const SizedBox(height: 16),
@@ -149,11 +169,11 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildTextField(
                           label: 'Unit Code',
                           hint: 'e.g. COMP 212',
-                          controller: _unitCodeController,
+                          controller: _materialUnitCodeController,
                           textCapitalization: TextCapitalization.sentences,
                           icon: Icons.qr_code_outlined,
                           onChanged: notifier.updateUnitCode,
-                          suggestions: ref.watch(unitCodeSuggestionsProvider(_unitCodeController.text)),
+                          suggestions: ref.watch(unitCodeSuggestionsProvider(_materialUnitCodeController.text)),
                         ),
 
                         const SizedBox(height: 24),
@@ -164,9 +184,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildMultiSelectField(
                           label: 'Target Program(s)',
                           hint: 'Search or type program...',
-                          controller: _programController,
+                          controller: _materialProgramController,
                           icon: Icons.school_outlined,
-                          suggestions: ref.watch(programSuggestionsProvider(_programController.text)),
+                          suggestions: ref.watch(programSuggestionsProvider(_materialProgramController.text)),
                           selectedItems: uploadState.material.programs,
                           onToggle: notifier.toggleProgram,
                           chipColor: const Color(0xFF20C8FF),
@@ -178,9 +198,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildMultiSelectField(
                           label: 'Lecturer(s)',
                           hint: 'Search or type lecturer name...',
-                          controller: _lecturerController,
+                          controller: _materialLecturerController,
                           icon: Icons.person_search_outlined,
-                          suggestions: ref.watch(lecturerSuggestionsProvider(_lecturerController.text)),
+                          suggestions: ref.watch(lecturerSuggestionsProvider(_materialLecturerController.text)),
                           selectedItems: uploadState.material.lecturers,
                           onToggle: notifier.toggleLecturer,
                           chipColor: const Color(0xFF00A85A),
@@ -222,7 +242,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildTextField(
                           label: 'Target Program',
                           hint: 'Search or type program...',
-                          controller: _programController,
+                          controller: _timetableProgramController,
                           icon: Icons.school_outlined,
                           suggestions: ref.read(courseServiceProvider).programsList,
                           onChanged: notifier.updateProgram,
@@ -234,7 +254,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildTextField(
                           label: 'Program Code',
                           hint: 'e.g. COMP, ENSC, BIT...',
-                          controller: _programCodeController,
+                          controller: _timetableProgramCodeController,
                           icon: Icons.code_rounded,
                           suggestions: ref.read(courseServiceProvider).programCodes,
                           onChanged: notifier.updateProgramCode,
@@ -243,32 +263,6 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         const SizedBox(height: 16),
                       ],
                       
-                      if (uploadState.uploadMode == 'material') ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDropdown(
-                                label: 'Year of Study',
-                                value: uploadState.material.yearOfStudy,
-                                items: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
-                                onChanged: (val) => notifier.updateYearOfStudy(val!),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildDropdown(
-                                label: 'Semester',
-                                value: uploadState.material.semester,
-                                items: ['Semester 1', 'Semester 2'],
-                                onChanged: (val) => notifier.updateSemester(val!),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 24),
-                      ],
-
                       _sectionTitle('Material Info'),
                       const SizedBox(height: 16),
                       
@@ -294,16 +288,16 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                             child: _buildDropdown(
                               label: 'Type',
                               value: uploadState.material.materialType,
-                              items: uploadState.uploadMode == 'timetable'
-                                  ? ['Class Timetable', 'EXAM Timetable']
-                                  : ['Notes', 'CATs', 'Exams', 'Prac Manual', 'Supplementary Exams'],
+                              items: isMaterialMode
+                                  ? ['Notes', 'CATs', 'Exams', 'Prac Manual', 'Supplementary Exams']
+                                  : ['Class Timetable', 'EXAM Timetable'],
                               onChanged: (val) => notifier.updateMaterialType(val!),
                             ),
                           ),
                         ],
                       ),
 
-                      if (uploadState.material.materialType == 'CATs') ...[
+                      if (isMaterialMode && uploadState.material.materialType == 'CATs') ...[
                         const SizedBox(height: 16),
                         _buildDropdown(
                           label: 'CAT Selection',
@@ -317,7 +311,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                       _sectionTitle('Files'),
                       const SizedBox(height: 16),
                       
-                      if (uploadState.uploadMode == 'timetable')
+                      if (!isMaterialMode)
                         _buildFilePicker(
                           label: 'Timetable Image',
                           file: uploadState.material.file,
@@ -334,7 +328,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                           icon: Icons.picture_as_pdf_outlined,
                           onTap: () async {
                             await notifier.pickDocument();
-                            final err = ref.read(uploadProvider).error;
+                            final err = ref.read(materialUploadProvider).error;
                             if (err != null && context.mounted) {
                               ScaffoldMessenger.of(context).hideCurrentSnackBar();
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -354,7 +348,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                       // Auto-filled info
                       _buildInfoRow('Uploaded By', ref.watch(userProfileProvider).username),
                       
-                      if (uploadState.uploadMode == 'material') ...[
+                      if (isMaterialMode) ...[
                         const SizedBox(height: 12),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -378,7 +372,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                               onChanged: (val) {
                                 notifier.updateIsAnonymous(val);
                               },
-                              activeColor: const Color(0xFF20C8FF),
+                              activeThumbColor: const Color(0xFF20C8FF),
                             ),
                           ],
                         ),
@@ -407,7 +401,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     );
   }
 
-  Widget _buildModeToggle(UploadState state, UploadNotifier notifier) {
+  Widget _buildModeToggle() {
     return Container(
       height: 48,
       padding: const EdgeInsets.all(4),
@@ -419,18 +413,22 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: () => notifier.updateUploadMode('material'),
+              onTap: () {
+                setState(() {
+                  _activeTab = 'material';
+                });
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 decoration: BoxDecoration(
-                  color: state.uploadMode == 'material' ? const Color(0xFF00A85A) : Colors.transparent,
+                  color: _activeTab == 'material' ? const Color(0xFF00A85A) : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Center(
                   child: Text(
                     'materials',
                     style: TextStyle(
-                      color: state.uploadMode == 'material' ? Colors.white : Colors.white60,
+                      color: _activeTab == 'material' ? Colors.white : Colors.white60,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -441,18 +439,22 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
           ),
           Expanded(
             child: GestureDetector(
-              onTap: () => notifier.updateUploadMode('timetable'),
+              onTap: () {
+                setState(() {
+                  _activeTab = 'timetable';
+                });
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 decoration: BoxDecoration(
-                  color: state.uploadMode == 'timetable' ? const Color(0xFF00A85A) : Colors.transparent,
+                  color: _activeTab == 'timetable' ? const Color(0xFF00A85A) : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Center(
                   child: Text(
                     'Time tables',
                     style: TextStyle(
-                      color: state.uploadMode == 'timetable' ? Colors.white : Colors.white60,
+                      color: _activeTab == 'timetable' ? Colors.white : Colors.white60,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -462,67 +464,6 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDialogOverlay({
-    required String title,
-    required String message,
-    required VoidCallback onConfirm,
-    VoidCallback? onCancel,
-    required String confirmLabel,
-    String? cancelLabel,
-  }) {
-    return Container(
-      color: Colors.black87,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 32),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A2E),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (onCancel != null) ...[
-                    TextButton(
-                      onPressed: onCancel,
-                      child: Text(cancelLabel ?? 'CANCEL', style: const TextStyle(color: Colors.white38)),
-                    ),
-                    const SizedBox(width: 16),
-                  ],
-                  ElevatedButton(
-                    onPressed: onConfirm,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF20C8FF),
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(confirmLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -567,7 +508,6 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
           },
           onSelected: onChanged,
           fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
-            // Link external controller if provided
             if (controller != null && textController.text != controller.text) {
               textController.text = controller.text;
             }
@@ -649,12 +589,13 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: value,
+              value: items.contains(value) ? value : items.first,
               isExpanded: true,
               dropdownColor: const Color(0xFF1A1A2E),
-              style: const TextStyle(color: Colors.white),
-              items: items.map((item) {
-                return DropdownMenuItem(
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF20C8FF)),
+              items: items.map((String item) {
+                return DropdownMenuItem<String>(
                   value: item,
                   child: Text(item),
                 );
@@ -680,92 +621,15 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Autocomplete<String>(
-          optionsBuilder: (TextEditingValue textEditingValue) {
-            if (textEditingValue.text.isEmpty) {
-              return suggestions;
-            }
-            return suggestions.where((option) {
-              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-            });
+        _buildTextField(
+          label: label,
+          hint: hint,
+          controller: controller,
+          icon: icon,
+          onChanged: (val) {
+            setState(() {});
           },
-          onSelected: (String selection) {
-            onToggle(selection);
-            // We don't clear or unfocus here to keep the menu potentially visible
-          },
-          fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
-            return TextField(
-              controller: textController,
-              focusNode: focusNode,
-              style: const TextStyle(color: Colors.white),
-              onChanged: (val) => setState(() {}),
-              onSubmitted: (val) {
-                // Just clear and unfocus; don't add what's typed to the selection
-                textController.clear();
-                focusNode.unfocus(); 
-              },
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                prefixIcon: Icon(icon, color: const Color(0xFF20C8FF), size: 20),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              ),
-            );
-          },
-          optionsViewBuilder: (context, onSelected, options) {
-            return Align(
-              alignment: Alignment.topLeft,
-              child: Material(
-                color: const Color(0xFF1A1A2E),
-                elevation: 4,
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  width: MediaQuery.of(context).size.width - 48,
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  child: ListView.builder(
-                    padding: EdgeInsets.zero,
-                    shrinkWrap: true,
-                    itemCount: options.length,
-                    itemBuilder: (context, index) {
-                      final option = options.elementAt(index);
-                      final isSelected = selectedItems.contains(option);
-                      return ListTile(
-                        dense: true,
-                        leading: Icon(
-                          isSelected ? Icons.check_circle : Icons.add_circle_outline,
-                          color: isSelected ? const Color(0xFF20C8FF) : Colors.white24,
-                          size: 18,
-                        ),
-                        title: Text(
-                          option,
-                          style: TextStyle(
-                            color: isSelected ? const Color(0xFF20C8FF) : Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                        onTap: () {
-                          onToggle(option);
-                          // Do NOT call onSelected(option) because it closes the menu
-                          setState(() {}); 
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
-            );
-          },
+          suggestions: suggestions,
         ),
         if (selectedItems.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -774,10 +638,13 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             runSpacing: 8,
             children: selectedItems.map((item) {
               return Chip(
-                label: Text(item, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                label: Text(
+                  item,
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
                 backgroundColor: chipColor.withValues(alpha: 0.2),
-                side: BorderSide(color: chipColor, width: 0.5),
-                deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white),
+                side: BorderSide(color: chipColor.withValues(alpha: 0.5)),
+                deleteIcon: const Icon(Icons.close, size: 16, color: Colors.white70),
                 onDeleted: () => onToggle(item),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               );
@@ -909,6 +776,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
   }
 
   Widget _buildUploadButton(UploadState state, UploadNotifier notifier) {
+    final bool isMaterialMode = _activeTab == 'material';
+    final activeProvider = isMaterialMode ? materialUploadProvider : timetableUploadProvider;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: double.infinity,
@@ -916,11 +786,65 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
       child: ElevatedButton(
         onPressed: state.isValid ? () async {
           await notifier.upload();
-          if (mounted && ref.read(uploadProvider).isSuccess) {
+          if (!mounted) return;
+          final currentState = ref.read(activeProvider);
+          if (currentState.isQueuedOffline) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Material uploaded successfully! 🎉')),
+              SnackBar(
+                content: const Text(
+                  "You're offline. Your upload has been queued and will continue automatically when your internet connection is restored."
+                ),
+                backgroundColor: const Color(0xFFFF9800),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                duration: const Duration(seconds: 5),
+              ),
             );
             Navigator.pop(context);
+          } else if (currentState.isConnectionLost) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  "Connection lost. Your upload has been paused and will continue automatically once you're back online."
+                ),
+                backgroundColor: const Color(0xFFFF9800),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+            Navigator.pop(context);
+          } else if (currentState.isSuccess) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  currentState.uploadMode == 'timetable' 
+                    ? 'Timetable uploaded successfully! 🎉' 
+                    : 'Material uploaded successfully! 🎉'
+                ),
+                backgroundColor: const Color(0xFF00A85A),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              ),
+            );
+            Navigator.pop(context);
+          } else if (currentState.error != null) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(currentState.error!),
+                backgroundColor: Colors.redAccent,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              ),
+            );
           }
         } : null,
         style: ElevatedButton.styleFrom(
@@ -929,9 +853,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           disabledBackgroundColor: Colors.white.withValues(alpha: 0.05),
         ),
-        child: const Text(
-          'Upload Material',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        child: Text(
+          isMaterialMode ? 'Upload Material' : 'Upload Timetable',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),
     );

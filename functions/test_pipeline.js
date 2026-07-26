@@ -49,7 +49,7 @@ async function testAsyncBackgroundThumbnailQueue() {
   console.log('=============================================================================\n');
 
   const testMaterials = [
-    { unitName: "Organic Chemistry", materialType: "Notes", catType: null, unitCode: "CHEM 211" },
+    { unitName: "Intro' to Quantum Chemistry", materialType: "Notes", catType: null, unitCode: "CHEM 301" },
     { unitName: "Organic Chemistry", materialType: "Notes", catType: null, unitCode: "CHEM 211" },
     { unitName: "Human Anatomy", materialType: "Lab Practical", catType: null, unitCode: "ANAT 101" },
     { unitName: "Data Structures", materialType: "CATs", catType: "CAT 1", unitCode: "COMP 210" },

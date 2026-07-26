@@ -272,6 +272,46 @@ class UploadMaterialModel {
     };
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'unitName': unitName,
+      'unitCode': unitCode,
+      'programs': programs,
+      'programCodes': programCodes,
+      'lecturers': lecturers,
+      'yearOfStudy': yearOfStudy,
+      'semester': semester,
+      'yearOfPublication': yearOfPublication,
+      'uploadedBy': uploadedBy,
+      'uploaderId': uploaderId,
+      'yearOfUpload': yearOfUpload,
+      'materialType': materialType,
+      'catType': catType,
+      'fileFormat': fileFormat,
+      'isAnonymous': isAnonymous,
+    };
+  }
+
+  factory UploadMaterialModel.fromMap(Map<String, dynamic> map) {
+    return UploadMaterialModel(
+      unitName: (map['unitName'] ?? '').toString(),
+      unitCode: (map['unitCode'] ?? '').toString(),
+      programs: List<String>.from(map['programs'] ?? []),
+      programCodes: List<String>.from(map['programCodes'] ?? []),
+      lecturers: List<String>.from(map['lecturers'] ?? []),
+      yearOfStudy: (map['yearOfStudy'] ?? '1st Year').toString(),
+      semester: (map['semester'] ?? 'Semester 1').toString(),
+      yearOfPublication: map['yearOfPublication'] ?? DateTime.now().year,
+      uploadedBy: (map['uploadedBy'] ?? '').toString(),
+      uploaderId: (map['uploaderId'] ?? '').toString(),
+      yearOfUpload: map['yearOfUpload'] ?? DateTime.now().year,
+      materialType: (map['materialType'] ?? 'Notes').toString(),
+      catType: map['catType']?.toString(),
+      fileFormat: map['fileFormat']?.toString(),
+      isAnonymous: map['isAnonymous'] ?? false,
+    );
+  }
+
   UploadMaterialModel copyWith({
     String? unitName,
     String? unitCode,

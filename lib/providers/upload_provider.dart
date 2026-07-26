@@ -3,14 +3,11 @@ import '../models/material_model.dart';
 import '../services/course_service.dart';
 import '../services/file_service.dart';
 import '../services/upload_service.dart';
+import '../services/timetable_upload_service.dart';
 import '../services/resource_service.dart';
-import '../services/subscription_service.dart';
-import '../services/download_service.dart';
-import '../services/view_service.dart';
-import '../services/comment_service.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_upload_queue_service.dart';
 import 'providers.dart';
-
-// Service Providers - Consolidated in service_providers.dart
 
 // Upload State Class
 class UploadState {
@@ -20,6 +17,8 @@ class UploadState {
   final double uploadProgress;
   final String? error;
   final bool isSuccess;
+  final bool isQueuedOffline;
+  final bool isConnectionLost;
 
   UploadState({
     required this.material,
@@ -28,25 +27,27 @@ class UploadState {
     this.uploadProgress = 0.0,
     this.error,
     this.isSuccess = false,
+    this.isQueuedOffline = false,
+    this.isConnectionLost = false,
   });
 
   bool get isValid {
     if (uploadMode == 'material') {
-      return material.unitName.isNotEmpty &&
-          material.unitCode.isNotEmpty &&
+      return material.unitName.trim().isNotEmpty &&
+          material.unitCode.trim().isNotEmpty &&
           material.programs.isNotEmpty &&
-          material.yearOfStudy.isNotEmpty &&
-          material.semester.isNotEmpty &&
+          material.yearOfStudy.trim().isNotEmpty &&
+          material.semester.trim().isNotEmpty &&
           material.yearOfPublication > 1900 &&
-          material.materialType.isNotEmpty &&
+          material.materialType.trim().isNotEmpty &&
           (material.file != null || material.files.isNotEmpty) &&
           error == null;
     } else {
-      // Timetable mode: requires programs, programCodes, yearOfStudy, semester, files
+      // Timetable mode: requires programs, programCodes, yearOfStudy, semester, timetable image file
       return material.programs.isNotEmpty &&
           material.programCodes.isNotEmpty &&
-          material.yearOfStudy.isNotEmpty &&
-          material.semester.isNotEmpty &&
+          material.yearOfStudy.trim().isNotEmpty &&
+          material.semester.trim().isNotEmpty &&
           material.yearOfPublication > 1900 &&
           material.file != null;
     }
@@ -59,6 +60,8 @@ class UploadState {
     double? uploadProgress,
     String? error,
     bool? isSuccess,
+    bool? isQueuedOffline,
+    bool? isConnectionLost,
   }) {
     return UploadState(
       material: material ?? this.material,
@@ -67,6 +70,8 @@ class UploadState {
       uploadProgress: uploadProgress ?? this.uploadProgress,
       error: error,
       isSuccess: isSuccess ?? this.isSuccess,
+      isQueuedOffline: isQueuedOffline ?? this.isQueuedOffline,
+      isConnectionLost: isConnectionLost ?? this.isConnectionLost,
     );
   }
 }
@@ -76,10 +81,18 @@ class UploadNotifier extends StateNotifier<UploadState> {
   final CourseService _courseService;
   final FileService _fileService;
   final UploadService _uploadService;
+  final TimetableUploadService _timetableUploadService;
   final UserProfile _userProfile;
 
-  UploadNotifier(this._courseService, this._fileService, this._uploadService, this._userProfile)
-      : super(UploadState(
+  UploadNotifier(
+    this._courseService,
+    this._fileService,
+    this._uploadService,
+    this._timetableUploadService,
+    this._userProfile, {
+    String initialMode = 'material',
+  }) : super(UploadState(
+          uploadMode: initialMode,
           material: UploadMaterialModel(
             unitName: '',
             unitCode: '',
@@ -91,7 +104,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
             uploadedBy: _userProfile.username,
             uploaderId: _userProfile.uid,
             yearOfUpload: DateTime.now().year,
-            materialType: 'Notes',
+            materialType: initialMode == 'timetable' ? 'Class Timetable' : 'Notes',
           ),
         ));
 
@@ -115,7 +128,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
     Set<String> lecturers = Set.from(state.material.lecturers);
 
     if (units.isNotEmpty) {
-      // Aggregate all programs and lecturers for this unit
       programs.clear();
       programCodes.clear();
       lecturers.clear();
@@ -126,7 +138,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
         if (u.lecturerName.isNotEmpty) lecturers.add(u.lecturerName);
       }
       
-      // Use the first unit match for year and semester
       final firstMatch = units.first;
       yearOfStudy = _normalizeYear(firstMatch.yearOfStudy);
       semester = _normalizeSemester(firstMatch.semester);
@@ -190,14 +201,14 @@ class UploadNotifier extends StateNotifier<UploadState> {
     if (y == '2' || y.toLowerCase().startsWith('2nd')) return '2nd Year';
     if (y == '3' || y.toLowerCase().startsWith('3rd')) return '3rd Year';
     if (y == '4' || y.toLowerCase().startsWith('4th')) return '4th Year';
-    return '1st Year'; // Default fallback
+    return '1st Year';
   }
 
   String _normalizeSemester(String sem) {
     final s = sem.trim();
     if (s == '1' || s.toLowerCase().contains('1')) return 'Semester 1';
     if (s == '2' || s.toLowerCase().contains('2')) return 'Semester 2';
-    return 'Semester 1'; // Default fallback
+    return 'Semester 1';
   }
 
   void toggleProgram(String program) {
@@ -210,8 +221,8 @@ class UploadNotifier extends StateNotifier<UploadState> {
       if (code != null) codes.remove(code);
     } else {
       programs.add(program);
-      if (code != null) {
-        if (!codes.contains(code)) codes.add(code);
+      if (code != null && !codes.contains(code)) {
+        codes.add(code);
       }
     }
     
@@ -224,21 +235,40 @@ class UploadNotifier extends StateNotifier<UploadState> {
   }
 
   void updateProgram(String program) {
-    final code = _courseService.getProgramCode(program);
+    final p = program.trim();
+    if (p.isEmpty) {
+      state = state.copyWith(
+        material: state.material.copyWith(
+          programs: [],
+          programCodes: [],
+        ),
+      );
+      return;
+    }
+    final code = _courseService.getProgramCode(p) ?? p;
     state = state.copyWith(
       material: state.material.copyWith(
-        programs: [program],
-        programCodes: code != null ? [code] : state.material.programCodes,
+        programs: [p],
+        programCodes: [code],
       ),
     );
   }
 
   void updateProgramCode(String code) {
-    final program = _courseService.getProgramNameByCode(code);
+    final c = code.trim();
+    if (c.isEmpty) {
+      state = state.copyWith(
+        material: state.material.copyWith(
+          programCodes: [],
+        ),
+      );
+      return;
+    }
+    final program = _courseService.getProgramNameByCode(c) ?? (state.material.programs.isNotEmpty ? state.material.programs.first : c);
     state = state.copyWith(
       material: state.material.copyWith(
-        programCodes: [code],
-        programs: program != null ? [program] : state.material.programs,
+        programCodes: [c],
+        programs: [program],
       ),
     );
   }
@@ -322,7 +352,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
         ),
       );
     } else {
-      // Single PDF or HTML
       state = state.copyWith(
         error: null,
         material: state.material.copyWith(
@@ -350,7 +379,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
       state = state.copyWith(
         material: state.material.copyWith(
           file: image,
-          thumbnail: image,
+          thumbnail: null,
           fileFormat: 'Image',
         ),
       );
@@ -364,15 +393,84 @@ class UploadNotifier extends StateNotifier<UploadState> {
     }
   }
 
+  bool _isNetworkError(dynamic error) {
+    if (ConnectivityService().isOffline) return true;
+    if (error == null) return false;
+
+    final errStr = error.toString().toLowerCase();
+    return errStr.contains('socketexception') ||
+        errStr.contains('clientexception') ||
+        errStr.contains('timeoutexception') ||
+        errStr.contains('network') ||
+        errStr.contains('unavailable') ||
+        errStr.contains('deadline-exceeded') ||
+        errStr.contains('connection') ||
+        errStr.contains('failed host lookup') ||
+        errStr.contains('no route to host') ||
+        errStr.contains('network_error') ||
+        errStr.contains('network request failed') ||
+        errStr.contains('failed to connect') ||
+        errStr.contains('hostapi.call');
+  }
+
   Future<void> upload() async {
     if (!state.isValid) return;
+
+    if (ConnectivityService().isOffline) {
+      // Offline mode: Enqueue to persistent queue immediately
+      await OfflineUploadQueueService().enqueue(
+        material: state.material,
+        uploadMode: state.uploadMode,
+        file: state.material.file,
+        files: state.material.files,
+        thumbnail: state.material.thumbnail,
+      );
+
+      reset();
+      state = state.copyWith(
+        isUploading: false,
+        isSuccess: false,
+        isQueuedOffline: true,
+        isConnectionLost: false,
+        uploadProgress: 1.0,
+        error: null,
+      );
+      return;
+    }
+
     await _executeUpload();
   }
 
   Future<void> _executeUpload() async {
-    state = state.copyWith(isUploading: true, error: null, isSuccess: false);
+    state = state.copyWith(
+      isUploading: true,
+      error: null,
+      isSuccess: false,
+      isQueuedOffline: false,
+      isConnectionLost: false,
+    );
 
     try {
+      Map<String, dynamic> uploadResult;
+
+      if (state.uploadMode == 'timetable') {
+        // Timetables Tab: Use dedicated TimetableUploadService ONLY
+        uploadResult = await _timetableUploadService.uploadTimetable(
+          state.material,
+          (progress) {
+            state = state.copyWith(uploadProgress: progress);
+          },
+        );
+      } else {
+        // Materials Tab: Use original UploadService.uploadMaterial ONLY
+        uploadResult = await _uploadService.uploadMaterial(
+          state.material,
+          (progress) {
+            state = state.copyWith(uploadProgress: progress);
+          },
+        );
+      }
+
       String resourceTitle;
       if (state.uploadMode == 'timetable') {
         resourceTitle = '${state.material.programs.join(", ")} Timetable';
@@ -382,25 +480,13 @@ class UploadNotifier extends StateNotifier<UploadState> {
         resourceTitle = state.material.unitName;
       }
 
-      // Perform main material upload to ImageKit
-      final uploadResult = await _uploadService.uploadMaterial(
-        state.material,
-        (progress) {
-          state = state.copyWith(uploadProgress: progress);
-        },
-      );
-
       final String finalFileUrl = uploadResult['fileUrl'] ?? '';
       final String finalFileId = uploadResult['fileId'] ?? '';
       final String finalFileName = uploadResult['fileName'] ?? '';
-      
-      // If user selected a custom thumbnail file, use it directly; otherwise set thumbnailStatus = "pending" and thumbnailUrl = ""
-      final bool hasCustomThumbnail = uploadResult['thumbnailUrl'] != null && (uploadResult['thumbnailUrl'] as String).isNotEmpty;
-      final String finalThumbUrl = hasCustomThumbnail ? uploadResult['thumbnailUrl']! : '';
-      final String finalThumbId = hasCustomThumbnail ? (uploadResult['thumbnailId'] ?? '') : '';
-      final String finalThumbStatus = hasCustomThumbnail ? 'completed' : 'pending';
+      final String finalThumbUrl = uploadResult['thumbnailUrl'] ?? '';
+      final String finalThumbId = uploadResult['thumbnailId'] ?? '';
+      final String finalThumbStatus = uploadResult['thumbnailStatus'] ?? (state.uploadMode == 'timetable' ? 'completed' : 'pending');
 
-      // Create a Resource object with pending thumbnailStatus for asynchronous background processing
       final resource = Resource(
         title: resourceTitle,
         fileName: finalFileName,
@@ -432,27 +518,51 @@ class UploadNotifier extends StateNotifier<UploadState> {
         isAnonymous: state.uploadMode == 'timetable' ? false : state.material.isAnonymous,
       );
 
-      // Publish to Firestore immediately
       await ResourceService().addUpload(resource, _courseService);
-      
-      // Force immediate refresh of user uploads to update list in UI
       await ResourceService().fetchUserUploadsOnce(state.material.uploaderId);
 
-      // Reset fields after successful upload and return success immediately
       reset();
       
       state = state.copyWith(
         isUploading: false, 
         isSuccess: true, 
+        isQueuedOffline: false,
+        isConnectionLost: false,
         uploadProgress: 1.0,
       );
     } catch (e) {
-      state = state.copyWith(isUploading: false, error: e.toString());
+      if (_isNetworkError(e)) {
+        await OfflineUploadQueueService().enqueue(
+          material: state.material,
+          uploadMode: state.uploadMode,
+          file: state.material.file,
+          files: state.material.files,
+          thumbnail: state.material.thumbnail,
+        );
+        reset();
+        state = state.copyWith(
+          isUploading: false,
+          isSuccess: false,
+          isQueuedOffline: false,
+          isConnectionLost: true,
+          uploadProgress: 1.0,
+          error: null,
+        );
+      } else {
+        state = state.copyWith(
+          isUploading: false,
+          isSuccess: false,
+          isQueuedOffline: false,
+          isConnectionLost: false,
+          error: e.toString(),
+        );
+      }
     }
   }
 
   void reset() {
     state = UploadState(
+      uploadMode: state.uploadMode,
       material: UploadMaterialModel(
         unitName: '',
         unitCode: '',
@@ -467,29 +577,44 @@ class UploadNotifier extends StateNotifier<UploadState> {
         yearOfUpload: DateTime.now().year,
         materialType: state.uploadMode == 'timetable' ? 'Class Timetable' : 'Notes',
       ),
-      uploadMode: state.uploadMode,
     );
   }
 }
 
-// Provider for the UploadNotifier
-final uploadProvider = StateNotifierProvider.autoDispose<UploadNotifier, UploadState>((ref) {
+// Separate Isolated Providers for Materials and Timetables
+final materialUploadProvider = StateNotifierProvider.autoDispose<UploadNotifier, UploadState>((ref) {
   final userProfile = ref.watch(userProfileProvider);
   return UploadNotifier(
     ref.watch(courseServiceProvider),
     ref.watch(fileServiceProvider),
     ref.watch(uploadServiceProvider),
+    ref.watch(timetableUploadServiceProvider),
     userProfile,
+    initialMode: 'material',
   );
 });
 
+final timetableUploadProvider = StateNotifierProvider.autoDispose<UploadNotifier, UploadState>((ref) {
+  final userProfile = ref.watch(userProfileProvider);
+  return UploadNotifier(
+    ref.watch(courseServiceProvider),
+    ref.watch(fileServiceProvider),
+    ref.watch(uploadServiceProvider),
+    ref.watch(timetableUploadServiceProvider),
+    userProfile,
+    initialMode: 'timetable',
+  );
+});
+
+// Alias for backwards compatibility
+final uploadProvider = materialUploadProvider;
+
 // Suggestions providers
 final programSuggestionsProvider = Provider.autoDispose.family<List<String>, String>((ref, query) {
-  final uploadState = ref.watch(uploadProvider);
+  final uploadState = ref.watch(materialUploadProvider);
   final unitCode = uploadState.material.unitCode;
   
   if (unitCode.isNotEmpty) {
-    // If a unit is selected, suggest only programs associated with that unit
     final units = ref.watch(courseServiceProvider).getUnitsByCode(unitCode);
     final unitPrograms = units.map((u) => u.programName).where((p) => p.isNotEmpty).toSet().toList();
     if (query.isEmpty) return unitPrograms;
@@ -504,12 +629,12 @@ final programSuggestionsProvider = Provider.autoDispose.family<List<String>, Str
 });
 
 final lecturerSuggestionsProvider = Provider.autoDispose.family<List<String>, String>((ref, query) {
-  final uploadState = ref.watch(uploadProvider);
+  final uploadState = ref.watch(materialUploadProvider);
   final unitCode = uploadState.material.unitCode;
 
   if (unitCode.isNotEmpty) {
     final units = ref.watch(courseServiceProvider).getUnitsByCode(unitCode);
-    final unitLecturers = units.map((u) => u.lecturerName).where((l) => l.isNotEmpty).toSet().toList();
+    final unitLecturers = units.map((l) => l.lecturerName).where((l) => l.isNotEmpty).toSet().toList();
     if (query.isEmpty) return unitLecturers;
     return unitLecturers.where((l) => l.toLowerCase().contains(query.toLowerCase())).toList();
   }

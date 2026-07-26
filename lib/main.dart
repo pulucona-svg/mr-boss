@@ -25,6 +25,7 @@ import 'services/download_service.dart';
 import 'services/device_id_manager.dart';
 import 'services/top_notification_service.dart';
 import 'services/user_service.dart';
+import 'services/offline_upload_queue_service.dart';
 import 'providers/providers.dart';
 
 void main() async {
@@ -49,11 +50,13 @@ void main() async {
 
 Future<void> _initServices() async {
   try {
+    ConnectivityService().initialize();
     await Future.wait([
       MobileAds.instance.initialize(),
       CourseService().init(),
       SubscriptionService().init(),
       UsageService().init(),
+      OfflineUploadQueueService().initialize(),
     ]);
     
     DownloadService().performRetentionCleanup();

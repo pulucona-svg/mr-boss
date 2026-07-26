@@ -4,7 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../models/material_model.dart';
 
 class UploadService {
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFunctions get _functions => FirebaseFunctions.instance;
 
   Future<Map<String, dynamic>> uploadMaterial(UploadMaterialModel material, Function(double) onProgress) async {
     onProgress(0.1);
