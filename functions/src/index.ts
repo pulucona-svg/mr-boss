@@ -5,6 +5,8 @@ import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import ImageKit from "imagekit";
 import { ThumbnailSearchService } from "./thumbnail_search_service";
+import { ExploreScheduler } from "./services/explore_scheduler";
+import { WorkerHealthMonitor } from "./services/worker_health_monitor";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -410,3 +412,39 @@ export const helpCenterAssistant = onCall(async (request) => {
     throw new HttpsError("internal", err.message || "Failed to generate support response.");
   }
 });
+
+/**
+ * PHASE 1 EXPLORE BACKEND SCHEDULER
+ * Scheduled Cloud Function that periodically discovers news from OpenAI & queues jobs into Firestore.
+ * Default schedule: Every 60 minutes.
+ */
+export const scheduledExploreDiscovery = onSchedule(
+  { schedule: "every 60 minutes", region: "us-central1" },
+  async () => {
+    logger.info("[EXPLORE_SCHEDULER_CRON] Triggering scheduled Explore news discovery...");
+    await ExploreScheduler.run(db);
+  }
+);
+
+/**
+ * CALLABLE FUNCTION: Manually trigger Explore news discovery scheduler execution
+ */
+export const triggerExploreDiscovery = onCall(async () => {
+  logger.info("[EXPLORE_SCHEDULER_MANUAL] Triggering manual Explore news discovery...");
+  const result = await ExploreScheduler.run(db);
+  return result;
+});
+
+/**
+ * SCHEDULED WORKER HEALTH MONITOR
+ * Runs every 15 minutes to test worker availability, reset expired cooldowns, and maintain health status.
+ */
+export const scheduledWorkerHealthCheck = onSchedule(
+  { schedule: "every 15 minutes", region: "us-central1" },
+  async () => {
+    logger.info("[WORKER_HEALTH_CRON] Executing scheduled worker health check...");
+    await WorkerHealthMonitor.checkAllWorkersHealth(db);
+  }
+);
+
+

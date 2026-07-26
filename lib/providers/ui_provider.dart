@@ -16,7 +16,7 @@ class UIState {
     this.mainNavigationIndex = 0,
     this.dashboardCategory = 'All',
     this.libraryCategory = 'All',
-    this.exploreCategory = 'For You',
+    this.exploreCategory = '',
     this.dashboardSearch = '',
     this.librarySearchDownloads = '',
     this.librarySearchUploads = '',
@@ -66,7 +66,7 @@ class UIState {
       mainNavigationIndex: 0, // Always default to Home on fresh launch
       dashboardCategory: json['dashboardCategory'] ?? 'All',
       libraryCategory: json['libraryCategory'] ?? 'All',
-      exploreCategory: json['exploreCategory'] ?? 'For You',
+      exploreCategory: json['exploreCategory'] ?? '',
       dashboardSearch: json['dashboardSearch'] ?? '',
       librarySearchDownloads: json['librarySearchDownloads'] ?? '',
       librarySearchUploads: json['librarySearchUploads'] ?? '',

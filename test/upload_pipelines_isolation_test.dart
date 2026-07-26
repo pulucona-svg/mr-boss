@@ -6,7 +6,6 @@ import 'package:mirror_laikipia/services/persistence_service.dart';
 import 'package:mirror_laikipia/services/timetable_upload_service.dart';
 import 'package:mirror_laikipia/services/upload_service.dart';
 import 'package:mirror_laikipia/providers/upload_provider.dart';
-import 'package:mirror_laikipia/models/material_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

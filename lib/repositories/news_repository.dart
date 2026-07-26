@@ -23,6 +23,9 @@ abstract class NewsRepository {
   /// Watches news categories list in real-time
   Stream<List<String>> watchCategories();
 
+  /// Watches full ExploreCategory models from categories collection
+  Stream<List<ExploreCategory>> watchExploreCategories();
+
   /// Fetches a single news article by ID
   Future<NewsArticle?> getArticle(String id);
 }
@@ -156,45 +159,36 @@ class NewsRepositoryImpl implements NewsRepository {
   }
 
   @override
+  Stream<List<ExploreCategory>> watchExploreCategories() {
+    return _firestore.collection('categories').snapshots().map((snapshot) {
+      final List<ExploreCategory> list = [];
+      final Set<String> seenNames = {};
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final cat = ExploreCategory.fromMap(doc.id, data);
+
+        // Filter out disabled categories
+        if (!cat.enabled) continue;
+
+        // Prevent duplicate category names
+        final normName = cat.name.toLowerCase();
+        if (seenNames.contains(normName)) continue;
+        seenNames.add(normName);
+
+        list.add(cat);
+      }
+
+      // Sort using displayOrder ascending
+      list.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+      return list;
+    });
+  }
+
+  @override
   Stream<List<String>> watchCategories() {
-    return _firestore.collection('categoryNews').snapshots().map((snapshot) {
-      final backendCategories = snapshot.docs
-          .map((doc) => doc.id)
-          .where((id) => id.isNotEmpty)
-          .toList();
-
-      final List<String> allCategories = ['For You', 'Trending', 'Latest'];
-
-      const defaultCategoryOrder = [
-        'Kenya',
-        'World',
-        'Sports',
-        'Technology',
-        'Business',
-        'Health',
-        'Education',
-        'Science',
-        'Nature',
-        'Culture',
-        'Entertainment',
-        'Africa',
-        'Politics',
-        'Breaking',
-      ];
-
-      for (final cat in defaultCategoryOrder) {
-        if (!allCategories.contains(cat)) {
-          allCategories.add(cat);
-        }
-      }
-
-      for (final cat in backendCategories) {
-        if (!allCategories.contains(cat)) {
-          allCategories.add(cat);
-        }
-      }
-
-      return allCategories;
+    return watchExploreCategories().map((categories) {
+      return categories.map((c) => c.name).toList();
     });
   }
 

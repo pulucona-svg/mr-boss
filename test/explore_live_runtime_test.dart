@@ -13,6 +13,7 @@ void main() {
 
     // Verify NewsRepositoryImpl instantiates with clean stream contracts
     final repository = NewsRepositoryImpl();
+    expect(repository, isNotNull);
     print('1. NewsRepositoryImpl initialized successfully.');
 
     // Create sample models to verify zero runtime errors or null crashes

@@ -39,20 +39,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   StreamSubscription<List<String>>? _categoriesSub;
   final Map<String, StreamSubscription<List<NewsArticle>>> _categorySubs = {};
 
-  List<String> _categories = [
-    'For You',
-    'Trending',
-    'Latest',
-    'Kenya',
-    'World',
-    'Sports',
-    'Tech',
-    'Business',
-    'Health',
-    'Agriculture',
-    'Entertainment',
-    'Education',
-  ];
+  List<String> _categories = [];
 
   late List<TopStory> _topStories;
   late List<TrendingTopic> _trendingTopics;
@@ -153,16 +140,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     try {
       _categoriesSub = repository.watchCategories().listen(
         (categories) {
-          if (mounted && categories.isNotEmpty) {
-            final List<String> safeCategories = ['For You', 'Trending', 'Latest'];
-            for (final cat in categories) {
-              if (!safeCategories.contains(cat)) {
-                safeCategories.add(cat);
+          if (mounted) {
+            setState(() {
+              _categories = categories;
+            });
+            if (categories.isNotEmpty) {
+              final uiState = ref.read(uiStateProvider);
+              if (uiState.exploreCategory.isEmpty || !categories.contains(uiState.exploreCategory)) {
+                ref.read(uiStateProvider.notifier).setExploreCategory(categories.first);
               }
             }
-            setState(() {
-              _categories = safeCategories;
-            });
           }
         },
         onError: (_) {},
@@ -374,21 +361,29 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               _buildStaticHeader(context, textColor),
               _buildCategoryTabs(isDark, uiState),
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: _categories.length,
-                  onPageChanged: (index) {
-                    ref.read(uiStateProvider.notifier).setExploreCategory(_categories[index]);
-                    _scrollToCategory(index);
-                  },
-                  itemBuilder: (context, index) {
-                    final category = _categories[index];
-                    if (_isLoading) {
-                      return const ExploreSkeleton();
-                    }
-                    return _buildCategoryContent(category, isDark, textColor);
-                  },
-                ),
+                child: _categories.isEmpty
+                    ? Center(
+                        child: _buildEmptyState(
+                          icon: Icons.newspaper_rounded,
+                          message: 'No news categories available',
+                          isDark: isDark,
+                        ),
+                      )
+                    : PageView.builder(
+                        controller: _pageController,
+                        itemCount: _categories.length,
+                        onPageChanged: (index) {
+                          ref.read(uiStateProvider.notifier).setExploreCategory(_categories[index]);
+                          _scrollToCategory(index);
+                        },
+                        itemBuilder: (context, index) {
+                          final category = _categories[index];
+                          if (_isLoading) {
+                            return const ExploreSkeleton();
+                          }
+                          return _buildCategoryContent(category, isDark, textColor);
+                        },
+                      ),
               ),
             ],
           ),
@@ -583,7 +578,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     // Determine the content to display
     final Widget content;
     
-    if (category == 'For You') {
+    final isFirstCategory = _categories.isNotEmpty && _categories.first == category;
+    final catLower = category.toLowerCase();
+    
+    if (isFirstCategory || catLower == 'for you') {
       if (_topStories.isEmpty && _trendingTopics.isEmpty && _allMixedNews.isEmpty) {
         content = CustomScrollView(
           physics: const BouncingScrollPhysics(),
@@ -611,7 +609,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ],
         );
       }
-    } else if (category == 'Trending') {
+    } else if (catLower == 'trending') {
       if (_trendingTopics.isEmpty) {
         content = _buildEmptyState(
           icon: Icons.trending_up_rounded,
@@ -634,7 +632,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           },
         );
       }
-    } else if (category == 'Latest') {
+    } else if (catLower == 'latest') {
       if (_latestNews.isEmpty) {
         content = _buildEmptyState(
           icon: Icons.newspaper_rounded,

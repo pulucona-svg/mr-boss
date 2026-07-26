@@ -1,5 +1,40 @@
 import 'package:flutter/material.dart';
 
+class ExploreCategory {
+  final String id;
+  final String name;
+  final int displayOrder;
+  final bool enabled;
+  final String? icon;
+  final String? color;
+  final String? description;
+  final int? targetArticles;
+
+  ExploreCategory({
+    required this.id,
+    required this.name,
+    required this.displayOrder,
+    this.enabled = true,
+    this.icon,
+    this.color,
+    this.description,
+    this.targetArticles,
+  });
+
+  factory ExploreCategory.fromMap(String id, Map<String, dynamic> data) {
+    return ExploreCategory(
+      id: id,
+      name: (data['name'] as String?)?.trim() ?? id,
+      displayOrder: (data['displayOrder'] as num?)?.toInt() ?? 999,
+      enabled: data['enabled'] as bool? ?? true,
+      icon: data['icon'] as String?,
+      color: data['color'] as String?,
+      description: data['description'] as String?,
+      targetArticles: (data['targetArticles'] as num?)?.toInt(),
+    );
+  }
+}
+
 class TopStory {
   final String id;
   final String title;
