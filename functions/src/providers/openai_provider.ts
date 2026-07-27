@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import * as logger from "firebase-functions/logger";
 import { BaseAIProvider } from "./base_provider";
 import { AIWorker, DiscoveredArticle } from "../types/worker";
+import { EnvConfig } from "../config/env_config";
 
 export class OpenAIProvider extends BaseAIProvider {
   readonly name = "openai";
@@ -11,10 +12,13 @@ export class OpenAIProvider extends BaseAIProvider {
     targetArticles: number,
     worker: AIWorker
   ): Promise<DiscoveredArticle[]> {
-    const apiKey = worker.apiKey || process.env.OPENAI_API_KEY;
+    const apiKey = worker.apiKey || EnvConfig.getApiKey("openai");
     if (!apiKey) {
       throw new Error(`OpenAI API key missing for worker ${worker.workerId}`);
     }
+
+    const maskedKey = EnvConfig.maskSecret(apiKey);
+
 
     const openai = new OpenAI({ apiKey, baseURL: worker.baseUrl });
     const model = worker.model || "gpt-4o";
@@ -51,7 +55,7 @@ Output format MUST be valid JSON:
 `;
 
     logger.info(
-      `[OPENAI_PROVIDER] Worker="${worker.workerId}" Category="${categoryName}" Model="${model}"`
+      `[OPENAI_PROVIDER] Worker="${worker.workerId}" Key="${maskedKey}" Category="${categoryName}" Model="${model}"`
     );
 
     const response = await openai.chat.completions.create({

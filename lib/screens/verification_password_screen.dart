@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../services/top_notification_service.dart';
 import '../services/persistence_service.dart';
-import '../services/user_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'academic_personalization_screen.dart';
 
 class VerificationPasswordScreen extends ConsumerStatefulWidget {

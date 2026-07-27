@@ -78,8 +78,8 @@ export class ArticleImageSearchService {
     queries.push(cleanTitle);
 
     // Extract potential entities (locations, organizations, dates, events)
-    const words = cleanTitle.split(" ");
     const eventKeywords = ["floods", "election", "summit", "conference", "game", "match", "protest", "crash", "fire", "launch", "rally", "war", "strike"];
+
     const foundEvents = eventKeywords.filter((k) => cleanTitle.toLowerCase().includes(k));
 
     if (foundEvents.length > 0) {

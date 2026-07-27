@@ -1,6 +1,7 @@
 import * as logger from "firebase-functions/logger";
 import { BaseAIProvider } from "./base_provider";
 import { AIWorker, DiscoveredArticle } from "../types/worker";
+import { EnvConfig } from "../config/env_config";
 
 export class ClaudeProvider extends BaseAIProvider {
   readonly name = "claude";
@@ -10,12 +11,14 @@ export class ClaudeProvider extends BaseAIProvider {
     targetArticles: number,
     worker: AIWorker
   ): Promise<DiscoveredArticle[]> {
-    const apiKey = worker.apiKey;
+    const apiKey = worker.apiKey || EnvConfig.getApiKey("claude");
     if (!apiKey) {
       throw new Error(`Claude API key missing for worker ${worker.workerId}`);
     }
 
+    const maskedKey = EnvConfig.maskSecret(apiKey);
     const model = worker.model || "claude-3-5-sonnet-20241022";
+
     const url = `${worker.baseUrl || "https://api.anthropic.com/v1"}/messages`;
 
     const promptText = `
@@ -35,7 +38,7 @@ Return valid JSON only matching:
 }
 `;
 
-    logger.info(`[CLAUDE_PROVIDER] Worker="${worker.workerId}" Category="${categoryName}" Model="${model}"`);
+    logger.info(`[CLAUDE_PROVIDER] Worker="${worker.workerId}" Key="${maskedKey}" Category="${categoryName}" Model="${model}"`);
 
     const res = await fetch(url, {
       method: "POST",

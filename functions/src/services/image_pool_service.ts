@@ -2,7 +2,10 @@ import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import ImageKit from "imagekit";
 import { WorkerManager } from "./worker_manager";
+import { ImageProviderRegistry } from "../providers/image/image_provider_registry";
+import { ImageValidationService } from "./image_validation_service";
 import { ArticleImageSearchService } from "./article_image_service";
+import { ImageSearchResult } from "../types/image_worker";
 
 function getImageKit(): ImageKit {
   const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || "public_fS58uA9h5vC6EwGv29Z=";
@@ -19,7 +22,7 @@ function getImageKit(): ImageKit {
 export class ImagePoolService {
   /**
    * Processes articles needing real internet images using available IMAGE workers.
-   * Finds articles in explore_news with imageSearchCompleted != true.
+   * Leverages ImageProviderRegistry to retrieve metadata only and ImageValidationService to download, validate, and upload.
    */
   static async processImageWorkerQueue(
     db: admin.firestore.Firestore,
@@ -29,14 +32,13 @@ export class ImagePoolService {
     successCount: number;
     failureCount: number;
   }> {
-    logger.info("[IMAGE_POOL_START] Starting Image Worker pool processing cycle...");
+    logger.info("[IMAGE_POOL_START] Starting Provider-Agnostic Image Worker pool processing cycle...");
 
     let processedCount = 0;
     let successCount = 0;
     let failureCount = 0;
 
     try {
-      // Fetch articles in explore_news requiring image processing
       const snap = await db
         .collection("explore_news")
         .where("imageSearchCompleted", "!=", true)
@@ -51,7 +53,6 @@ export class ImagePoolService {
       const ik = getImageKit();
 
       for (const doc of snap.docs) {
-        // Get available IMAGE worker from WorkerManager Load Balancer
         const worker = await WorkerManager.getAvailableWorker(db, "IMAGE");
         if (!worker) {
           logger.warn("[IMAGE_POOL_NO_WORKER] No available IMAGE worker found. Pausing cycle.");
@@ -61,47 +62,78 @@ export class ImagePoolService {
         const articleData = doc.data() || {};
         const articleId = doc.id;
         const title = articleData.title || "Untitled News Story";
+        const content = articleData.content || "";
+        const summary = articleData.summary || "";
+        const category = articleData.category || "General";
         const startTime = Date.now();
 
         logger.info(
-          `[IMAGE_WORKER_EXECUTE] Worker="${worker.workerId}" Provider="${worker.provider}" processing images for articleId="${articleId}" Title="${title}"`
+          `[IMAGE_WORKER_EXECUTE] Worker="${worker.workerId}" ImageProvider="${worker.provider}" processing articleId="${articleId}" Title="${title}"`
         );
 
         await WorkerManager.acquireWorker(db, worker.workerId, `img_${articleId}`);
 
         try {
-          const result = await ArticleImageSearchService.processArticleImages(
-            db,
-            ik,
-            {
-              id: articleId,
-              clusterId: articleData.clusterId || articleId,
-              title: title,
-              content: articleData.content || "",
-              summary: articleData.summary || "",
-              category: articleData.category || "General",
-              source: articleData.source || "News",
-            },
-            5 // Target 5 real internet images
-          );
+          // Get provider from ImageProviderRegistry
+          const provider = ImageProviderRegistry.getProvider(worker.provider);
+          const queries = ArticleImageSearchService.buildArticleSearchQueries(title, summary, category);
+          const allCandidateMetadata: ImageSearchResult[] = [];
+          const seenUrls = new Set<string>();
+
+          for (const q of queries) {
+            const searchResults = await provider.searchImages(q, { limit: 15 }, worker);
+            for (const item of searchResults) {
+              if (item && item.imageUrl && !seenUrls.has(item.imageUrl)) {
+                seenUrls.add(item.imageUrl);
+                allCandidateMetadata.push(item);
+              }
+            }
+            if (allCandidateMetadata.length >= 20) break;
+          }
+
+          let valResult;
+          if (allCandidateMetadata.length > 0) {
+            // Process metadata with ImageValidationService (download, validate, hash check, upload to ImageKit)
+            valResult = await ImageValidationService.processCandidateMetadata(
+              db,
+              ik,
+              allCandidateMetadata,
+              { title, content },
+              5
+            );
+          } else {
+            // Fallback to ArticleImageSearchService if provider returned 0 metadata
+            valResult = await ArticleImageSearchService.processArticleImages(
+              db,
+              ik,
+              {
+                id: articleId,
+                clusterId: articleData.clusterId || articleId,
+                title,
+                content,
+                summary,
+                category,
+              },
+              5
+            );
+          }
 
           const latencyMs = Date.now() - startTime;
           await WorkerManager.releaseWorker(db, worker.workerId, latencyMs, true);
 
-          // Update Firestore explore_news document
           await db.collection("explore_news").doc(articleId).update({
-            images: result.images,
-            imageCount: result.imageCount,
+            images: valResult.images,
+            imageCount: valResult.imageCount,
             imageSearchCompleted: true,
             imageSearchAttempts: admin.firestore.FieldValue.increment(1),
-            imageSources: result.imageSources,
-            content: result.updatedContent,
+            imageSources: valResult.imageSources,
+            content: valResult.updatedContent,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
 
           successCount++;
           logger.info(
-            `[IMAGE_WORKER_SUCCESS] Worker "${worker.workerId}" attached ${result.imageCount} real internet photos to article "${articleId}" in ${latencyMs}ms.`
+            `[IMAGE_WORKER_SUCCESS] Provider="${provider.name}" Worker="${worker.workerId}" attached ${valResult.imageCount} real photos to article "${articleId}" in ${latencyMs}ms.`
           );
         } catch (err: any) {
           const latencyMs = Date.now() - startTime;
@@ -109,7 +141,6 @@ export class ImagePoolService {
 
           await WorkerManager.releaseWorker(db, worker.workerId, latencyMs, false);
 
-          // Record attempt count & set completed true on failover so article is never blocked
           await db.collection("explore_news").doc(articleId).update({
             imageSearchCompleted: true,
             imageSearchAttempts: admin.firestore.FieldValue.increment(1),

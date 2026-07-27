@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
-import '../services/course_service.dart';
 import '../services/user_service.dart';
 import '../widgets/academic_fields.dart';
 import 'profile_picture_upload_screen.dart';
@@ -99,7 +98,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
           ),
           Positioned.fill(
             child: Container(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withAlpha(102),
             ),
           ),
           SafeArea(
@@ -139,7 +138,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF14142B).withOpacity(0.9),
+                            color: const Color(0xFF14142B).withAlpha(230),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: Colors.white12),
                           ),
@@ -190,7 +189,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                   Container(
                                     margin: const EdgeInsets.only(bottom: 20),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.05),
+                                      color: Colors.white.withAlpha(13),
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: Colors.white12),
                                     ),
@@ -204,7 +203,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                         border: InputBorder.none,
                                         counterText: '',
                                         hintText: 'Enter your preferred name to use on the platform',
-                                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
+                                        hintStyle: TextStyle(color: Colors.white.withAlpha(102), fontSize: 13),
                                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                       ),
                                     ),
@@ -467,7 +466,7 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
         Container(
           margin: const EdgeInsets.only(bottom: 20),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withAlpha(13),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.white12),
           ),

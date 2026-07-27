@@ -1,6 +1,7 @@
 import * as logger from "firebase-functions/logger";
 import { BaseAIProvider } from "./base_provider";
 import { AIWorker, DiscoveredArticle } from "../types/worker";
+import { EnvConfig } from "../config/env_config";
 
 export class GeminiProvider extends BaseAIProvider {
   readonly name = "gemini";
@@ -10,13 +11,15 @@ export class GeminiProvider extends BaseAIProvider {
     targetArticles: number,
     worker: AIWorker
   ): Promise<DiscoveredArticle[]> {
-    const apiKey = worker.apiKey || process.env.GEMINI_API_KEY;
+    const apiKey = worker.apiKey || EnvConfig.getApiKey("gemini");
     if (!apiKey) {
       throw new Error(`Gemini API key missing for worker ${worker.workerId}`);
     }
 
+    const maskedKey = EnvConfig.maskSecret(apiKey);
     const model = worker.model || "gemini-1.5-flash";
     const url = `${worker.baseUrl || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent?key=${apiKey}`;
+
 
     const promptText = `
 You are a real-time news discovery engine.
@@ -37,7 +40,7 @@ Output MUST be strictly valid JSON format matching:
 }
 `;
 
-    logger.info(`[GEMINI_PROVIDER] Worker="${worker.workerId}" Category="${categoryName}" Model="${model}"`);
+    logger.info(`[GEMINI_PROVIDER] Worker="${worker.workerId}" Key="${maskedKey}" Category="${categoryName}" Model="${model}"`);
 
     const res = await fetch(url, {
       method: "POST",

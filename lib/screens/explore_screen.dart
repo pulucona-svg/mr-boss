@@ -338,54 +338,85 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final uiState = ref.watch(uiStateProvider);
     final isDark = themeMode == ThemeMode.dark;
     final textColor = isDark ? Colors.white : Colors.black87;
-    
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: isDark
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF140C37), Color(0xFF070716)],
-                )
-              : LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.blue.shade50, Colors.white],
-                ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildStaticHeader(context, textColor),
-              _buildCategoryTabs(isDark, uiState),
-              Expanded(
-                child: _categories.isEmpty
-                    ? Center(
-                        child: _buildEmptyState(
-                          icon: Icons.newspaper_rounded,
-                          message: 'No news categories available',
-                          isDark: isDark,
+    final isOffline = ConnectivityService().isOffline;
+
+    final firstCat = _categories.isNotEmpty ? _categories.first : 'For You';
+    final canPopScreen = uiState.exploreCategory == firstCat;
+
+    return PopScope(
+      canPop: canPopScreen,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_categories.isNotEmpty) {
+          _onCategoryTap(_categories.first);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF140C37), Color(0xFF070716)],
+                  )
+                : LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.blue.shade50, Colors.white],
+                  ),
+          ),
+          child: SafeArea(
+            child: Column(
+              children: [
+                if (isOffline)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                    color: Colors.amber.shade900.withValues(alpha: 0.9),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 8),
+                        Text(
+                          'Offline Mode — Displaying cached Explore articles',
+                          style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
-                      )
-                    : PageView.builder(
-                        controller: _pageController,
-                        itemCount: _categories.length,
-                        onPageChanged: (index) {
-                          ref.read(uiStateProvider.notifier).setExploreCategory(_categories[index]);
-                          _scrollToCategory(index);
-                        },
-                        itemBuilder: (context, index) {
-                          final category = _categories[index];
-                          if (_isLoading) {
-                            return const ExploreSkeleton();
-                          }
-                          return _buildCategoryContent(category, isDark, textColor);
-                        },
-                      ),
-              ),
-            ],
+                      ],
+                    ),
+                  ),
+                _buildStaticHeader(context, textColor),
+                _buildCategoryTabs(isDark, uiState),
+                Expanded(
+                  child: _categories.isEmpty
+                      ? Center(
+                          child: _buildEmptyState(
+                            icon: Icons.newspaper_rounded,
+                            message: 'No news categories available',
+                            isDark: isDark,
+                          ),
+                        )
+                      : PageView.builder(
+                          controller: _pageController,
+                          itemCount: _categories.length,
+                          onPageChanged: (index) {
+                            final cat = _categories[index];
+                            ref.read(uiStateProvider.notifier).setExploreCategory(cat);
+                            _scrollToCategory(index);
+                          },
+                          itemBuilder: (context, index) {
+                            final category = _categories[index];
+                            if (_isLoading) {
+                              return const ExploreSkeleton();
+                            }
+                            return _buildCategoryContent(category, isDark, textColor);
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -709,8 +740,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           }
           return;
         }
-        setState(() => _isLoading = true);
+
         _subscribeToNewsStreams();
+        await Future.delayed(const Duration(milliseconds: 500));
       },
       color: const Color(0xFF20C8FF),
       child: content,
@@ -1046,99 +1078,118 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
 Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Color textColor, {bool isStretched = false, String? displayedCategory}) {
   final categoryBadgeText = displayedCategory ?? article.category;
+  final providerBadgeText = article.provider != null && article.provider!.isNotEmpty ? article.provider!.toUpperCase() : null;
+  final readingTimeText = '${article.readingTimeMinutes} min read';
+  final summaryText = article.summary.isNotEmpty ? article.summary : article.content;
+
   if (isStretched) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => NewsDetailScreen(
+            builder: (context) => FullArticleScreen(
               article: article,
-              initialImageIndex: 0,
             ),
           ),
         );
       },
       child: Container(
-        height: 220,
+        height: 230,
         margin: const EdgeInsets.only(bottom: 16),
         child: Stack(
           children: [
             FadingImageThumbnail(
               imageUrls: article.imageUrls,
               width: double.infinity,
-              height: 220,
+              height: 230,
               borderRadius: 20,
             ),
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.9),
-                    Colors.black.withOpacity(0.3),
                     Colors.transparent,
+                    Colors.black.withValues(alpha: 0.6),
+                    Colors.black.withValues(alpha: 0.95),
                   ],
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF20C8FF),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      categoryBadgeText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF20C8FF),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          categoryBadgeText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: MediaQuery.of(context).size.width * 0.6,
-                    child: Text(
-                      article.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                      if (providerBadgeText != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            providerBadgeText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  SizedBox(
-                    width: MediaQuery.of(context).size.width * 0.7,
-                    child: Text(
-                      article.content,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    article.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 4),
+                  Text(
+                    summaryText,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Text(
-                        '${article.source} • ${article.timeAgo}',
+                        '${article.source} • ${article.timeAgo} • $readingTimeText',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 11,
@@ -1165,16 +1216,15 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => NewsDetailScreen(
+          builder: (context) => FullArticleScreen(
             article: article,
-            initialImageIndex: 0,
           ),
         ),
       );
     },
     child: Container(
       margin: const EdgeInsets.only(bottom: 16),
-      color: Colors.transparent, // Ensure it's tappable
+      color: Colors.transparent,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1185,14 +1235,36 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  categoryBadgeText,
-                  style: const TextStyle(
-                    color: Color(0xFF20C8FF),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      categoryBadgeText,
+                      style: const TextStyle(
+                        color: Color(0xFF20C8FF),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    if (providerBadgeText != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E1E3F) : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          providerBadgeText,
+                          style: TextStyle(
+                            color: isDark ? const Color(0xFF20C8FF) : Colors.blue.shade700,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -1207,20 +1279,20 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  article.content,
+                  summaryText,
                   style: TextStyle(
                     color: isDark ? Colors.white70 : Colors.black54,
                     fontSize: 12,
                   ),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
-                        '${article.source} • ${article.timeAgo}',
+                        '${article.source} • ${article.timeAgo} • $readingTimeText',
                         style: TextStyle(
                           color: isDark ? Colors.white38 : Colors.black38,
                           fontSize: 11,

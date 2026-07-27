@@ -92,6 +92,10 @@ class NewsArticle {
   final String source;
   final String timeAgo;
   final String content;
+  final String summary;
+  final String? provider;
+  final DateTime? publishedAt;
+  final List<Map<String, dynamic>> imagesData;
   final Map<String, String> details;
 
   // Optional fields for automated news backend & article viewer integration
@@ -114,6 +118,10 @@ class NewsArticle {
     required this.source,
     required this.timeAgo,
     this.content = '',
+    this.summary = '',
+    this.provider,
+    this.publishedAt,
+    this.imagesData = const [],
     this.details = const {},
     this.slug,
     this.createdAt,
@@ -126,7 +134,15 @@ class NewsArticle {
     this.priority,
     this.sourceUrl,
   });
+
+  int get readingTimeMinutes {
+    final text = '$title $summary $content';
+    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final mins = (words / 200).ceil();
+    return mins < 1 ? 1 : mins;
+  }
 }
+
 
 List<String> getFourRelevantImages(List<String> existing, String category, String title) {
   final Set<String> images = {};

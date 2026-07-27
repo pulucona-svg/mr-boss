@@ -264,7 +264,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ],
             ),
-            backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+            backgroundColor: Colors.redAccent.withAlpha(230),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),

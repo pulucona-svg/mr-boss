@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import * as logger from "firebase-functions/logger";
 import { BaseAIProvider } from "./base_provider";
 import { AIWorker, DiscoveredArticle } from "../types/worker";
+import { EnvConfig } from "../config/env_config";
 
 export class DeepSeekProvider extends BaseAIProvider {
   readonly name = "deepseek";
@@ -11,10 +12,13 @@ export class DeepSeekProvider extends BaseAIProvider {
     targetArticles: number,
     worker: AIWorker
   ): Promise<DiscoveredArticle[]> {
-    const apiKey = worker.apiKey;
+    const apiKey = worker.apiKey || EnvConfig.getApiKey("deepseek");
     if (!apiKey) {
       throw new Error(`DeepSeek API key missing for worker ${worker.workerId}`);
     }
+
+    const maskedKey = EnvConfig.maskSecret(apiKey);
+
 
     const client = new OpenAI({
       apiKey,
@@ -23,7 +27,7 @@ export class DeepSeekProvider extends BaseAIProvider {
 
     const model = worker.model || "deepseek-chat";
 
-    logger.info(`[DEEPSEEK_PROVIDER] Worker="${worker.workerId}" Category="${categoryName}" Model="${model}"`);
+    logger.info(`[DEEPSEEK_PROVIDER] Worker="${worker.workerId}" Key="${maskedKey}" Category="${categoryName}" Model="${model}"`);
 
     const response = await client.chat.completions.create({
       model,
