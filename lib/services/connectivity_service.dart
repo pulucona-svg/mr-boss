@@ -82,6 +82,7 @@ class ConnectivityService extends ChangeNotifier {
     );
   }
 
+  // ignore: must_call_super
   @override
   void dispose() {
     _subscription?.cancel();
