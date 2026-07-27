@@ -73,19 +73,39 @@ class NewsRepositoryImpl implements NewsRepository {
   @override
   Stream<List<NewsArticle>> watchCategoryNews(String category) {
     final catLower = category.toLowerCase().trim();
-    if (catLower == 'all' || catLower == 'general' || catLower.isEmpty) {
+    if (catLower == 'all' || catLower.isEmpty) {
       return watchLatestNews();
     }
 
     return _firestore
         .collection('explore_news')
-        .where('category', isEqualTo: category)
         .snapshots()
-        .map((snapshot) {
-      final articles = snapshot.docs
-          .map((doc) => _mapDocToNewsArticle(doc))
-          .toList();
+        .asyncMap((snapshot) async {
+      final Map<String, NewsArticle> articleMap = {};
 
+      for (final doc in snapshot.docs) {
+        final article = _mapDocToNewsArticle(doc);
+        final artCat = article.category.toLowerCase().trim();
+        if (artCat == catLower || artCat.contains(catLower) || catLower.contains(artCat)) {
+          articleMap[article.id] = article;
+        }
+      }
+
+      // Also check categoryNews/{category}/articles or latestNews if present
+      try {
+        final catSubSnap = await _firestore
+            .collection('categoryNews')
+            .doc(category)
+            .collection('articles')
+            .get();
+        for (final doc in catSubSnap.docs) {
+          if (!articleMap.containsKey(doc.id)) {
+            articleMap[doc.id] = _mapDocToNewsArticle(doc);
+          }
+        }
+      } catch (_) {}
+
+      final articles = articleMap.values.toList();
       articles.sort((a, b) {
         final dateA = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final dateB = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -101,11 +121,24 @@ class NewsRepositoryImpl implements NewsRepository {
     return _firestore
         .collection('explore_news')
         .snapshots()
-        .map((snapshot) {
-      final articles = snapshot.docs
-          .map((doc) => _mapDocToNewsArticle(doc))
-          .toList();
+        .asyncMap((snapshot) async {
+      final Map<String, NewsArticle> articleMap = {};
 
+      for (final doc in snapshot.docs) {
+        final article = _mapDocToNewsArticle(doc);
+        articleMap[article.id] = article;
+      }
+
+      try {
+        final latestSnap = await _firestore.collection('latestNews').get();
+        for (final doc in latestSnap.docs) {
+          if (!articleMap.containsKey(doc.id)) {
+            articleMap[doc.id] = _mapDocToNewsArticle(doc);
+          }
+        }
+      } catch (_) {}
+
+      final articles = articleMap.values.toList();
       articles.sort((a, b) {
         final dateA = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final dateB = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);

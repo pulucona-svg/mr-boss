@@ -150,6 +150,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 ref.read(uiStateProvider.notifier).setExploreCategory(categories.first);
               }
             }
+            _subscribeCategoryNewsStreams(categories, repository);
           }
         },
         onError: (_) {},
@@ -219,11 +220,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _allMixedNews = [];
     }
 
-    final otherCategories = _categories
-        .where((c) => c != 'For You' && c != 'Trending' && c != 'Latest')
-        .toList();
+    _subscribeCategoryNewsStreams(_categories, repository);
 
-    for (var cat in otherCategories) {
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _subscribeCategoryNewsStreams(List<String> categories, NewsRepository repository) {
+    for (final cat in categories) {
+      if (cat == 'For You' || cat == 'Trending' || cat == 'Latest') continue;
+      if (_categorySubs.containsKey(cat)) continue;
       try {
         _categorySubs[cat] = repository.watchCategoryNews(cat).listen(
           (articles) {
@@ -244,12 +253,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       } catch (_) {
         _categoryNewsMap[cat] = [];
       }
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
