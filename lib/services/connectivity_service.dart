@@ -85,6 +85,9 @@ class ConnectivityService extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _subscription = null;
+    _isInitialized = false;
+    _instance = null;
     try {
       super.dispose();
     } catch (_) {}
