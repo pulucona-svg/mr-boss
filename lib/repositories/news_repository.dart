@@ -408,7 +408,7 @@ class NewsRepositoryImpl implements NewsRepository {
     TrendingTopic(
       id: 'default_trend_3',
       title: 'East Africa University Athletics Championships 2026',
-      icon: Icons.sports_runner_rounded,
+      icon: Icons.directions_run_rounded,
       gradientColors: const [Color(0xFFF59E0B), Color(0xFFD97706)],
       imageUrls: const [
         'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1200&auto=format&fit=crop',
