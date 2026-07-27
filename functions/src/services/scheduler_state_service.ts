@@ -86,7 +86,7 @@ export class SchedulerStateService {
     queuedCount: number
   ): Promise<void> {
     const schedulerRef = db.collection("scheduler").doc("explore");
-    const categoryRef = db.collection("categories").doc(categoryId);
+    const categoryRef = db.collection("categoryNews").doc(categoryId);
 
     const batch = db.batch();
 

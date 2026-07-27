@@ -24,7 +24,7 @@ abstract class NewsRepository {
   /// Watches news categories list in real-time
   Stream<List<String>> watchCategories();
 
-  /// Watches full ExploreCategory models from categories collection
+  /// Watches full ExploreCategory models from categoryNews collection
   Stream<List<ExploreCategory>> watchExploreCategories();
 
   /// Fetches a single news article by ID
@@ -178,7 +178,7 @@ class NewsRepositoryImpl implements NewsRepository {
 
   @override
   Stream<List<ExploreCategory>> watchExploreCategories() {
-    return _firestore.collection('categories').snapshots().map((snapshot) {
+    return _firestore.collection('categoryNews').snapshots().map((snapshot) {
       final List<ExploreCategory> list = [];
       final Set<String> seenNames = {};
 
@@ -189,13 +189,18 @@ class NewsRepositoryImpl implements NewsRepository {
         if (!cat.enabled) continue;
 
         final normName = cat.name.toLowerCase();
+        if (normName == 'dummy' || normName.startsWith('dummy') || cat.id.toLowerCase() == 'dummy') continue;
         if (seenNames.contains(normName)) continue;
         seenNames.add(normName);
 
         list.add(cat);
       }
 
-      list.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+      list.sort((a, b) {
+        final orderComp = a.displayOrder.compareTo(b.displayOrder);
+        if (orderComp != 0) return orderComp;
+        return a.name.compareTo(b.name);
+      });
       return list;
     });
   }

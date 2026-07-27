@@ -374,7 +374,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                    color: Colors.amber.shade900.withValues(alpha: 0.9),
+                    color: Colors.amber.shade900.withAlpha(230),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -730,7 +730,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     ),
                   ],
                 ),
-                backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+                backgroundColor: Colors.redAccent.withAlpha(230),
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1113,8 +1113,8 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.6),
-                    Colors.black.withValues(alpha: 0.95),
+                    Colors.black.withAlpha(153),
+                    Colors.black.withAlpha(242),
                   ],
                 ),
               ),
@@ -1537,7 +1537,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.transparent,
-                            const Color(0xFF070716).withValues(alpha: 0.5),
+                            const Color(0xFF070716).withAlpha(128),
                             const Color(0xFF070716),
                           ],
                           stops: const [0.7, 0.9, 1.0],
@@ -1561,7 +1561,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                             shape: BoxShape.circle,
                             color: _currentPage == index
                                 ? const Color(0xFF20C8FF)
-                                : Colors.white.withValues(alpha: 0.4),
+                                : Colors.white.withAlpha(102),
                           ),
                         ),
                       ),
@@ -1593,10 +1593,10 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF20C8FF).withValues(alpha: 0.15),
+                      color: const Color(0xFF20C8FF).withAlpha(38),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFF20C8FF).withValues(alpha: 0.4),
+                        color: const Color(0xFF20C8FF).withAlpha(102),
                       ),
                     ),
                     child: Text(
@@ -1619,7 +1619,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                       Text(
                         '${widget.article.source} • ${widget.article.timeAgo}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Colors.white.withAlpha(179),
                           fontSize: 13,
                         ),
                       ),
@@ -1631,7 +1631,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                   Text(
                     widget.article.content,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: Colors.white.withAlpha(230),
                       fontSize: 15,
                       height: 1.6,
                     ),
@@ -1667,7 +1667,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFF181739),
                                 shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFF20C8FF).withValues(alpha: 0.3)),
+                                border: Border.all(color: const Color(0xFF20C8FF).withAlpha(77)),
                               ),
                               child: Icon(icon, color: const Color(0xFF20C8FF), size: 20),
                             ),
@@ -1688,7 +1688,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                                   Text(
                                     entry.value,
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.8),
+                                      color: Colors.white.withAlpha(204),
                                       fontSize: 13,
                                       height: 1.45,
                                     ),
@@ -1716,7 +1716,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF20C8FF).withValues(alpha: 0.3),
+                            color: const Color(0xFF20C8FF).withAlpha(77),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),

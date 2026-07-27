@@ -262,14 +262,14 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                           margin: const EdgeInsets.only(bottom: 20),
                                           padding: const EdgeInsets.symmetric(horizontal: 16),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.05),
+                                            color: Colors.white.withAlpha(13),
                                             borderRadius: BorderRadius.circular(12),
                                             border: Border.all(color: Colors.white12),
                                           ),
                                           child: DropdownButtonHideUnderline(
                                             child: DropdownButton<String>(
                                               value: _yearController.text.isEmpty ? null : _yearController.text,
-                                              hint: Text('Select Year', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
+                                              hint: Text('Select Year', style: TextStyle(color: Colors.white.withAlpha(102), fontSize: 13)),
                                               isExpanded: true,
                                               dropdownColor: const Color(0xFF1F1F3D),
                                               style: const TextStyle(color: Colors.white),

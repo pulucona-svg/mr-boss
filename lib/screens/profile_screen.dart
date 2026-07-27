@@ -488,13 +488,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       padding: padding,
       decoration: BoxDecoration(
         color: isDark 
-          ? const Color(0xFF181739).withOpacity(0.72)
-          : Colors.white.withOpacity(0.72),
+          ? const Color(0xFF181739).withAlpha(184)
+          : Colors.white.withAlpha(184),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100),
         boxShadow: isDark ? [] : [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 10,
             spreadRadius: 2,
           )

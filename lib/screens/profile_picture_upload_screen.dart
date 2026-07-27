@@ -47,7 +47,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
           ),
           Positioned.fill(
             child: Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withAlpha(128),
             ),
           ),
           SafeArea(
@@ -90,7 +90,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                     padding: const EdgeInsets.all(24),
                     margin: const EdgeInsets.symmetric(horizontal: 24),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF14142B).withOpacity(0.9),
+                      color: const Color(0xFF14142B).withAlpha(230),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: Colors.white12),
                     ),
@@ -180,7 +180,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
                             style: ElevatedButton.styleFrom(
                               backgroundColor: (userProfile.profileImagePath != null || userProfile.photoURL != null)
                                   ? const Color(0xFF20C8FF)
-                                  : Colors.grey.withOpacity(0.5),
+                                  : Colors.grey.withAlpha(128),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -215,7 +215,7 @@ class _ProfilePictureUploadScreenState extends ConsumerState<ProfilePictureUploa
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withAlpha(13),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white12),
         ),

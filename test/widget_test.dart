@@ -635,7 +635,6 @@ void main() {
 
     expect(find.byType(SmartAdBanner), findsNothing);
     SubscriptionService().isSubscribedForTesting = false;
-    await tester.pump();
   });
 
   testWidgets('MaterialViewerScreen displays inline banner ad in multi-image document when unsubscribed', (WidgetTester tester) async {
@@ -667,15 +666,13 @@ void main() {
     }
 
     // Scroll down to reveal item index 5 (DocumentInlineAdBanner)
-    await tester.drag(find.byType(ListView), const Offset(0, -7000));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -6000));
     for (int i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
     // Verify DocumentInlineAdBanner widget exists in multi-image list view
     expect(find.byType(DocumentInlineAdBanner), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(milliseconds: 500));
   });
 
   testWidgets('MaterialViewerScreen does not show ad after the last page in a 5-page document', (WidgetTester tester) async {

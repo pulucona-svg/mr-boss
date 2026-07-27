@@ -45,9 +45,9 @@ export class ExploreScheduler {
       // 2. Read configuration from system/exploreConfig
       const config = await ConfigService.getExploreConfig(db);
 
-      // 3. Read enabled categories from categories collection dynamically
+      // 3. Read enabled categories from categoryNews collection dynamically
       const categoriesSnap = await db
-        .collection("categories")
+        .collection("categoryNews")
         .where("enabled", "==", true)
         .get();
 

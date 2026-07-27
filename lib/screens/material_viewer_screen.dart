@@ -805,7 +805,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.05),
+            color: isDark ? Colors.black45 : Colors.black.withAlpha(13),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
@@ -3720,7 +3720,7 @@ class _BookmarksBottomSheet extends StatelessWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF20C8FF).withValues(alpha: 0.1),
+                        color: const Color(0xFF20C8FF).withAlpha(26),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(

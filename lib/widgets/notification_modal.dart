@@ -79,10 +79,10 @@ class NotificationModal extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: n.isRead ? Colors.transparent : Colors.white.withValues(alpha: 0.05),
+                          color: n.isRead ? Colors.transparent : Colors.white.withAlpha(13),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: n.isRead ? Colors.white10 : const Color(0xFF20C8FF).withValues(alpha: 0.3),
+                            color: n.isRead ? Colors.white10 : const Color(0xFF20C8FF).withAlpha(77),
                             width: 0.5,
                           ),
                           ),
@@ -92,8 +92,8 @@ class NotificationModal extends StatelessWidget {
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
                                 color: n.type == NotificationType.like 
-                                    ? const Color(0xFFFF8A00).withValues(alpha: 0.2)
-                                    : const Color(0xFF20C8FF).withValues(alpha: 0.2),
+                                    ? const Color(0xFFFF8A00).withAlpha(51)
+                                    : const Color(0xFF20C8FF).withAlpha(51),
                               ),
                               child: Icon(
                                 n.type == NotificationType.like ? Icons.favorite : Icons.reply,

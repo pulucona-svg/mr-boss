@@ -103,7 +103,7 @@ function createMockFirestore(workerDocs = {}, jobQueueDocs = {}, storyClusterDoc
           }),
         };
       }
-      if (collName === "system" || collName === "categories") {
+      if (collName === "system" || collName === "categoryNews" || collName === "categories") {
         return {
           get: async () => ({ docs: [] }),
           doc: () => ({ get: async () => ({ exists: false }) })

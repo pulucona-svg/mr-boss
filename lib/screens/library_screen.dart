@@ -348,7 +348,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
               ],
             ),
-            backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+            backgroundColor: Colors.redAccent.withAlpha(230),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -545,12 +545,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       height: 44,
       decoration: BoxDecoration(
-        color: const Color(0xFF181739).withValues(alpha: 0.8),
+        color: const Color(0xFF181739).withAlpha(204),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFF20C8FF).withValues(alpha: 0.3)),
+        border: Border.all(color: const Color(0xFF20C8FF).withAlpha(77)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF20C8FF).withValues(alpha: 0.1),
+            color: const Color(0xFF20C8FF).withAlpha(26),
             blurRadius: 10,
             spreadRadius: 2,
           )
@@ -909,7 +909,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
                       hintText: isDownloads ? 'Search downloaded units' : 'Search your uploads',
-                      hintStyle: TextStyle(color: textColor.withValues(alpha: 0.5)),
+                      hintStyle: TextStyle(color: textColor.withAlpha(128)),
                       prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
                       suffixIcon: lastOriginal != null
                           ? GestureDetector(
@@ -918,7 +918,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                 padding: const EdgeInsets.symmetric(horizontal: 10),
                                 decoration: BoxDecoration(
-                                  color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                                  color: isDark ? Colors.white.withAlpha(26) : Colors.black.withAlpha(13),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Row(
@@ -948,7 +948,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             )
                           : null,
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF181739).withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.72),
+                      fillColor: isDark ? const Color(0xFF181739).withAlpha(184) : Colors.white.withAlpha(184),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
                     ),
@@ -1002,7 +1002,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               icon: Icon(Icons.tune, color: uiState.libraryFilters.isNotEmpty ? const Color(0xFF00A85A) : const Color(0xFF24C7FF)),
               label: Text(
                 uiState.libraryFilters.isNotEmpty ? 'Filters Active (${uiState.libraryFilters.length})' : 'Filter',
-                style: TextStyle(color: textColor.withValues(alpha: 0.7)),
+                style: TextStyle(color: textColor.withAlpha(179)),
               ),
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
             ),
@@ -1074,20 +1074,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
+              Expanded(child: Divider(color: textColor.withAlpha(26), thickness: 1)),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
                   isDownloads ? 'DOWNLOADS' : 'UPLOADS',
                   style: TextStyle(
-                    color: textColor.withValues(alpha: 0.5),
+                    color: textColor.withAlpha(128),
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 2,
                   ),
                 ),
               ),
-              Expanded(child: Divider(color: textColor.withValues(alpha: 0.1), thickness: 1)),
+              Expanded(child: Divider(color: textColor.withAlpha(26), thickness: 1)),
             ],
           ),
           const SizedBox(height: 10),
@@ -1246,14 +1246,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 children: [
                   Icon(
                     isDownloads ? Icons.download_for_offline_outlined : Icons.cloud_off_rounded,
-                    color: textColor.withValues(alpha: 0.1),
+                    color: textColor.withAlpha(26),
                     size: 64,
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'No results found',
                     style: TextStyle(
-                      color: textColor.withValues(alpha: 0.5), 
+                      color: textColor.withAlpha(128), 
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1262,7 +1262,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   Text(
                     'Try another keyword',
                     style: TextStyle(
-                      color: textColor.withValues(alpha: 0.3), 
+                      color: textColor.withAlpha(77), 
                       fontSize: 14,
                     ),
                   ),

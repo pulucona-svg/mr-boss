@@ -124,7 +124,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 hintText: 'Email address',
                 hintStyle: const TextStyle(color: Colors.white54),
                 filled: true,
-                fillColor: Colors.white.withOpacity(0.05),
+                fillColor: Colors.white.withAlpha(13),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -214,7 +214,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           ),
           Positioned.fill(
             child: Container(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withAlpha(77),
             ),
           ),
           SafeArea(

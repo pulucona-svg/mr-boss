@@ -323,7 +323,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
                             shape: BoxShape.circle,
                             color: _currentPage == index
                                 ? const Color(0xFF20C8FF)
-                                : Colors.white.withValues(alpha: 0.4),
+                                : Colors.white.withAlpha(102),
                           ),
                         ),
                       ),
@@ -341,10 +341,10 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF20C8FF).withValues(alpha: 0.15),
+                  color: const Color(0xFF20C8FF).withAlpha(38),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: const Color(0xFF20C8FF).withValues(alpha: 0.4),
+                    color: const Color(0xFF20C8FF).withAlpha(102),
                   ),
                 ),
                 child: Text(
@@ -403,7 +403,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: const Color(0xFF20C8FF).withValues(alpha: 0.2),
+                backgroundColor: const Color(0xFF20C8FF).withAlpha(51),
                 child: Text(
                   doc.source.isNotEmpty ? doc.source[0].toUpperCase() : 'N',
                   style: const TextStyle(
@@ -604,7 +604,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
                             shape: BoxShape.circle,
                             color: _currentPage == index
                                 ? const Color(0xFF20C8FF)
-                                : Colors.white.withValues(alpha: 0.4),
+                                : Colors.white.withAlpha(102),
                           ),
                         ),
                       ),

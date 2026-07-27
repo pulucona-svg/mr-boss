@@ -73,7 +73,7 @@ class ConnectivityService extends ChangeNotifier {
             ),
           ],
         ),
-        backgroundColor: color.withValues(alpha: 0.9),
+        backgroundColor: color.withAlpha(230),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -85,6 +85,13 @@ class ConnectivityService extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
-    super.dispose();
+  }
+
+  void resetForTesting() {
+    _subscription?.cancel();
+    _subscription = null;
+    _isInitialized = false;
+    _isOffline = false;
+    _wasOffline = null;
   }
 }
