@@ -3,8 +3,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 class ConnectivityService extends ChangeNotifier {
-  static final ConnectivityService _instance = ConnectivityService._internal();
-  factory ConnectivityService() => _instance;
+  static ConnectivityService? _instance;
+  factory ConnectivityService() => _instance ??= ConnectivityService._internal();
   ConnectivityService._internal();
 
   final Connectivity _connectivity = Connectivity();
@@ -96,5 +96,6 @@ class ConnectivityService extends ChangeNotifier {
     _isInitialized = false;
     _isOffline = false;
     _wasOffline = null;
+    _instance = null;
   }
 }
