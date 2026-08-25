@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/explore_models.dart';
@@ -30,8 +31,6 @@ abstract class NewsRepository {
   /// Fetches a single news article by ID
   Future<NewsArticle?> getArticle(String id);
 
-  /// Triggers backend Explore article generation Cloud Function (generateExploreArticle)
-  Future<bool> triggerExploreArticleGeneration(String category, {String? query});
 }
 
 /// Concrete production implementation of [NewsRepository] connected to Cloud Firestore.
@@ -44,28 +43,42 @@ class NewsRepositoryImpl implements NewsRepository {
   FirebaseFirestore get _firestore =>
       _customFirestore ?? FirebaseFirestore.instance;
 
-  static final Set<String> _triggeredCategories = {};
-
-  void _triggerBackgroundArticleGeneration(String category) {
-    final catKey = category.toLowerCase().trim();
-    if (_triggeredCategories.contains(catKey)) return;
-    _triggeredCategories.add(catKey);
-    triggerExploreArticleGeneration(category).catchError((_) => false);
-  }
+  String _categoryId(String category) => category
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
 
   @override
   Stream<List<TopStory>> watchTopStories() {
     return _firestore
-        .collection('topStories')
+        .collection('explore_news')
+        .limit(20)
         .snapshots()
         .map((snapshot) {
-      final now = DateTime.now();
-      final list = snapshot.docs
-          .where((doc) => !_isExpired(doc.data()['expiresAt'], now))
-          .map((doc) => _mapDocToTopStory(doc))
+      final articles = snapshot.docs
+          .map(_mapDocToNewsArticle)
+          .where((a) => a.status == null || a.status!.isEmpty || a.status == 'published')
           .toList();
-      return list.isNotEmpty ? list : _defaultTopStories;
-    });
+      articles.sort((a, b) {
+        final aTime = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
+      });
+      return articles
+          .map((art) => TopStory(
+                id: art.id,
+                title: art.title,
+                summary: art.summary.isNotEmpty ? art.summary : art.content,
+                imageUrl: art.coverImage ?? (art.imageUrls.isNotEmpty ? art.imageUrls.first : ''),
+                source: art.source,
+                timeAgo: art.timeAgo,
+                category: art.category,
+              ))
+          .where((s) => s.imageUrl.isNotEmpty)
+          .take(5)
+          .toList();
+    }).handleError((_) => <TopStory>[]);
   }
 
   @override
@@ -77,132 +90,93 @@ class NewsRepositoryImpl implements NewsRepository {
       final list = snapshot.docs
           .map((doc) => _mapDocToTrendingTopic(doc))
           .toList();
-      return list.isNotEmpty ? list : _defaultTrendingTopics;
+      return list;
     });
   }
 
   @override
   Stream<List<NewsArticle>> watchCategoryNews(String category) {
-    final catLower = category.toLowerCase().trim();
-    if (catLower == 'all' || catLower.isEmpty) {
+    final categoryId = _categoryId(category);
+    final projectId = _firestore.app.options.projectId;
+    final userUid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous_or_none';
+
+    if (kDebugMode) {
+      debugPrint('[NewsRepo] Starting watchCategoryNews category="$category" categoryId="$categoryId" (Project: $projectId, AuthUID: $userUid)');
+    }
+
+    if (categoryId == 'all' || categoryId.isEmpty) {
       return watchLatestNews();
     }
 
+    // Query using single-field equality on categoryId to avoid Firestore multi-field composite index requirements
     return _firestore
         .collection('explore_news')
+        .where('categoryId', isEqualTo: categoryId)
+        .limit(30)
         .snapshots()
-        .asyncMap((snapshot) async {
-      final Map<String, NewsArticle> articleMap = {};
-
-      for (final doc in snapshot.docs) {
-        final article = _mapDocToNewsArticle(doc);
-        final artCat = article.category.toLowerCase().trim();
-        if (artCat == catLower || artCat.contains(catLower) || catLower.contains(artCat)) {
-          articleMap[article.id] = article;
-        }
+        .map((snapshot) {
+      if (kDebugMode) {
+        debugPrint('[NewsRepo] Snapshot received for category="$category" count=${snapshot.docs.length}${snapshot.docs.isNotEmpty ? " firstDocId=${snapshot.docs.first.id}" : ""}');
       }
-
-      // Also check categoryNews/{category}/articles or latestNews if present
-      try {
-        final catSubSnap = await _firestore
-            .collection('categoryNews')
-            .doc(category)
-            .collection('articles')
-            .get();
-        for (final doc in catSubSnap.docs) {
-          if (!articleMap.containsKey(doc.id)) {
-            articleMap[doc.id] = _mapDocToNewsArticle(doc);
-          }
-        }
-      } catch (_) {}
-
-      final articles = articleMap.values.toList();
-      articles.sort((a, b) {
-        final dateA = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final dateB = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return dateB.compareTo(dateA);
+      final list = snapshot.docs
+          .map(_mapDocToNewsArticle)
+          .where((article) => article.status == null || article.status!.isEmpty || article.status == 'published')
+          .toList();
+      // Sort in Dart memory by publishedAt descending
+      list.sort((a, b) {
+        final aTime = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
       });
-
-      if (articles.isNotEmpty) {
-        return articles;
+      return list;
+    }).handleError((error) {
+      if (kDebugMode) {
+        debugPrint('[NewsRepo ERROR] watchCategoryNews category="$category" failed: $error');
       }
-
-      _triggerBackgroundArticleGeneration(category);
-      return _getDefaultArticlesForCategory(category);
+      return <NewsArticle>[];
     });
   }
 
   @override
   Stream<List<NewsArticle>> watchLatestNews() {
+    final projectId = _firestore.app.options.projectId;
+    final userUid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous_or_none';
+
+    if (kDebugMode) {
+      debugPrint('[NewsRepo] Starting watchLatestNews (Project: $projectId, AuthUID: $userUid)');
+    }
+
+    // Query using collection limit to avoid Firestore composite index requirements
     return _firestore
         .collection('explore_news')
+        .limit(60)
         .snapshots()
-        .asyncMap((snapshot) async {
-      final Map<String, NewsArticle> articleMap = {};
-
-      for (final doc in snapshot.docs) {
-        final article = _mapDocToNewsArticle(doc);
-        articleMap[article.id] = article;
+        .map((snapshot) {
+      if (kDebugMode) {
+        debugPrint('[NewsRepo] Snapshot received for latest news count=${snapshot.docs.length}${snapshot.docs.isNotEmpty ? " firstDocId=${snapshot.docs.first.id}" : ""}');
       }
-
-      try {
-        final latestSnap = await _firestore.collection('latestNews').get();
-        for (final doc in latestSnap.docs) {
-          if (!articleMap.containsKey(doc.id)) {
-            articleMap[doc.id] = _mapDocToNewsArticle(doc);
-          }
-        }
-      } catch (_) {}
-
-      final articles = articleMap.values.toList();
-      articles.sort((a, b) {
-        final dateA = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final dateB = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return dateB.compareTo(dateA);
+      final list = snapshot.docs
+          .map(_mapDocToNewsArticle)
+          .where((article) => article.status == null || article.status!.isEmpty || article.status == 'published')
+          .toList();
+      // Sort in Dart memory by publishedAt descending
+      list.sort((a, b) {
+        final aTime = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
       });
-
-      if (articles.isNotEmpty) {
-        return articles;
+      return list;
+    }).handleError((error) {
+      if (kDebugMode) {
+        debugPrint('[NewsRepo ERROR] watchLatestNews failed: $error');
       }
-
-      _triggerBackgroundArticleGeneration('General');
-      return _defaultArticles;
+      return <NewsArticle>[];
     });
   }
 
   @override
   Stream<List<NewsArticle>> watchAllMixedNews() {
-    return watchLatestNews().asyncMap((latestArticles) async {
-      try {
-        final topSnap = await _firestore.collection('topStories').get();
-        final now = DateTime.now();
-        final topArticles = topSnap.docs
-            .where((doc) => !_isExpired(doc.data()['expiresAt'], now))
-            .map((doc) => _mapDocToNewsArticle(doc))
-            .toList();
-
-        final Map<String, NewsArticle> articleMap = {};
-        for (final art in latestArticles) {
-          articleMap[art.id] = art;
-        }
-        for (final art in topArticles) {
-          if (!articleMap.containsKey(art.id)) {
-            articleMap[art.id] = art;
-          }
-        }
-
-        final mergedList = articleMap.values.toList();
-        mergedList.sort((a, b) {
-          final dateA = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final dateB = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          return dateB.compareTo(dateA);
-        });
-
-        return _interleaveByCategory(mergedList);
-      } catch (_) {
-        return _interleaveByCategory(latestArticles);
-      }
-    });
+    return watchLatestNews().map(_interleaveByCategory);
   }
 
   List<NewsArticle> _interleaveByCategory(List<NewsArticle> articles) {
@@ -250,29 +224,7 @@ class NewsRepositoryImpl implements NewsRepository {
         list.add(cat);
       }
 
-      if (list.isEmpty) {
-        const defaultNames = [
-          'For You',
-          'General',
-          'Technology',
-          'Campus',
-          'Environment',
-          'Sports',
-          'Entertainment',
-          'Science',
-          'Business',
-          'Health',
-        ];
-        for (int i = 0; i < defaultNames.length; i++) {
-          final name = defaultNames[i];
-          list.add(ExploreCategory(
-            id: name.toLowerCase().replaceAll(' ', '_'),
-            name: name,
-            displayOrder: i,
-            enabled: true,
-          ));
-        }
-      } else {
+      if (list.isNotEmpty) {
         list.sort((a, b) {
           final orderComp = a.displayOrder.compareTo(b.displayOrder);
           if (orderComp != 0) return orderComp;
@@ -287,7 +239,7 @@ class NewsRepositoryImpl implements NewsRepository {
   @override
   Stream<List<String>> watchCategories() {
     return watchExploreCategories().map((categories) {
-      return categories.map((c) => c.name).toList();
+      return ['For You', ...categories.map((c) => c.name)];
     });
   }
 
@@ -298,38 +250,16 @@ class NewsRepositoryImpl implements NewsRepository {
       if (doc.exists) {
         return _mapDocToNewsArticle(doc);
       }
-
-      // Legacy fallback
-      final legacyDoc = await _firestore.collection('latestNews').doc(id).get();
-      if (legacyDoc.exists) {
-        return _mapDocToNewsArticle(legacyDoc);
+      final topDoc = await _firestore.collection('topStories').doc(id).get();
+      if (topDoc.exists) {
+        return _mapDocToNewsArticle(topDoc);
+      }
+      final latestDoc = await _firestore.collection('latestNews').doc(id).get();
+      if (latestDoc.exists) {
+        return _mapDocToNewsArticle(latestDoc);
       }
     } catch (_) {}
-
-    return _defaultArticles.firstWhere(
-      (a) => a.id == id,
-      orElse: () => _defaultArticles.first,
-    );
-  }
-
-  @override
-  Future<bool> triggerExploreArticleGeneration(String category, {String? query}) async {
-    try {
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('generateExploreArticle');
-      final response = await callable.call({
-        'query': query ?? category,
-        'category': category,
-      });
-      final data = response.data;
-      if (data == null) return false;
-      if (data is Map) {
-        return data['success'] == true || data['status'] == 'success' || data['articleId'] != null;
-      }
-      return true;
-    } catch (e) {
-      debugPrint('[NEWS_REPOSITORY] Cloud function trigger failed: $e');
-      return false;
-    }
+    return null;
   }
 
   List<NewsArticle> _getDefaultArticlesForCategory(String category) {
@@ -689,7 +619,9 @@ class NewsRepositoryImpl implements NewsRepository {
     final summary = data['summary'] as String? ?? data['editorialSummary'] as String? ?? '';
     final content = data['content'] as String? ?? summary;
     final provider = data['provider'] as String? ?? data['assignedWorker'] as String?;
-    final source = data['source'] as String? ?? provider?.toUpperCase() ?? 'Mirror Explore';
+    final source = (data['source'] is String && (data['source'] as String).trim().isNotEmpty)
+        ? (data['source'] as String).trim()
+        : 'Mirror News';
     final publishedAt = _parseDateTime(data['publishedAt'] ?? data['createdAt']);
     final timeAgo = _formatTimeAgo(publishedAt);
 
@@ -747,7 +679,7 @@ class NewsRepositoryImpl implements NewsRepository {
       coverImage: coverImage,
       status: data['status'] as String? ?? 'published',
       priority: data['priority'] is int ? data['priority'] as int : null,
-      sourceUrl: data['originalSourceUrl'] as String? ?? data['originalUrl'] as String?,
+      sourceUrl: data['sourceUrl'] as String? ?? data['originalSourceUrl'] as String? ?? data['originalUrl'] as String?,
     );
   }
 }
@@ -756,4 +688,3 @@ class NewsRepositoryImpl implements NewsRepository {
 final newsRepositoryProvider = Provider<NewsRepository>((ref) {
   return NewsRepositoryImpl();
 });
-

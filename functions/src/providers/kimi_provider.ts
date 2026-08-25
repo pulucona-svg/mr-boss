@@ -31,12 +31,12 @@ export class KimiProvider extends BaseAIProvider {
     const { client, model, maskedKey } = this.getClient(worker);
 
     const systemPrompt =
-      "You are an automated news discovery engine powered by Kimi. Extract latest breaking news stories in JSON format.";
+      "You are a news research engine. Return only verifiable, recent reporting from legitimate organisations; never invent a source, URL, date, quote, or event.";
 
     const userPrompt = `
-Discover breaking news for category "${categoryName}".
-Target: ${targetArticles} articles.
-Return JSON with key "articles" containing title, source, sourceUrl, publishedAt, summary.
+Research at least ${targetArticles} DISTINCT recent news events for category "${categoryName}".
+Prefer reporting from BBC, CNN, Reuters, Associated Press, Al Jazeera, The Guardian and other established outlets. Use available web/news search grounding. Different outlets covering the same event count once.
+Return strictly JSON with key "articles". Each item must contain title, source, sourceUrl (a direct real article URL), publishedAt (ISO timestamp when available), and summary. Omit any item whose URL or date cannot be verified.
 `;
 
     logger.info(`[KIMI_PROVIDER] Worker="${worker.workerId}" Key="${maskedKey}" Category="${categoryName}" Model="${model}"`);

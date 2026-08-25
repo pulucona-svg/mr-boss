@@ -3,7 +3,9 @@ import * as admin from "firebase-admin";
 
 export class DuplicateDetector {
   /**
-   * Generates a deterministic SHA-256 hash from normalized title and source.
+   * Generates an event fingerprint.  The publisher is deliberately not part of
+   * the fingerprint: Reuters and the BBC reporting the same event must not
+   * become two Explore stories.
    */
   static generateArticleHash(title: string, source: string): string {
     const cleanTitle = (title || "")
@@ -12,14 +14,10 @@ export class DuplicateDetector {
       .replace(/\s+/g, " ")
       .trim();
 
-    const cleanSource = (source || "")
-      .toLowerCase()
-      .replace(/[^\w\s]/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const combined = `${cleanTitle}||${cleanSource}`;
-    return crypto.createHash("sha256").update(combined).digest("hex");
+    // Keep the argument for backwards-compatible callers, but do not use it
+    // in the event identity. Source provenance is retained on the candidate.
+    void source;
+    return crypto.createHash("sha256").update(cleanTitle).digest("hex");
   }
 
   /**

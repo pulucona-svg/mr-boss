@@ -69,7 +69,10 @@ export abstract class BaseAIProvider implements IAIProvider {
         publishedAt = nowIso;
       }
 
-      if (title && summary) {
+      // A discovery record without a real source URL is not usable for the
+      // later independent research/image stages. Never substitute a generic
+      // search URL, which would turn an unverified model answer into news.
+      if (title && summary && sourceUrl && /^https?:\/\//i.test(sourceUrl)) {
         const articleHash = DuplicateDetector.generateArticleHash(title, source);
         const clusterId = DuplicateDetector.generateClusterId(articleHash);
 
@@ -77,7 +80,7 @@ export abstract class BaseAIProvider implements IAIProvider {
           clusterId,
           title,
           source,
-          sourceUrl: sourceUrl || "https://news.google.com",
+          sourceUrl,
           publishedAt,
           summary,
           category: categoryName,

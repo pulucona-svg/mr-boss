@@ -5,10 +5,8 @@ import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import ImageKit from "imagekit";
 import { ThumbnailSearchService } from "./thumbnail_search_service";
-import { ExploreScheduler } from "./services/explore_scheduler";
 import { WorkerHealthMonitor } from "./services/worker_health_monitor";
-import { ExploreGenerationPipeline } from "./services/explore_generation_pipeline";
-import { NewsRotationScheduler } from "./services/news_rotation_scheduler";
+import { CanonicalExploreService } from "./services/canonical_explore_service";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -16,9 +14,10 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 function getImageKit(): ImageKit {
-  const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || "public_fS58uA9h5vC6EwGv29Z=";
-  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "private_Ym87v5...=";
-  const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT || "https://ik.imagekit.io/ubgbitinve";
+  const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || "";
+  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "";
+  const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT || "";
+  if (!publicKey || !privateKey || !urlEndpoint) throw new Error("ImageKit is not configured");
 
   return new ImageKit({
     publicKey,
@@ -221,23 +220,61 @@ export const askHelpAssistant = onCall(async (request) => {
 });
 
 /**
- * PHASE 1 EXPLORE BACKEND SCHEDULER
+ * PERPETUAL EXPLORE HOURLY SCHEDULER:
+ * Runs automatically every 60 minutes forever.
+ * 1. Synchronizes the 10 canonical categories.
+ * 2. Enqueues initial discovery if any category is below target.
+ * 3. Enqueues hourly discovery (4 new events per category).
+ * 4. Runs discovery workers concurrently.
+ * 5. Drains article generation queue.
+ * 6. Automatically enforces retention (max 30 published articles per category).
  */
 export const scheduledExploreDiscovery = onSchedule(
-  { schedule: "every 60 minutes", region: "us-central1" },
+  { schedule: "every 60 minutes", region: "us-central1", timeoutSeconds: 3600, memory: "1GiB" },
   async () => {
-    logger.info("[EXPLORE_SCHEDULER_CRON] Triggering scheduled Explore news discovery...");
-    await ExploreScheduler.run(db);
+    logger.info("[EXPLORE_CANONICAL_HOURLY] Running perpetual hourly discovery & article generation...");
+    await CanonicalExploreService.synchronizeCategoryConfiguration(db);
+    // 1. Initial backlog fill for any newly enabled or below-target category
+    await CanonicalExploreService.enqueueDiscovery(db, "initial");
+    // 2. Continuous hourly discovery (4 new events per category)
+    await CanonicalExploreService.enqueueDiscovery(db, "hourly");
+    // 3. Process discovery queue across available discovery workers
+    await CanonicalExploreService.processDiscoveryQueue(db, 5);
+    // 4. Drain article queue across available AI workers
+    await CanonicalExploreService.processArticleQueue(db, 15);
+    // 5. Enforce 30-story retention across all categories
+    const categories = await CanonicalExploreService.enabledCategories(db);
+    await Promise.all(categories.map((category) => CanonicalExploreService.enforceRetention(db, category.categoryId, category.retentionLimit)));
+  }
+);
+
+/**
+ * PERPETUAL QUEUE DRAINER:
+ * Runs automatically every 10 minutes to drain queued article jobs, recover expired leases,
+ * and ensure continuous processing even between hourly runs.
+ */
+export const scheduledExploreQueueDrainer = onSchedule(
+  { schedule: "every 10 minutes", region: "us-central1", timeoutSeconds: 540, memory: "1GiB" },
+  async () => {
+    logger.info("[EXPLORE_QUEUE_DRAINER] Running automated 10-minute queue drainer & lease recovery...");
+    await CanonicalExploreService.recoverExpiredArticleLeases(db);
+    await CanonicalExploreService.processArticleQueue(db, 15);
+    const categories = await CanonicalExploreService.enabledCategories(db);
+    await Promise.all(categories.map((category) => CanonicalExploreService.enforceRetention(db, category.categoryId, category.retentionLimit)));
   }
 );
 
 /**
  * CALLABLE FUNCTION: Manually trigger Explore news discovery scheduler execution
  */
-export const triggerExploreDiscovery = onCall(async () => {
-  logger.info("[EXPLORE_SCHEDULER_MANUAL] Triggering manual Explore news discovery...");
-  const result = await ExploreScheduler.run(db);
-  return result;
+export const triggerExploreDiscovery = onCall(async (request) => {
+  if (request.auth?.token.admin !== true) {
+    throw new HttpsError("permission-denied", "Explore production is backend-admin only.");
+  }
+  const queued = await CanonicalExploreService.enqueueDiscovery(db, "initial");
+  await CanonicalExploreService.processDiscoveryQueue(db, 5);
+  await CanonicalExploreService.processArticleQueue(db, 15);
+  return { success: true, queued };
 });
 
 /**
@@ -251,64 +288,11 @@ export const scheduledWorkerHealthCheck = onSchedule(
   }
 );
 
-/**
- * CALLABLE FUNCTION: First complete end-to-end Explore article generation flow
- */
-export const generateExploreArticle = onCall(async (request) => {
-  const { query, category } = request.data || {};
-  if (!query || typeof query !== "string") {
-    throw new HttpsError("invalid-argument", "Missing search query parameter.");
-  }
-
-  logger.info(`[EXPLORE_API_CALL] Triggered end-to-end Explore article generation for query="${query}" category="${category || 'General'}"`);
-
-  try {
-    const result = await ExploreGenerationPipeline.generateArticleForTopic(
-      db,
-      query,
-      category || "General"
-    );
-
-    if (!result.success) {
-      throw new HttpsError("internal", result.error || "Explore article generation failed.");
-    }
-
-    return result;
-  } catch (err: any) {
-    logger.error(`[EXPLORE_API_ERROR] Failed to generate article for query="${query}":`, err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", err.message || "Failed to process Explore article generation.");
-  }
-});
-
-/**
- * AUTOMATIC NEWS ROTATION SCHEDULERS (BACKEND ONLY)
- * 1. Hourly Rotation: Generates 3 newest articles, deletes 3 oldest, maintains 25 per category.
- * 2. 12:00 PM Daily Noon Refresh: Deletes 10 oldest, generates 10 brand-new articles per category.
- * 3. 30-minute Capacity Monitor: Ensures every category retains exactly 25 published articles.
- */
-
-export const scheduledHourlyNewsRotation = onSchedule(
-  { schedule: "every 60 minutes", region: "us-central1" },
-  async () => {
-    logger.info("[HOURLY_NEWS_ROTATION_CRON] Triggering scheduled hourly news rotation...");
-    await NewsRotationScheduler.performHourlyRotation(db);
-  }
-);
-
-export const scheduledNoonNewsRefresh = onSchedule(
-  { schedule: "0 12 * * *", region: "us-central1" },
-  async () => {
-    logger.info("[NOON_NEWS_REFRESH_CRON] Triggering 12:00 PM Noon daily major news refresh...");
-    await NewsRotationScheduler.performNoonDailyRefresh(db);
-  }
-);
-
 export const scheduledNewsCapacityCheck = onSchedule(
   { schedule: "every 30 minutes", region: "us-central1" },
   async () => {
-    logger.info("[NEWS_CAPACITY_CHECK_CRON] Verifying 25-article capacity per category...");
-    await NewsRotationScheduler.checkAndPopulateInitialNews(db);
+    const categories = await CanonicalExploreService.enabledCategories(db);
+    await Promise.all(categories.map((category) => CanonicalExploreService.enforceRetention(db, category.categoryId, category.retentionLimit)));
   }
 );
 
@@ -316,17 +300,16 @@ export const scheduledNewsCapacityCheck = onSchedule(
  * CALLABLE FUNCTION: Manually trigger news rotation execution for testing or admin operations
  */
 export const triggerNewsRotation = onCall(async (request) => {
-  const { mode } = request.data || {};
-  logger.info(`[NEWS_ROTATION_MANUAL] Triggering manual news rotation mode="${mode || 'hourly'}"`);
-
-  if (mode === "noon") {
-    await NewsRotationScheduler.performNoonDailyRefresh(db);
-    return { success: true, mode: "noon" };
-  } else if (mode === "populate") {
-    await NewsRotationScheduler.checkAndPopulateInitialNews(db);
-    return { success: true, mode: "populate" };
-  } else {
-    await NewsRotationScheduler.performHourlyRotation(db);
-    return { success: true, mode: "hourly" };
+  if (request.auth?.token.admin !== true) {
+    throw new HttpsError("permission-denied", "Explore production is backend-admin only.");
   }
+  const { mode } = request.data || {};
+  logger.info(`[EXPLORE_CANONICAL_MANUAL] Triggering canonical mode="${mode || "hourly"}"`);
+  if (mode === "populate") await CanonicalExploreService.enqueueDiscovery(db, "initial");
+  if (mode === "hourly") await CanonicalExploreService.enqueueDiscovery(db, "hourly");
+  await CanonicalExploreService.processDiscoveryQueue(db, 5);
+  await CanonicalExploreService.processArticleQueue(db, 15);
+  const categories = await CanonicalExploreService.enabledCategories(db);
+  await Promise.all(categories.map((category) => CanonicalExploreService.enforceRetention(db, category.categoryId, category.retentionLimit)));
+  return { success: true, mode: mode || "hourly" };
 });

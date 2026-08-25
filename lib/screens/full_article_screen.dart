@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/article_viewer_model.dart';
 import '../models/explore_models.dart';
+import '../widgets/skeleton.dart';
 
 class FullArticleScreen extends StatefulWidget {
   final NewsArticle? article;
@@ -22,28 +24,33 @@ class FullArticleScreen extends StatefulWidget {
 
 class _FullArticleScreenState extends State<FullArticleScreen> {
   late final Dio _dio;
-  late final PageController _pageController;
   late final ScrollController _scrollController;
-  int _currentPage = 0;
-  bool _isLoading = true;
+  Timer? _minuteTickerTimer;
+  bool _isLoading = false;
   String? _errorMessage;
   ArticleViewerDocument? _viewerDoc;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
     _scrollController = ScrollController();
     _dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
     ));
-    _fetchViewerDocument();
+
+    _minuteTickerTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+
+    if (_resolvedViewerUrl != null && widget.article == null) {
+      _fetchViewerDocument();
+    }
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _minuteTickerTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -60,14 +67,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
 
   Future<void> _fetchViewerDocument() async {
     final url = _resolvedViewerUrl;
-
-    if (url == null || url.isEmpty) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = null;
-      });
-      return;
-    }
+    if (url == null || url.isEmpty) return;
 
     setState(() {
       _isLoading = true;
@@ -104,35 +104,11 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
   }
 
   Future<void> _launchSourceUrl(String? urlStr) async {
-    if (urlStr == null || urlStr.isEmpty) return;
-    final Uri? uri = Uri.tryParse(urlStr);
+    if (urlStr == null || urlStr.trim().isEmpty) return;
+    final Uri? uri = Uri.tryParse(urlStr.trim());
     if (uri != null && await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
-  }
-
-  List<String> _buildMagazineParagraphs(String title, String category, String source, String timeAgo, String rawContent, Map<String, String> details) {
-    final List<String> paragraphs = [];
-
-    final String cleanRaw = rawContent.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (cleanRaw.isNotEmpty) {
-      paragraphs.add(cleanRaw);
-    }
-
-    paragraphs.add(
-      "In a significant development unfolding across $category, '$title' represents a pivotal moment captured by $source. As reported $timeAgo, stakeholders and observers are closely monitoring key developments to understand the broader implications of these events on local and international landscapes."
-    );
-
-    final impact = details['Key Impact & Context'] ?? details['Who Benefits?'] ?? 'strategic sector shifts and public policy decisions';
-    paragraphs.add(
-      "Experts and sector analysts note that developments in $category often carry ripple effects across policy, economy, and public interest. $impact. The current trajectory highlights critical factors that require sustained attention, structured assessment, and transparent discourse to ensure long-term stability and strategic progress."
-    );
-
-    paragraphs.add(
-      "Moving forward, key decision-makers and community members are expected to evaluate next steps based on emerging data. With $source continuing to track progress, this story underscores the evolving nature of $category news and its direct relevance to readers following breaking updates."
-    );
-
-    return paragraphs;
   }
 
   @override
@@ -140,7 +116,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark ? const Color(0xFF070716) : Colors.white;
     final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
-    final secondaryTextColor = isDark ? Colors.white70 : Colors.black87;
+    final secondaryTextColor = isDark ? Colors.white70 : const Color(0xFF334155);
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -166,8 +142,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
     );
   }
 
-  Widget _buildBody(
-      BuildContext context, bool isDark, Color textColor, Color secondaryTextColor) {
+  Widget _buildBody(BuildContext context, bool isDark, Color textColor, Color secondaryTextColor) {
     if (_isLoading) {
       return Center(
         child: Column(
@@ -178,7 +153,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Loading full article...',
+              'Loading article...',
               style: TextStyle(
                 color: isDark ? Colors.white60 : Colors.black54,
                 fontSize: 14,
@@ -189,14 +164,26 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
       );
     }
 
-    if (_viewerDoc != null) {
-      return _buildViewerDocumentContent(
-          context, _viewerDoc!, isDark, textColor, secondaryTextColor);
+    if (widget.article != null) {
+      return _buildArticleContent(context, widget.article!, isDark, textColor, secondaryTextColor);
     }
 
-    if (widget.article != null) {
-      return _buildFallbackArticleContent(
-          context, widget.article!, isDark, textColor, secondaryTextColor);
+    if (_viewerDoc != null) {
+      final docArt = NewsArticle(
+        id: _viewerDoc!.articleId,
+        title: _viewerDoc!.title,
+        category: _viewerDoc!.category,
+        imageUrls: _viewerDoc!.content
+            .where((b) => b.type == 'image' && b.url != null)
+            .map((b) => b.url!)
+            .toList(),
+        source: _viewerDoc!.source,
+        timeAgo: _viewerDoc!.publishedAt ?? 'Recently',
+        content: _viewerDoc!.fullStory ?? _viewerDoc!.paragraphs.join('\n\n'),
+        summary: _viewerDoc!.paragraphs.isNotEmpty ? _viewerDoc!.paragraphs.first : '',
+        sourceUrl: _viewerDoc!.originalSourceUrl,
+      );
+      return _buildArticleContent(context, docArt, isDark, textColor, secondaryTextColor);
     }
 
     return Center(
@@ -205,11 +192,10 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.article_outlined,
-                size: 64, color: isDark ? Colors.white24 : Colors.grey.shade400),
+            Icon(Icons.article_outlined, size: 64, color: isDark ? Colors.white24 : Colors.grey.shade400),
             const SizedBox(height: 16),
             Text(
-              'Unable to Load Article Viewer',
+              'Article Unavailable',
               style: TextStyle(
                 color: textColor,
                 fontSize: 18,
@@ -218,24 +204,11 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              _errorMessage ?? 'The article document is unavailable or removed.',
+              _errorMessage ?? 'The requested article could not be loaded.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: isDark ? Colors.white60 : Colors.black54,
                 fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _fetchViewerDocument,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF20C8FF),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
               ),
             ),
           ],
@@ -244,35 +217,14 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
     );
   }
 
-  Widget _buildViewerDocumentContent(
-      BuildContext context,
-      ArticleViewerDocument doc,
-      bool isDark,
-      Color textColor,
-      Color secondaryTextColor) {
-    final List<String> existingImages = [];
-    if (widget.article?.coverImage != null) existingImages.add(widget.article!.coverImage!);
-    if (widget.article?.imageUrls != null) existingImages.addAll(widget.article!.imageUrls);
-    for (final block in doc.content) {
-      if (block.type == 'image' && block.url != null && block.url!.isNotEmpty) {
-        existingImages.add(block.url!);
-      }
-    }
-
-    final galleryImages = getFourRelevantImages(
-      existingImages,
-      doc.category,
-      doc.title,
-    );
-
-    final paragraphs = _buildMagazineParagraphs(
-      doc.title,
-      doc.category,
-      doc.source,
-      doc.publishedAt ?? 'Recently',
-      doc.fullStory ?? (doc.paragraphs.isNotEmpty ? doc.paragraphs.join(' ') : ''),
-      widget.article?.details ?? {},
-    );
+  Widget _buildArticleContent(
+    BuildContext context,
+    NewsArticle article,
+    bool isDark,
+    Color textColor,
+    Color secondaryTextColor,
+  ) {
+    final widgets = _parseArticleBlocks(article, isDark, textColor, secondaryTextColor);
 
     return SingleChildScrollView(
       controller: _scrollController,
@@ -281,61 +233,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Rich Swipeable Image Gallery (At least 4 relevant images)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 240,
-              child: Stack(
-                children: [
-                  PageView.builder(
-                    controller: _pageController,
-                    itemCount: galleryImages.length,
-                    onPageChanged: (idx) => setState(() => _currentPage = idx),
-                    itemBuilder: (context, index) {
-                      return CachedNetworkImage(
-                        imageUrl: galleryImages[index],
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        placeholder: (context, url) => Container(
-                          color: isDark ? const Color(0xFF181739) : Colors.grey.shade200,
-                        ),
-                        errorWidget: (context, url, err) => Container(
-                          color: Colors.grey.shade900,
-                          child: const Icon(Icons.error, color: Colors.white38),
-                        ),
-                      );
-                    },
-                  ),
-                  Positioned(
-                    bottom: 12,
-                    left: 0,
-                    right: 0,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        galleryImages.length,
-                        (index) => Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _currentPage == index
-                                ? const Color(0xFF20C8FF)
-                                : Colors.white.withAlpha(102),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Category & Reading Time Row
+          // Category Pill & Reading Time Row
           Row(
             children: [
               Container(
@@ -348,7 +246,7 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
                   ),
                 ),
                 child: Text(
-                  doc.category.toUpperCase(),
+                  article.category.toUpperCase(),
                   style: const TextStyle(
                     color: Color(0xFF20C8FF),
                     fontSize: 12,
@@ -366,11 +264,10 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.access_time_rounded,
-                        size: 13, color: isDark ? Colors.white70 : Colors.black54),
+                    Icon(Icons.access_time_rounded, size: 13, color: isDark ? Colors.white70 : Colors.black54),
                     const SizedBox(width: 4),
                     Text(
-                      '${doc.readingTime > 0 ? doc.readingTime : 3} min read',
+                      '${article.readingTimeMinutes} min read',
                       style: TextStyle(
                         color: isDark ? Colors.white70 : Colors.black54,
                         fontSize: 12,
@@ -383,29 +280,29 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          // Article Title
+          // Article Headline
           Text(
-            doc.title,
+            article.title,
             style: TextStyle(
               color: textColor,
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
-              height: 1.35,
+              height: 1.3,
             ),
           ),
 
           const SizedBox(height: 12),
 
-          // Author & Publication Info Row
+          // Source & Dynamic Time Ago Row
           Row(
             children: [
               CircleAvatar(
                 radius: 16,
                 backgroundColor: const Color(0xFF20C8FF).withAlpha(51),
                 child: Text(
-                  doc.source.isNotEmpty ? doc.source[0].toUpperCase() : 'N',
+                  article.source.isNotEmpty ? article.source[0].toUpperCase() : 'M',
                   style: const TextStyle(
                     color: Color(0xFF20C8FF),
                     fontWeight: FontWeight.bold,
@@ -419,61 +316,40 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      doc.author != null && doc.author!.isNotEmpty
-                          ? doc.author!
-                          : doc.source,
+                      article.source,
                       style: TextStyle(
                         color: textColor,
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (doc.publishedAt != null)
-                      Text(
-                        doc.publishedAt!,
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.black45,
-                          fontSize: 11,
-                        ),
+                    Text(
+                      article.dynamicTimeAgo,
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black45,
+                        fontSize: 12,
                       ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
 
-          const Divider(height: 32, color: Colors.white10),
+          const Divider(height: 28, color: Colors.white10),
 
-          // Rich 200+ Word Magazine Paragraphs
-          ...paragraphs.map((p) => Padding(
-                padding: const EdgeInsets.only(bottom: 18.0),
-                child: Text(
-                  p,
-                  style: TextStyle(
-                    color: secondaryTextColor,
-                    fontSize: 15,
-                    height: 1.65,
-                  ),
-                ),
-              )),
+          // Main Article Body with Inline Distributed Images
+          ...widgets,
 
-          // Structured Sections (excluding preview screen info cards)
-          if (doc.sections.where((s) => s.heading != "What's New?" && s.heading != "Key Impact & Context" && s.heading != "Detailed Coverage" && s.heading != "Who Benefits?").isNotEmpty) ...[
-            const SizedBox(height: 16),
-            ...doc.sections
-                .where((s) => s.heading != "What's New?" && s.heading != "Key Impact & Context" && s.heading != "Detailed Coverage" && s.heading != "Who Benefits?")
-                .map((section) => _buildSection(
-                    section, isDark, textColor, secondaryTextColor)),
-          ],
+          const SizedBox(height: 24),
 
-          const SizedBox(height: 32),
-
-          if (doc.originalSourceUrl != null && doc.originalSourceUrl!.isNotEmpty)
+          // Source Link Button
+          if (article.sourceUrl != null && article.sourceUrl!.trim().isNotEmpty)
             Center(
               child: OutlinedButton.icon(
-                onPressed: () => _launchSourceUrl(doc.originalSourceUrl),
+                onPressed: () => _launchSourceUrl(article.sourceUrl),
                 icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                label: Text('Read Original on ${doc.source}'),
+                label: Text('Read Original Source on ${article.source}'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF20C8FF),
                   side: const BorderSide(color: Color(0xFF20C8FF)),
@@ -491,173 +367,171 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
     );
   }
 
-  Widget _buildSection(ViewerSection section, bool isDark, Color textColor,
-      Color secondaryTextColor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF12122A) : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
+  List<Widget> _parseArticleBlocks(
+    NewsArticle article,
+    bool isDark,
+    Color textColor,
+    Color secondaryTextColor,
+  ) {
+    final List<Widget> widgets = [];
+    final rawContent = article.content.trim().isNotEmpty ? article.content : article.summary;
+
+    // Collect available images and captions from metadata
+    final List<Map<String, String>> imagesMeta = [];
+    for (final item in article.imagesData) {
+      final url = item['imageUrl']?.toString() ?? '';
+      final cap = item['caption']?.toString() ?? '';
+      if (url.isNotEmpty) {
+        imagesMeta.add({'url': url, 'caption': cap});
+      }
+    }
+    if (imagesMeta.isEmpty) {
+      for (final url in article.imageUrls) {
+        if (url.isNotEmpty) {
+          imagesMeta.add({'url': url, 'caption': article.title});
+        }
+      }
+    }
+    if (imagesMeta.isEmpty && article.coverImage != null && article.coverImage!.isNotEmpty) {
+      imagesMeta.add({'url': article.coverImage!, 'caption': article.title});
+    }
+
+    int fallbackImageIdx = 0;
+
+    // Check if rawContent contains markdown image tags ![caption](url)
+    final imgRegex = RegExp(r'!\[(.*?)\]\((.*?)\)');
+    final lines = rawContent.split('\n');
+
+    final List<String> currentParagraphLines = [];
+
+    void flushParagraph() {
+      if (currentParagraphLines.isEmpty) return;
+      final text = currentParagraphLines.join(' ').trim();
+      currentParagraphLines.clear();
+      if (text.isEmpty) return;
+
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: secondaryTextColor,
+              fontSize: 16,
+              height: 1.65,
+            ),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (section.heading.isNotEmpty)
-            Text(
-              section.heading,
-              style: const TextStyle(
-                color: Color(0xFF20C8FF),
-                fontSize: 16,
+      );
+
+      // If markdown didn't have embedded images, interleave fallback images every 2 paragraphs
+      if (!rawContent.contains('![') && fallbackImageIdx < imagesMeta.length) {
+        final img = imagesMeta[fallbackImageIdx++];
+        widgets.add(_buildInlineImage(img['url']!, img['caption'] ?? '', isDark, textColor));
+      }
+    }
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) {
+        flushParagraph();
+        continue;
+      }
+
+      // Check Markdown Image ![caption](url)
+      final match = imgRegex.firstMatch(line);
+      if (match != null) {
+        flushParagraph();
+        final caption = match.group(1) ?? '';
+        final url = match.group(2) ?? '';
+        if (url.isNotEmpty) {
+          widgets.add(_buildInlineImage(url, caption, isDark, textColor));
+        }
+        continue;
+      }
+
+      // Check italic caption line following an image: *caption*
+      if (line.startsWith('*') && line.endsWith('*') && line.length > 2) {
+        continue;
+      }
+
+      // Check Headings: #, ##, ###
+      if (line.startsWith('#')) {
+        flushParagraph();
+        final headingText = line.replaceAll(RegExp(r'^#+\s*'), '').trim();
+        if (headingText.toLowerCase() == article.title.toLowerCase()) continue;
+
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 14.0, bottom: 10.0),
+            child: Text(
+              headingText,
+              style: TextStyle(
+                color: const Color(0xFF20C8FF),
+                fontSize: line.startsWith('###') ? 17 : (line.startsWith('##') ? 19 : 21),
                 fontWeight: FontWeight.bold,
               ),
             ),
-          if (section.heading.isNotEmpty) const SizedBox(height: 10),
-          ...section.paragraphs.map(
-            (p) => Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Text(
-                p,
-                style: TextStyle(
-                  color: secondaryTextColor,
-                  fontSize: 14,
-                  height: 1.5,
+          ),
+        );
+        continue;
+      }
+
+      currentParagraphLines.add(line);
+    }
+
+    flushParagraph();
+
+    return widgets;
+  }
+
+  Widget _buildInlineImage(String url, String caption, bool isDark, Color textColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: CachedNetworkImage(
+              imageUrl: url,
+              width: double.infinity,
+              height: 220,
+              fit: BoxFit.cover,
+              placeholder: (context, _) => const Skeleton(height: 220, borderRadius: 16),
+              errorWidget: (context, url, error) => Container(
+                height: 200,
+                color: Colors.grey.shade900,
+                child: const Center(
+                  child: Icon(Icons.image_not_supported_rounded, color: Colors.white38, size: 36),
                 ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFallbackArticleContent(BuildContext context, NewsArticle article,
-      bool isDark, Color textColor, Color secondaryTextColor) {
-    final List<String> existingImages = [];
-    if (article.coverImage != null) existingImages.add(article.coverImage!);
-    existingImages.addAll(article.imageUrls);
-
-    final galleryImages = getFourRelevantImages(
-      existingImages,
-      article.category,
-      article.title,
-    );
-
-    final paragraphs = _buildMagazineParagraphs(
-      article.title,
-      article.category,
-      article.source,
-      article.timeAgo,
-      article.content,
-      article.details,
-    );
-
-    return SingleChildScrollView(
-      controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. Rich Swipeable Image Gallery (At least 4 relevant images)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 240,
-              child: Stack(
+          if (caption.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  PageView.builder(
-                    controller: _pageController,
-                    itemCount: galleryImages.length,
-                    onPageChanged: (idx) => setState(() => _currentPage = idx),
-                    itemBuilder: (context, index) {
-                      return CachedNetworkImage(
-                        imageUrl: galleryImages[index],
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        placeholder: (context, url) => Container(
-                          color: isDark ? const Color(0xFF181739) : Colors.grey.shade200,
-                        ),
-                        errorWidget: (context, url, err) => Container(
-                          color: Colors.grey.shade900,
-                          child: const Icon(Icons.error, color: Colors.white38),
-                        ),
-                      );
-                    },
-                  ),
-                  Positioned(
-                    bottom: 12,
-                    left: 0,
-                    right: 0,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        galleryImages.length,
-                        (index) => Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _currentPage == index
-                                ? const Color(0xFF20C8FF)
-                                : Colors.white.withAlpha(102),
-                          ),
-                        ),
+                  const Icon(Icons.photo_camera_outlined, size: 14, color: Color(0xFF20C8FF)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      caption.trim(),
+                      style: TextStyle(
+                        color: isDark ? Colors.white60 : Colors.black54,
+                        fontSize: 12.5,
+                        fontStyle: FontStyle.italic,
+                        height: 1.35,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          Text(
-            article.category.toUpperCase(),
-            style: const TextStyle(
-              color: Color(0xFF20C8FF),
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.0,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            article.title,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${article.source} • ${article.timeAgo}',
-            style: TextStyle(
-              color: isDark ? Colors.white54 : Colors.black45,
-              fontSize: 12,
-            ),
-          ),
-          const Divider(height: 32, color: Colors.white10),
-
-          // Rich 200+ Word Magazine Paragraphs
-          ...paragraphs.map((p) => Padding(
-                padding: const EdgeInsets.only(bottom: 18.0),
-                child: Text(
-                  p,
-                  style: TextStyle(
-                    color: secondaryTextColor,
-                    fontSize: 15,
-                    height: 1.65,
-                  ),
-                ),
-              )),
-          const SizedBox(height: 40),
+          ],
         ],
       ),
     );

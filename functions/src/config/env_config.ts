@@ -107,13 +107,19 @@ export class EnvConfig {
         return split.length > 0 ? split : [];
       }
       case "gemini":
-        return process.env.GEMINI_API_KEY ? [process.env.GEMINI_API_KEY.trim()] : [];
+        return (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
+          .split(",")
+          .map((key) => key.trim())
+          .filter((key) => key.length > 0);
       case "claude":
         return process.env.CLAUDE_API_KEY ? [process.env.CLAUDE_API_KEY.trim()] : [];
       case "deepseek":
         return process.env.DEEPSEEK_API_KEY ? [process.env.DEEPSEEK_API_KEY.trim()] : [];
-      case "grok":
-        return process.env.GROK_API_KEY || process.env.XAI_API_KEY ? [(process.env.GROK_API_KEY || process.env.XAI_API_KEY)!.trim()] : [];
+      case "grok": {
+        const raw = process.env.GROK_API_KEYS || process.env.GROK_API_KEY || process.env.XAI_API_KEY || "";
+        const split = raw.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
+        return split.length > 0 ? split : [];
+      }
       case "pixabay":
         return [process.env.PIXABAY_API_KEY || "48096316-56dd6fb202867ef9ce5316499"];
       default:

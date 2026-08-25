@@ -75,4 +75,22 @@ Output format MUST be valid JSON:
 
     return this.parseNewsJson(content, categoryName);
   }
+
+  async generateMetadata(prompt: string, worker: AIWorker): Promise<any> {
+    const apiKey = worker.apiKey || EnvConfig.getApiKey("openai");
+    if (!apiKey) throw new Error(`OpenAI API key missing for worker ${worker.workerId}`);
+    const client = new OpenAI({ apiKey, baseURL: worker.baseUrl });
+    const response = await client.chat.completions.create({
+      model: worker.model || "gpt-4o",
+      messages: [
+        { role: "system", content: "Return only valid JSON. Never invent sources, quotes, people, or events." },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.45,
+    });
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error(`OpenAI worker ${worker.workerId} returned empty metadata.`);
+    return JSON.parse(content);
+  }
 }

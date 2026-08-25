@@ -74,36 +74,53 @@ export class ArticleImageSearchService {
 
     const queries: string[] = [];
 
-    // 1. Headline
+    // 1. Primary Clean Headline
     queries.push(cleanTitle);
 
-    // Extract potential entities (locations, organizations, dates, events)
-    const eventKeywords = ["floods", "election", "summit", "conference", "game", "match", "protest", "crash", "fire", "launch", "rally", "war", "strike"];
-
-    const foundEvents = eventKeywords.filter((k) => cleanTitle.toLowerCase().includes(k));
-
-    if (foundEvents.length > 0) {
-      queries.push(`${cleanTitle} ${foundEvents[0]}`);
+    // 2. Extract key nouns / entities (words starting with capital or length >= 4)
+    const words = cleanTitle.split(/\s+/).filter((w) => w.length >= 4 && !/^(the|this|that|with|from|have|been|after|before|into|about|over|under|will|says|said)$/i.test(w));
+    if (words.length >= 2) {
+      queries.push(words.slice(0, 4).join(" "));
     }
 
+    // 3. Entity + Category query
     if (category) {
-      queries.push(`${cleanTitle} ${category}`);
+      if (words.length >= 2) {
+        queries.push(`${words.slice(0, 2).join(" ")} ${category}`);
+      }
+      queries.push(`${category} news photography`);
     }
 
-    // Year / Date search
-    const yearMatch = cleanTitle.match(/\b(202[0-9])\b/);
-    if (yearMatch) {
-      queries.push(`${cleanTitle} ${yearMatch[0]}`);
-    } else {
-      queries.push(`${cleanTitle} 2026`);
+    // 4. Category-specific high-resolution photo fallbacks
+    const catLower = (category || "").toLowerCase();
+    if (catLower.includes("sport")) {
+      queries.push("stadium sports athlete competition");
+    } else if (catLower.includes("business") || catLower.includes("econom")) {
+      queries.push("business stock market finance meeting");
+    } else if (catLower.includes("health") || catLower.includes("medic")) {
+      queries.push("hospital healthcare doctor medicine");
+    } else if (catLower.includes("tech") || catLower.includes("innovat")) {
+      queries.push("technology innovation digital computer");
+    } else if (catLower.includes("polit") || catLower.includes("govern")) {
+      queries.push("parliament government conference diplomacy");
+    } else if (catLower.includes("kenya")) {
+      queries.push("Nairobi Kenya landscape wildlife");
+    } else if (catLower.includes("africa")) {
+      queries.push("Africa city architecture development");
+    } else if (catLower.includes("entertain")) {
+      queries.push("concert performance music cinema entertainment");
+    } else if (catLower.includes("agri")) {
+      queries.push("agriculture farm harvest crops farming");
+    } else if (catLower.includes("lifestyle")) {
+      queries.push("lifestyle wellness travel culture");
     }
 
-    // 6. Summary fallback (first 10 words)
+    // 5. Summary snippet
     if (summary) {
       const summarySnippet = summary
         .replace(/['"’`]/g, " ")
         .split(/\s+/)
-        .slice(0, 8)
+        .slice(0, 6)
         .join(" ")
         .trim();
       if (summarySnippet && !queries.includes(summarySnippet)) {
@@ -218,7 +235,7 @@ export class ArticleImageSearchService {
     }
 
     return {
-      success: true,
+      success: imageCount >= 1,
       images: selectedImages,
       imageCount,
       updatedContent,
@@ -227,44 +244,53 @@ export class ArticleImageSearchService {
   }
 
   /**
-   * Search real web photos via Pixabay, Wikimedia, Bing & Google.
+   * Search real web photos via Pixabay, Wikimedia, Bing & Google with timeouts.
    */
   private static async searchWebImages(
     query: string
   ): Promise<Array<{ url: string; title: string; pageUrl: string; sourceDomain: string }>> {
     const candidates: Array<{ url: string; title: string; pageUrl: string; sourceDomain: string }> = [];
 
-    // Stage 1: Pixabay Photo Search
+    // Stage 1: Pixabay Photo Search (with 4000ms timeout)
     try {
-      const apiKey = process.env.PIXABAY_API_KEY || "48096316-56dd6fb202867ef9ce5316499";
-      const q = this.encodeQueryParam(query);
-      const url = `https://pixabay.com/api/?key=${apiKey}&q=${q}&image_type=photo&orientation=horizontal&safesearch=true&per_page=15`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        for (const item of data.hits || []) {
-          const imgUrl = item.largeImageURL || item.webformatURL;
-          if (imgUrl) {
-            candidates.push({
-              url: imgUrl,
-              title: item.tags || query,
-              pageUrl: item.pageURL || imgUrl,
-              sourceDomain: "pixabay.com",
-            });
+      const apiKey = process.env.PIXABAY_API_KEY;
+      if (apiKey && apiKey !== "48096316-56dd6fb202867ef9ce5316499") {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const q = this.encodeQueryParam(query);
+        const url = `https://pixabay.com/api/?key=${apiKey}&q=${q}&image_type=photo&orientation=horizontal&safesearch=true&per_page=15`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          for (const item of data.hits || []) {
+            const imgUrl = item.largeImageURL || item.webformatURL;
+            if (imgUrl) {
+              candidates.push({
+                url: imgUrl,
+                title: item.tags || query,
+                pageUrl: item.pageURL || imgUrl,
+                sourceDomain: "pixabay.com",
+              });
+            }
           }
         }
       }
     } catch (e) {}
 
-    // Stage 2: Wikimedia Commons Real News/Event Photos
+    // Stage 2: Wikimedia Commons Real News/Event Photos (with 5000ms timeout)
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       const q = this.encodeQueryParam(query);
-      const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${q}&gsrnamespace=6&gsrlimit=15&prop=imageinfo&iiprop=url|size|mime&format=json&origin=*`;
+      const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${q}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|size|mime&format=json&origin=*`;
       const res = await fetch(url, {
         headers: {
           "User-Agent": "MirrorLaikipiaNews/1.0 (news@mirrorlaikipia.edu; https://mirrorlaikipia.edu)",
         },
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const data = (await res.json()) as any;
         const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
@@ -285,15 +311,19 @@ export class ArticleImageSearchService {
       }
     } catch (e) {}
 
-    // Stage 3: Bing Real Image Search
+    // Stage 3: Bing Image Search with 4000ms timeout
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const q = this.encodeQueryParam(query);
       const url = `https://www.bing.com/images/search?q=${q}&qft=+filterui:photo-photo`;
       const res = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         },
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const html = await res.text();
         const blockRegex = /\{&quot;[^{}]*?&quot;murl&quot;:&quot;(https?:\/\/[^&]+?)&quot;[^{}]*?\}/gi;

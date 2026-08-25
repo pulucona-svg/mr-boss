@@ -190,14 +190,14 @@ export class WorkerManager {
   public static createEnvironmentPoolWorkers(role: WorkerRole = "WRITER"): AIWorker[] {
     const workers: AIWorker[] = [];
 
-    // OpenAI Worker
-    const openAiKey = EnvConfig.getApiKey("openai");
-    if (openAiKey) {
+    // 1. Gemini Workers (Verified High Quality & Grounded)
+    const geminiKeys = EnvConfig.getApiKeys("gemini");
+    geminiKeys.forEach((geminiKey, index) => {
       workers.push({
-        workerId: "worker_openai_01",
-        provider: "openai",
-        model: "gpt-4o",
-        apiKey: openAiKey,
+        workerId: `worker_gemini_${String(index + 1).padStart(2, "0")}`,
+        provider: "gemini",
+        model: "gemini-3.6-flash",
+        apiKey: geminiKey,
         role,
         supportsWebSearch: true,
         supportsImages: true,
@@ -215,21 +215,59 @@ export class WorkerManager {
         lastUsed: null,
         lastRequest: null,
         lastError: null,
+        averageLatency: 150,
+        failureCount: 0,
+        successCount: 0,
+        cooldownUntil: null,
+      });
+    });
+
+    // 2. OpenAI / OpenRouter Workers (Verified via OpenRouter Gateway)
+    const openAiKeys = EnvConfig.getApiKeys("openai");
+    const openAiBaseUrl = process.env.OPENAI_BASE_URL;
+    const openAiModel = process.env.OPENAI_MODEL || "openai/gpt-4o-mini";
+    openAiKeys.forEach((openAiKey, index) => {
+      workers.push({
+        workerId: `worker_openai_${String(index + 1).padStart(2, "0")}`,
+        provider: "openai",
+        model: openAiModel,
+        baseUrl: openAiBaseUrl,
+        apiKey: openAiKey,
+        role,
+        supportsWebSearch: true,
+        supportsImages: true,
+        enabled: true,
+        busy: false,
+        priority: 15,
+        status: "idle",
+        currentJobId: null,
+        requestsPerMinute: 60,
+        minuteLimit: 60,
+        dailyLimit: 1000,
+        requestsToday: 0,
+        requestsThisMinute: 0,
+        remainingQuota: 1000,
+        lastUsed: null,
+        lastRequest: null,
+        lastError: null,
         averageLatency: 120,
         failureCount: 0,
         successCount: 0,
         cooldownUntil: null,
       });
-    }
+    });
 
-    // Gemini Worker
-    const geminiKey = EnvConfig.getApiKey("gemini");
-    if (geminiKey) {
+    // 3. Grok / Groq Workers (High Speed Verified Inference)
+    const grokKeys = EnvConfig.getApiKeys("grok");
+    const grokBaseUrl = process.env.GROK_BASE_URL || "https://api.groq.com/openai/v1";
+    const grokModel = process.env.GROK_MODEL || "openai/gpt-oss-120b";
+    grokKeys.forEach((grokKey, index) => {
       workers.push({
-        workerId: "worker_gemini_01",
-        provider: "gemini",
-        model: "gemini-1.5-flash",
-        apiKey: geminiKey,
+        workerId: `worker_grok_${String(index + 1).padStart(2, "0")}`,
+        provider: "grok",
+        model: grokModel,
+        baseUrl: grokBaseUrl,
+        apiKey: grokKey,
         role,
         supportsWebSearch: true,
         supportsImages: true,
@@ -247,78 +285,14 @@ export class WorkerManager {
         lastUsed: null,
         lastRequest: null,
         lastError: null,
-        averageLatency: 150,
+        averageLatency: 100,
         failureCount: 0,
         successCount: 0,
         cooldownUntil: null,
       });
-    }
+    });
 
-    // Claude Worker
-    const claudeKey = EnvConfig.getApiKey("claude");
-    if (claudeKey) {
-      workers.push({
-        workerId: "worker_claude_01",
-        provider: "claude",
-        model: "claude-3-5-sonnet-20241022",
-        apiKey: claudeKey,
-        role,
-        supportsWebSearch: true,
-        supportsImages: true,
-        enabled: true,
-        busy: false,
-        priority: 30,
-        status: "idle",
-        currentJobId: null,
-        requestsPerMinute: 60,
-        minuteLimit: 60,
-        dailyLimit: 1000,
-        requestsToday: 0,
-        requestsThisMinute: 0,
-        remainingQuota: 1000,
-        lastUsed: null,
-        lastRequest: null,
-        lastError: null,
-        averageLatency: 180,
-        failureCount: 0,
-        successCount: 0,
-        cooldownUntil: null,
-      });
-    }
-
-    // DeepSeek Worker
-    const deepseekKey = EnvConfig.getApiKey("deepseek");
-    if (deepseekKey) {
-      workers.push({
-        workerId: "worker_deepseek_01",
-        provider: "deepseek",
-        model: "deepseek-chat",
-        apiKey: deepseekKey,
-        role,
-        supportsWebSearch: true,
-        supportsImages: true,
-        enabled: true,
-        busy: false,
-        priority: 40,
-        status: "idle",
-        currentJobId: null,
-        requestsPerMinute: 60,
-        minuteLimit: 60,
-        dailyLimit: 1000,
-        requestsToday: 0,
-        requestsThisMinute: 0,
-        remainingQuota: 1000,
-        lastUsed: null,
-        lastRequest: null,
-        lastError: null,
-        averageLatency: 200,
-        failureCount: 0,
-        successCount: 0,
-        cooldownUntil: null,
-      });
-    }
-
-    // Kimi Worker Pool (5 independent workers bound to KIMI_API_KEYS)
+    // 4. Kimi Worker Pool (if configured with valid keys)
     const kimiKeys = EnvConfig.getApiKeys("kimi");
     kimiKeys.forEach((key, index) => {
       workers.push({
@@ -331,7 +305,7 @@ export class WorkerManager {
         supportsImages: true,
         enabled: true,
         busy: false,
-        priority: 50,
+        priority: 30,
         status: "idle",
         currentJobId: null,
         requestsPerMinute: 60,
@@ -354,15 +328,15 @@ export class WorkerManager {
   }
 
   static async acquireWorker(db: admin.firestore.Firestore, workerId: string, jobId: string): Promise<void> {
-    if (workerId.startsWith("worker_") && !workerId.includes("_db_")) return;
     const docRef = db.collection("workers").doc(workerId);
     try {
-      await docRef.update({
+      await docRef.set({
+        workerId,
         busy: true,
         status: "busy",
         currentJobId: jobId,
         lastUsed: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (_) {}
   }
 
@@ -372,49 +346,48 @@ export class WorkerManager {
     latencyMs: number,
     isSuccess: boolean
   ): Promise<void> {
-    if (workerId.startsWith("worker_") && !workerId.includes("_db_")) return;
     const docRef = db.collection("workers").doc(workerId);
     try {
-      await docRef.update({
+      await docRef.set({
         busy: false,
         status: "idle",
         currentJobId: null,
         averageLatency: latencyMs,
-      });
+      }, { merge: true });
     } catch (_) {}
   }
 
   static async putWorkerInCooldown(
     db: admin.firestore.Firestore,
     workerId: string,
-    cooldownMinutes: number = 15,
+    cooldownMinutes: number = 1,
     reason: string = "Execution failure"
   ): Promise<void> {
     EnvConfig.setWorkerHealth(workerId, false, 0, reason);
-    if (workerId.startsWith("worker_") && !workerId.includes("_db_")) return;
     const cooldownDate = new Date(Date.now() + cooldownMinutes * 60 * 1000);
     const docRef = db.collection("workers").doc(workerId);
     try {
-      await docRef.update({
+      await docRef.set({
         busy: false,
         status: "cooldown",
         currentJobId: null,
         cooldownUntil: admin.firestore.Timestamp.fromDate(cooldownDate),
-      });
+      }, { merge: true });
     } catch (_) {}
   }
 
   static async claimNextJobWithTransaction(
     db: admin.firestore.Firestore,
-    worker: AIWorker
+    worker: AIWorker,
+    collectionName: string = "article_jobs"
   ): Promise<{ jobId: string; jobData: any } | null> {
     try {
-      const queueSnap = await db.collection("job_queue").where("status", "==", "queued").limit(10).get();
+      const queueSnap = await db.collection(collectionName).where("status", "==", "queued").limit(10).get();
       if (queueSnap.empty) return null;
 
       for (const doc of queueSnap.docs) {
         const jobId = doc.id;
-        const jobRef = db.collection("job_queue").doc(jobId);
+        const jobRef = db.collection(collectionName).doc(jobId);
 
         const claimedJob = await db.runTransaction(async (transaction) => {
           const freshSnap = await transaction.get(jobRef);
@@ -422,12 +395,15 @@ export class WorkerManager {
 
           const data = freshSnap.data() || {};
           if (data.status !== "queued") return null;
+          const retryAtMs = data.retryAt?.toMillis?.() || 0;
+          if (retryAtMs > Date.now()) return null;
 
           transaction.update(jobRef, {
             status: "processing",
             assignedWorker: worker.workerId,
             assignedProvider: worker.provider,
             startedAt: admin.firestore.FieldValue.serverTimestamp(),
+            leaseExpiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 15 * 60 * 1000),
           });
 
           return { jobId, jobData: data };

@@ -135,6 +135,18 @@ class NewsArticle {
     this.sourceUrl,
   });
 
+  String get dynamicTimeAgo {
+    final date = publishedAt ?? createdAt;
+    if (date == null) return timeAgo.isNotEmpty ? timeAgo : 'Recently';
+    final diff = DateTime.now().difference(date);
+    if (diff.isNegative || diff.inSeconds < 45) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+    return '${(diff.inDays / 30).floor()}mo ago';
+  }
+
   int get readingTimeMinutes {
     final text = '$title $summary $content';
     final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;

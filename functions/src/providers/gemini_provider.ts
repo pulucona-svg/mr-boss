@@ -17,7 +17,7 @@ export class GeminiProvider extends BaseAIProvider {
     }
 
     const maskedKey = EnvConfig.maskSecret(apiKey);
-    const model = worker.model || "gemini-1.5-flash";
+    const model = worker.model || "gemini-3.6-flash";
     const url = `${worker.baseUrl || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent?key=${apiKey}`;
 
 
@@ -66,5 +66,25 @@ Output MUST be strictly valid JSON format matching:
     }
 
     return this.parseNewsJson(content, categoryName);
+  }
+
+  async generateMetadata(prompt: string, worker: AIWorker): Promise<any> {
+    const apiKey = worker.apiKey || EnvConfig.getApiKey("gemini");
+    if (!apiKey) throw new Error(`Gemini API key missing for worker ${worker.workerId}`);
+    const model = worker.model || "gemini-3.6-flash";
+    const url = `${worker.baseUrl || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Return only valid JSON. Never invent sources, quotes, people, or events.\n\n${prompt}` }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.45 },
+      }),
+    });
+    if (!response.ok) throw new Error(`Gemini API HTTP ${response.status}: ${await response.text()}`);
+    const json: any = await response.json();
+    const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!content) throw new Error(`Gemini worker ${worker.workerId} returned empty metadata.`);
+    return JSON.parse(content);
   }
 }

@@ -31,6 +31,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   late PageController _topStoryPageController;
   late ScrollController _tabScrollController;
   Timer? _topStoriesTimer;
+  Timer? _minuteTickerTimer;
 
   StreamSubscription<List<TopStory>>? _topStoriesSub;
   StreamSubscription<List<TrendingTopic>>? _trendingTopicsSub;
@@ -65,6 +66,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     
     _subscribeToNewsStreams();
 
+    _minuteTickerTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+
     // Initial scroll sync
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToCategory(validInitialIndex);
@@ -74,6 +79,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   void dispose() {
     _topStoriesTimer?.cancel();
+    _minuteTickerTimer?.cancel();
     _cancelNewsSubscriptions();
     _pageController.dispose();
     _topStoryPageController.dispose();
@@ -1081,7 +1087,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
 Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Color textColor, {bool isStretched = false, String? displayedCategory}) {
   final categoryBadgeText = displayedCategory ?? article.category;
-  final providerBadgeText = article.provider != null && article.provider!.isNotEmpty ? article.provider!.toUpperCase() : null;
   final readingTimeText = '${article.readingTimeMinutes} min read';
   final summaryText = article.summary.isNotEmpty ? article.summary : article.content;
 
@@ -1146,24 +1151,6 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                           ),
                         ),
                       ),
-                      if (providerBadgeText != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            providerBadgeText,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1192,7 +1179,7 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                   Row(
                     children: [
                       Text(
-                        '${article.source} • ${article.timeAgo} • $readingTimeText',
+                        '${article.source} • ${article.dynamicTimeAgo} • $readingTimeText',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 11,
@@ -1249,24 +1236,6 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                         letterSpacing: 1,
                       ),
                     ),
-                    if (providerBadgeText != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1E3F) : Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          providerBadgeText,
-                          style: TextStyle(
-                            color: isDark ? const Color(0xFF20C8FF) : Colors.blue.shade700,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -1295,7 +1264,7 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                   children: [
                     Expanded(
                       child: Text(
-                        '${article.source} • ${article.timeAgo} • $readingTimeText',
+                        '${article.source} • ${article.dynamicTimeAgo} • $readingTimeText',
                         style: TextStyle(
                           color: isDark ? Colors.white38 : Colors.black38,
                           fontSize: 11,
