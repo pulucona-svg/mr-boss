@@ -56,7 +56,9 @@ Output MUST be strictly valid JSON format matching:
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Gemini API HTTP ${res.status}: ${errText}`);
+      const retryAfter = res.headers.get("retry-after") || "";
+      const retryHeader = retryAfter ? ` retry-after: ${retryAfter}` : "";
+      throw new Error(`Gemini API HTTP ${res.status}${retryHeader}: ${errText}`);
     }
 
     const json = await res.json();
@@ -81,10 +83,22 @@ Output MUST be strictly valid JSON format matching:
         generationConfig: { responseMimeType: "application/json", temperature: 0.45 },
       }),
     });
-    if (!response.ok) throw new Error(`Gemini API HTTP ${response.status}: ${await response.text()}`);
+    if (!response.ok) {
+      const errText = await response.text();
+      const retryAfter = response.headers.get("retry-after") || "";
+      const retryHeader = retryAfter ? ` retry-after: ${retryAfter}` : "";
+      throw new Error(`Gemini API HTTP ${response.status}${retryHeader}: ${errText}`);
+    }
     const json: any = await response.json();
     const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!content) throw new Error(`Gemini worker ${worker.workerId} returned empty metadata.`);
-    return JSON.parse(content);
+
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith("```json")) {
+      cleanContent = cleanContent.replace(/^```json/, "").replace(/```$/, "").trim();
+    } else if (cleanContent.startsWith("```")) {
+      cleanContent = cleanContent.replace(/^```/, "").replace(/```$/, "").trim();
+    }
+    return JSON.parse(cleanContent);
   }
 }

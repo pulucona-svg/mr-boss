@@ -167,17 +167,29 @@ REQUIRED JSON OUTPUT FORMAT (Strictly JSON, no extra text):
        if (!assignedWorker) await WorkerManager.releaseWorker(db, writerWorker.workerId, latencyMs, true);
 
       generatedArticle = {
-        title: genData?.title,
-        summary: genData?.summary,
-        content: genData?.content,
-        category: genData?.category || category,
+        title: (genData?.title || "").trim(),
+        summary: (genData?.summary || "").trim(),
+        content: (genData?.content || "").trim(),
+        category: (genData?.category || category).trim(),
       };
 
-       if (!generatedArticle.title || !generatedArticle.summary || !generatedArticle.content) throw new Error("Writer returned incomplete structured article");
-       logger.info(`[PIPELINE_ARTICLE_GENERATED] Title="${generatedArticle.title}" by Worker="${writerWorker.workerId}" in ${latencyMs}ms`);
+      // Strict validation of AI structured output
+      if (!generatedArticle.title || generatedArticle.title.length < 10) {
+        throw new Error("Writer returned invalid or missing article title (min 10 characters)");
+      }
+      if (!generatedArticle.summary || generatedArticle.summary.length < 20) {
+        throw new Error("Writer returned invalid or missing article summary (min 20 characters)");
+      }
+      if (!generatedArticle.content || generatedArticle.content.length < 200) {
+        throw new Error("Writer returned invalid or truncated article content (min 200 characters)");
+      }
+
+      logger.info(
+        `[AI_WORKER] worker="${writerWorker.workerId}" provider="${writerWorker.provider}" key="${writerWorker.apiKeyReference || "primary"}" action="article_generated" title="${generatedArticle.title}" latency="${latencyMs}ms"`
+      );
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
-       if (!assignedWorker) await WorkerManager.releaseWorker(db, writerWorker.workerId, latencyMs, false);
+      if (!assignedWorker) await WorkerManager.releaseWorker(db, writerWorker.workerId, latencyMs, false);
       logger.error(`[PIPELINE_WRITER_ERROR] Writer worker "${writerWorker.workerId}" failed:`, err);
       return { success: false, articleId: "", error: `AI Generation failed: ${err.message}` };
     }
@@ -198,13 +210,32 @@ REQUIRED JSON OUTPUT FORMAT (Strictly JSON, no extra text):
       5
     );
 
-    // 4. Save finished article and metadata in Firestore (`explore_news`)
-    const publishedAtDate = new Date();
-    if (valResult.imageCount < 1 || valResult.images.length < 1) {
-      logger.warn(`[PIPELINE_NOT_READY] Article ${articleId} has no validated ImageKit images.`);
-      return { success: false, articleId, error: "Article is not ready: no validated images." };
+    // 4. Validate images before publication (strictly require 5 validated images)
+    if (valResult.imageCount < 5 || valResult.images.length < 5) {
+      logger.warn(`[PIPELINE_NOT_READY] Article ${articleId} does not have 5 validated images (found ${valResult.imageCount}).`);
+      return { success: false, articleId, error: `Article failed validation: requires 5 images (found ${valResult.imageCount}).` };
     }
 
+    // Check for idempotency: if candidate was already published, avoid duplicate
+    if (sourceContext?.candidateId) {
+      const existingSnap = await db
+        .collection("explore_news")
+        .where("candidateId", "==", sourceContext.candidateId)
+        .limit(1)
+        .get();
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        logger.info(`[PIPELINE_IDEMPOTENT] Candidate "${sourceContext.candidateId}" already published as docId="${existingDoc.id}". Skipping duplicate write.`);
+        return {
+          success: true,
+          articleId: existingDoc.id,
+          article: existingDoc.data() as any,
+        };
+      }
+    }
+
+    // 5. Save finished article and metadata in Firestore (`explore_news`)
+    const publishedAtDate = new Date();
     const categoryId = sourceContext?.categoryId || generatedArticle.category
       .trim()
       .toLowerCase()

@@ -14,7 +14,11 @@ export class PixabayImageProvider extends BaseImageProvider {
     const cleanQuery = this.sanitizeQuery(query);
     if (!cleanQuery) return [];
 
-    const apiKey = worker?.apiKey || process.env.PIXABAY_API_KEY || "48096316-56dd6fb202867ef9ce5316499";
+    const apiKey = worker?.apiKey || process.env.PIXABAY_API_KEY;
+    if (!apiKey) {
+      logger.info(`[PIXABAY_IMAGE_PROVIDER] No Pixabay API key configured. Skipping Pixabay.`);
+      return [];
+    }
     const limit = options?.limit || 15;
     const requestUrl = `https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(cleanQuery)}&image_type=photo&orientation=horizontal&safesearch=true&per_page=${limit}`;
 

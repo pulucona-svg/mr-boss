@@ -9,8 +9,8 @@ export class KimiProvider extends BaseAIProvider {
 
   private getClient(worker: AIWorker): { client: OpenAI; model: string; maskedKey: string } {
     const apiKey = worker.apiKey || EnvConfig.getApiKey("kimi");
-    if (!apiKey) {
-      throw new Error(`Kimi API key missing for worker ${worker.workerId}`);
+    if (!apiKey || apiKey.startsWith("AQ.") || apiKey.startsWith("AIza")) {
+      throw new Error(`Invalid Kimi API key for worker ${worker.workerId} (Gemini credential or missing key detected). Kimi provider unavailable.`);
     }
 
     const maskedKey = EnvConfig.maskSecret(apiKey);

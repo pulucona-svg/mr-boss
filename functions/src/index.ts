@@ -7,11 +7,16 @@ import ImageKit from "imagekit";
 import { ThumbnailSearchService } from "./thumbnail_search_service";
 import { WorkerHealthMonitor } from "./services/worker_health_monitor";
 import { CanonicalExploreService } from "./services/canonical_explore_service";
+import { EnvConfig } from "./config/env_config";
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+
+// Print local startup health report (zero paid network calls)
+EnvConfig.runStartupVerificationAndReport().catch(() => {});
+
 
 function getImageKit(): ImageKit {
   const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || "";
@@ -124,20 +129,28 @@ export const onMaterialCreatedSearchThumbnail = onDocumentCreated(
       return;
     }
 
-    const title = data.title || "";
-    const description = data.description || "";
-    const courseCode = data.courseCode || "";
+    const title = data.title || data.unitName || "";
+    const description = data.description || data.summary || "";
+    const courseCode = data.courseCode || data.unitCode || "";
+    const materialType = data.materialType || data.type || "Notes";
+    const topic = data.topic || data.category || description || title;
+    const targetPrograms = data.targetPrograms || [];
 
-    logger.info(`[THUMBNAIL_TRIGGER] Starting automated thumbnail search for resource "${resourceId}" (Title="${title}")`);
+    logger.info(`[THUMBNAIL_TRIGGER] Starting automated thumbnail generation for resource "${resourceId}" (Title="${title}", Topic="${topic.slice(0, 50)}")`);
 
     try {
       const ik = getImageKit();
       const result = await ThumbnailSearchService.searchAndUploadThumbnail(
         db,
         ik,
-        title,
-        description,
-        courseCode
+        {
+          title,
+          description,
+          courseCode,
+          materialType,
+          topic,
+          targetPrograms,
+        }
       );
 
       if (result.success && result.imageKitUrl) {
@@ -170,18 +183,26 @@ export const searchMaterialThumbnail = onCall(async (request) => {
   }
 
   const data = snap.data() || {};
-  const title = data.title || "";
-  const description = data.description || "";
-  const courseCode = data.courseCode || "";
+  const title = data.title || data.unitName || "";
+  const description = data.description || data.summary || "";
+  const courseCode = data.courseCode || data.unitCode || "";
+  const materialType = data.materialType || data.type || "Notes";
+  const topic = data.topic || data.category || description || title;
+  const targetPrograms = data.targetPrograms || [];
 
   try {
     const ik = getImageKit();
     const result = await ThumbnailSearchService.searchAndUploadThumbnail(
       db,
       ik,
-      title,
-      description,
-      courseCode
+      {
+        title,
+        description,
+        courseCode,
+        materialType,
+        topic,
+        targetPrograms,
+      }
     );
 
     if (result.success && result.imageKitUrl) {
@@ -196,6 +217,49 @@ export const searchMaterialThumbnail = onCall(async (request) => {
     throw new HttpsError("internal", err.message || "Failed to search thumbnail.");
   }
 });
+
+/**
+ * CALLABLE FUNCTION: Directly generate a Gemini thumbnail from metadata for client uploads
+ */
+export const searchThumbnailWithGemini = onCall(async (request) => {
+  const data = request.data || {};
+  const unitName = data.unitName || data.title || "";
+  const materialType = data.materialType || data.type || "Notes";
+  const courseCode = data.unitCode || data.courseCode || data.catType || "";
+  const topic = data.topic || data.description || data.catType || unitName;
+
+  if (!unitName || typeof unitName !== "string") {
+    throw new HttpsError("invalid-argument", "Missing required parameter: unitName");
+  }
+
+  try {
+    const ik = getImageKit();
+    const result = await ThumbnailSearchService.searchAndUploadThumbnail(
+      db,
+      ik,
+      {
+        title: unitName,
+        materialType,
+        courseCode,
+        topic,
+        description: data.description || "",
+      }
+    );
+
+    return {
+      success: result.success,
+      thumbnailUrl: result.imageKitUrl,
+      thumbnailId: result.imageKitFileId,
+      imageHash: result.imageHash,
+      modelUsed: result.modelUsed,
+      error: result.error,
+    };
+  } catch (err: any) {
+    logger.error("[CALLABLE_THUMBNAIL_ERROR] Failed to generate thumbnail with Gemini:", err);
+    throw new HttpsError("internal", err.message || "Failed to generate thumbnail.");
+  }
+});
+
 
 /**
  * CALLABLE FUNCTION: Help Center Support Chat Assistant
@@ -230,7 +294,7 @@ export const askHelpAssistant = onCall(async (request) => {
  * 6. Automatically enforces retention (max 30 published articles per category).
  */
 export const scheduledExploreDiscovery = onSchedule(
-  { schedule: "every 60 minutes", region: "us-central1", timeoutSeconds: 3600, memory: "1GiB" },
+  { schedule: "every 60 minutes", region: "us-central1", timeoutSeconds: 1800, memory: "1GiB" },
   async () => {
     logger.info("[EXPLORE_CANONICAL_HOURLY] Running perpetual hourly discovery & article generation...");
     await CanonicalExploreService.synchronizeCategoryConfiguration(db);

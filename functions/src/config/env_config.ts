@@ -83,6 +83,19 @@ export class EnvConfig {
   }
 
   /**
+   * Helper to parse, trim, filter, and deduplicate comma-separated API key pools.
+   */
+  public static parseKeyPool(raw?: string): string[] {
+    if (!raw || typeof raw !== "string") return [];
+    const keys = raw
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+    // Deduplicate identical keys
+    return Array.from(new Set(keys));
+  }
+
+  /**
    * Retrieves single primary API key for a provider.
    */
   public static getApiKey(providerName: string): string {
@@ -91,40 +104,68 @@ export class EnvConfig {
   }
 
   /**
-   * Retrieves array of API keys for multi-worker providers (Kimi, OpenAI, etc.).
+   * Generates a safe, non-sensitive identifier for an API key.
+   * e.g. "gemini_key_01", "openai_key_02".
+   */
+  public static getKeyIdentifier(providerName: string, apiKey: string, index?: number): string {
+    const p = (providerName || "unknown").toLowerCase().trim();
+    if (typeof index === "number") {
+      return `${p}_key_${String(index + 1).padStart(2, "0")}`;
+    }
+    const allKeys = this.getApiKeys(providerName);
+    const foundIdx = allKeys.indexOf(apiKey);
+    if (foundIdx >= 0) {
+      return `${p}_key_${String(foundIdx + 1).padStart(2, "0")}`;
+    }
+    return `${p}_key_primary`;
+  }
+
+  /**
+   * Retrieves array of deduplicated, validated API keys for multi-worker providers.
    */
   public static getApiKeys(providerName: string): string[] {
     const name = (providerName || "").toLowerCase().trim();
     switch (name) {
       case "kimi": {
         const raw = process.env.KIMI_API_KEYS || process.env.KIMI_API_KEY || "";
-        const split = raw.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
-        return split.length > 0 ? split : [];
+        const keys = this.parseKeyPool(raw);
+        // Exclude Gemini-style keys (starting with AQ. or AIza) from Kimi configuration
+        const validKimiKeys = keys.filter((k) => {
+          if (k.startsWith("AQ.") || k.startsWith("AIza")) {
+            return false;
+          }
+          return k.length > 0;
+        });
+        return validKimiKeys;
       }
       case "openai": {
         const raw = process.env.OPENAI_API_KEYS || process.env.OPENAI_API_KEY || "";
-        const split = raw.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
-        return split.length > 0 ? split : [];
+        return this.parseKeyPool(raw);
       }
-      case "gemini":
-        return (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
-          .split(",")
-          .map((key) => key.trim())
-          .filter((key) => key.length > 0);
-      case "claude":
-        return process.env.CLAUDE_API_KEY ? [process.env.CLAUDE_API_KEY.trim()] : [];
-      case "deepseek":
-        return process.env.DEEPSEEK_API_KEY ? [process.env.DEEPSEEK_API_KEY.trim()] : [];
+      case "gemini": {
+        const raw = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "";
+        return this.parseKeyPool(raw);
+      }
+      case "claude": {
+        const raw = process.env.CLAUDE_API_KEYS || process.env.CLAUDE_API_KEY || "";
+        return this.parseKeyPool(raw);
+      }
+      case "deepseek": {
+        const raw = process.env.DEEPSEEK_API_KEYS || process.env.DEEPSEEK_API_KEY || "";
+        return this.parseKeyPool(raw);
+      }
       case "grok": {
         const raw = process.env.GROK_API_KEYS || process.env.GROK_API_KEY || process.env.XAI_API_KEY || "";
-        const split = raw.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
-        return split.length > 0 ? split : [];
+        return this.parseKeyPool(raw);
       }
-      case "pixabay":
-        return [process.env.PIXABAY_API_KEY || "48096316-56dd6fb202867ef9ce5316499"];
-      default:
+      case "pixabay": {
+        const raw = process.env.PIXABAY_API_KEY || "";
+        return raw ? this.parseKeyPool(raw) : [];
+      }
+      default: {
         const single = process.env[`${name.toUpperCase()}_API_KEY`];
-        return single ? [single.trim()] : [];
+        return single ? this.parseKeyPool(single) : [];
+      }
     }
   }
 
@@ -137,11 +178,9 @@ export class EnvConfig {
     const required = [
       "OPENAI_API_KEY",
       "GEMINI_API_KEY",
-      "KIMI_API_KEYS",
       "IMAGEKIT_PUBLIC_KEY",
       "IMAGEKIT_PRIVATE_KEY",
       "IMAGEKIT_URL_ENDPOINT",
-      "FIREBASE_PROJECT_ID",
     ];
 
     for (const v of required) {
@@ -205,7 +244,7 @@ export class EnvConfig {
   }
 
   /**
-   * Performs startup verification and prints clean Startup Report.
+   * Performs startup local configuration verification and prints clean Startup Report without making paid network calls.
    */
   public static async runStartupVerificationAndReport(): Promise<void> {
     const { valid, missingVars } = this.validateRequiredEnvVars();
@@ -221,46 +260,29 @@ export class EnvConfig {
     console.log(" MIRROR LAIKIPIA EXPLORE BACKEND STARTUP REPORT");
     console.log("=================================================");
 
-    const providersToTest = ["openai", "gemini", "claude", "deepseek"];
-    for (const name of providersToTest) {
-      const apiKey = this.getApiKey(name);
-      const masked = this.maskSecret(apiKey);
-
-      if (!apiKey) {
-        this.setProviderHealth(name, false, 0, "API key missing");
-        console.log(`✗ ${name.charAt(0).toUpperCase() + name.slice(1)} Disabled (Missing Key: ${masked})`);
-        continue;
-      }
-
-      const latencyMs = Math.floor(Math.random() * 150) + 120;
-      this.setProviderHealth(name, true, latencyMs);
-      console.log(`✓ ${name.charAt(0).toUpperCase() + name.slice(1)} Connected (Key: ${masked}, Latency: ${latencyMs}ms)`);
-    }
-
-    // Report individual Kimi Pool workers
+    const geminiKeys = this.getApiKeys("gemini");
+    const openaiKeys = this.getApiKeys("openai");
+    const grokKeys = this.getApiKeys("grok");
     const kimiKeys = this.getApiKeys("kimi");
+
+    console.log(`[AI_PROVIDER_HEALTH]`);
+    console.log(` Gemini: ${geminiKeys.length} key(s) configured / ${geminiKeys.length} eligible`);
+    console.log(` OpenRouter/OpenAI: ${openaiKeys.length} key(s) configured / ${openaiKeys.length} eligible`);
+    console.log(` Groq: ${grokKeys.length} key(s) configured / ${grokKeys.length} eligible`);
     if (kimiKeys.length > 0) {
-      this.setProviderHealth("kimi", true, 130);
-      kimiKeys.forEach((key, index) => {
-        const workerId = `worker_kimi_${index + 1}`;
-        const masked = this.maskSecret(key);
-        const latencyMs = Math.floor(Math.random() * 100) + 110;
-        this.setWorkerHealth(workerId, true, latencyMs, undefined, key);
-        console.log(`✓ Kimi Worker ${index + 1} Connected (Key: ${masked}, Latency: ${latencyMs}ms)`);
-      });
+      console.log(` Kimi: ${kimiKeys.length} key(s) configured / ${kimiKeys.length} eligible`);
     } else {
-      this.setProviderHealth("kimi", false, 0, "No Kimi keys configured");
-      console.log(`✗ Kimi Provider Disabled (No keys configured)`);
+      console.log(` Kimi: unavailable / invalid credentials`);
     }
 
     // Verify ImageKit
     const ikPub = process.env.IMAGEKIT_PUBLIC_KEY;
     const ikMasked = this.maskSecret(ikPub);
-    console.log(`✓ ImageKit Connected (Public Key: ${ikMasked})`);
+    console.log(` ImageKit: connected (Key: ${ikMasked})`);
 
     // Verify Firebase
-    const fbProject = process.env.FIREBASE_PROJECT_ID || "mirror-laikipia";
-    console.log(`✓ Firebase Connected (Project ID: ${fbProject})`);
+    const fbProject = process.env.GCLOUD_PROJECT || "mirror-laikipia";
+    console.log(` Firebase: connected (Project: ${fbProject})`);
 
     console.log("=================================================\n");
   }

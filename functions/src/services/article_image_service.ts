@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 import * as logger from "firebase-functions/logger";
 import ImageKit from "imagekit";
 import { ArticleImageData } from "../types/explore";
+import { ImageSafetyGateService } from "./image_safety_gate_service";
 
 export interface ArticleImageSearchResult {
   success: boolean;
@@ -56,13 +57,7 @@ export class ArticleImageSearchService {
   }
 
   /**
-   * SEARCH STRATEGY: Builds search queries in order of specificity.
-   * 1. headline
-   * 2. headline + location
-   * 3. headline + organization
-   * 4. headline + event
-   * 5. headline + date
-   * 6. summary fallback
+   * SEARCH STRATEGY: Extracts specific entities and generates precise, contextual search queries.
    */
   public static buildArticleSearchQueries(
     title: string,
@@ -74,21 +69,30 @@ export class ArticleImageSearchService {
 
     const queries: string[] = [];
 
-    // 1. Primary Clean Headline
-    queries.push(cleanTitle);
+    // Remove common verb noise from news titles
+    const noiseWords = /\b(launches|announces|unveils|rolls out|reports|celebrates|signs|urges|warns|aiming for|expands|holds|agrees|surge|major|tightens|extends|flags|surpasses|begins|opens|calls for|to take on|new|first|sets|boosts)\b/gi;
+    const strippedHeadline = cleanTitle.replace(noiseWords, " ").replace(/\s+/g, " ").trim();
 
-    // 2. Extract key nouns / entities (words starting with capital or length >= 4)
-    const words = cleanTitle.split(/\s+/).filter((w) => w.length >= 4 && !/^(the|this|that|with|from|have|been|after|before|into|about|over|under|will|says|said)$/i.test(w));
-    if (words.length >= 2) {
-      queries.push(words.slice(0, 4).join(" "));
+    // 1. Core entity nouns (words with length >= 4 or capitalized)
+    const entityWords = strippedHeadline
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !/^(the|this|that|with|from|have|been|after|before|into|about|over|under|will|says|said|more|year|years|than|also|over|back)$/i.test(w));
+
+    // 2. Focused 2-3 word entity query (e.g. "Olkaria Geothermal", "Mountain Gorilla Rwanda", "AMD Instinct")
+    if (entityWords.length >= 2) {
+      queries.push(entityWords.slice(0, 3).join(" "));
+      if (entityWords.length >= 4) {
+        queries.push(entityWords.slice(0, 2).join(" "));
+        queries.push(entityWords.slice(2, 5).join(" "));
+      }
     }
 
     // 3. Entity + Category query
     if (category) {
-      if (words.length >= 2) {
-        queries.push(`${words.slice(0, 2).join(" ")} ${category}`);
+      if (entityWords.length >= 2) {
+        queries.push(`${entityWords.slice(0, 2).join(" ")} ${category}`);
       }
-      queries.push(`${category} news photography`);
+      queries.push(`${category} photography`);
     }
 
     // 4. Category-specific high-resolution photo fallbacks
@@ -96,43 +100,34 @@ export class ArticleImageSearchService {
     if (catLower.includes("sport")) {
       queries.push("stadium sports athlete competition");
     } else if (catLower.includes("business") || catLower.includes("econom")) {
-      queries.push("business stock market finance meeting");
+      queries.push("business stock market finance economy");
     } else if (catLower.includes("health") || catLower.includes("medic")) {
-      queries.push("hospital healthcare doctor medicine");
+      queries.push("hospital clinic healthcare medicine science");
     } else if (catLower.includes("tech") || catLower.includes("innovat")) {
-      queries.push("technology innovation digital computer");
+      queries.push("computer technology hardware processor digital");
     } else if (catLower.includes("polit") || catLower.includes("govern")) {
       queries.push("parliament government conference diplomacy");
     } else if (catLower.includes("kenya")) {
-      queries.push("Nairobi Kenya landscape wildlife");
+      queries.push("Kenya landscape wildlife architecture Nairobi");
     } else if (catLower.includes("africa")) {
-      queries.push("Africa city architecture development");
+      queries.push("Africa city architecture development landscape");
     } else if (catLower.includes("entertain")) {
-      queries.push("concert performance music cinema entertainment");
+      queries.push("concert performance cinema culture theater");
     } else if (catLower.includes("agri")) {
-      queries.push("agriculture farm harvest crops farming");
+      queries.push("agriculture farm harvest crops farming field");
     } else if (catLower.includes("lifestyle")) {
-      queries.push("lifestyle wellness travel culture");
+      queries.push("lifestyle wellness travel culture environment");
     }
 
-    // 5. Summary snippet
-    if (summary) {
-      const summarySnippet = summary
-        .replace(/['"’`]/g, " ")
-        .split(/\s+/)
-        .slice(0, 6)
-        .join(" ")
-        .trim();
-      if (summarySnippet && !queries.includes(summarySnippet)) {
-        queries.push(summarySnippet);
-      }
-    }
-
-    return queries;
+    return Array.from(new Set(queries.filter((q) => q && q.trim().length >= 3)));
   }
 
   /**
-   * MAIN PIPELINE: Search real internet photos, download, validate, upload to ImageKit, replace placeholders.
+   * MAIN PIPELINE: Strict Multi-Stage Image Safety Gate with AI Vision & Candidate Replacement.
+   * Stage A: Metadata/Domain/Keyword Filter
+   * Stage B: Download & Binary Validation (Magic Bytes & Size)
+   * Stage C: Visual Safety Classification via AI Vision Model (WHEN IN DOUBT → REJECT)
+   * Stage D: Candidate Replacement & ImageKit CDN Delivery
    */
   public static async processArticleImages(
     db: admin.firestore.Firestore,
@@ -148,7 +143,7 @@ export class ArticleImageSearchService {
     },
     targetImageCount: number = 5
   ): Promise<ArticleImageSearchResult> {
-    logger.info(`[ARTICLE_IMAGE_START] Processing images for article "${article.title}" (Target: ${targetImageCount} images)`);
+    logger.info(`[ARTICLE_IMAGE_START] Processing images for article "${article.title}" (Target: ${targetImageCount} safe images)`);
 
     const queries = this.buildArticleSearchQueries(article.title, article.summary, article.category);
     const collectedCandidates: Array<{ url: string; title: string; pageUrl: string; sourceDomain: string }> = [];
@@ -162,7 +157,7 @@ export class ArticleImageSearchService {
           collectedCandidates.push(item);
         }
       }
-      if (collectedCandidates.length >= targetImageCount * 4) break;
+      if (collectedCandidates.length >= targetImageCount * 6) break;
     }
 
     logger.info(`[ARTICLE_IMAGE_CANDIDATES] Collected ${collectedCandidates.length} real photo candidates.`);
@@ -170,33 +165,78 @@ export class ArticleImageSearchService {
     const selectedImages: ArticleImageData[] = [];
     const imageSources: string[] = [];
     const usedHashes = new Set<string>();
+    let rejectedCount = 0;
 
     for (const cand of collectedCandidates) {
       if (selectedImages.length >= targetImageCount) break;
 
-      // 1. Validate URL & AI exclusion terms
-      if (!this.isValidPhotoCandidate(cand.url, cand.title)) continue;
+      // ----------------------------------------------------
+      // STAGE A: Metadata & URL Safety Gate
+      // ----------------------------------------------------
+      const stageACheck = ImageSafetyGateService.filterCandidateMetadata(cand.url, cand.title, cand.sourceDomain);
+      if (!stageACheck.safe) {
+        rejectedCount++;
+        logger.warn(`[IMAGE_SAFETY_REJECTED] stage="stage_a_metadata" reason="${stageACheck.reason}" candidate="${cand.url.slice(0, 80)}"`);
+        continue;
+      }
 
-      // 2. Download Image Buffer (validate HTTP 200, content-type, byte length)
-      const downloadRes = await this.downloadImageBuffer(cand.url);
-      if (!downloadRes) continue;
+      if (!this.isValidPhotoCandidate(cand.url, cand.title)) {
+        rejectedCount++;
+        continue;
+      }
 
-      const { buffer, contentType } = downloadRes;
+      // ----------------------------------------------------
+      // STAGE B: Download & Binary Validation Gate
+      // ----------------------------------------------------
+      await new Promise((r) => setTimeout(r, 200));
+      const downloadRes = await ImageSafetyGateService.downloadAndValidateBuffer(cand.url);
+      if (!downloadRes.success || !downloadRes.buffer) {
+        rejectedCount++;
+        logger.warn(`[IMAGE_SAFETY_REJECTED] stage="stage_b_download" reason="${downloadRes.rejectionReason}" candidate="${cand.url.slice(0, 80)}"`);
+        continue;
+      }
 
-      // 3. Compute SHA-256 Hash for deduplication
+      const buffer = downloadRes.buffer;
+      const contentType = downloadRes.contentType || "image/jpeg";
+
+      // SHA-256 Deduplication check
       const hash = crypto.createHash("sha256").update(buffer).digest("hex");
-      if (usedHashes.has(hash)) continue;
+      if (usedHashes.has(hash)) {
+        logger.info(`[IMAGE_SAFETY_DEDUP] Skipping in-memory duplicate image.`);
+        continue;
+      }
       usedHashes.add(hash);
 
-      // Check Firestore duplicate hash
       const isDup = await this.isImageHashUsed(db, hash);
-      if (isDup) continue;
+      if (isDup) {
+        logger.info(`[IMAGE_SAFETY_DEDUP] Skipping Firestore duplicate image.`);
+        continue;
+      }
 
-      // 4. Upload to ImageKit
+      // ----------------------------------------------------
+      // STAGE C: AI Vision Visual Safety Classifier Gate
+      // ----------------------------------------------------
+      const visualSafety = await ImageSafetyGateService.classifyImageVisualSafety(buffer, contentType, article.title);
+      if (!visualSafety.isSafe) {
+        rejectedCount++;
+        logger.warn(
+          `[IMAGE_SAFETY_REJECTED] stage="stage_c_vision" category="${visualSafety.category}" reason="${visualSafety.reason}" candidate="${cand.url.slice(0, 80)}"`
+        );
+        // Discard image immediately; proceed to next candidate
+        continue;
+      }
+
+      logger.info(`[IMAGE_SAFETY_APPROVED] Candidate verified safe: "${visualSafety.reason}" (Confidence: ${visualSafety.confidence})`);
+
+      // ----------------------------------------------------
+      // STAGE D: ImageKit Upload & Attachment
+      // ----------------------------------------------------
       const uploadRes = await this.uploadToImageKit(ik, buffer, article.title, selectedImages.length + 1, contentType);
-      if (!uploadRes) continue;
+      if (!uploadRes) {
+        logger.error(`[IMAGE_KIT_UPLOAD_FAIL] Failed to upload verified safe image to ImageKit.`);
+        continue;
+      }
 
-      // 5. Generate contextual caption
       const caption = this.generateImageCaption(article.title, cand.title, selectedImages.length + 1);
 
       selectedImages.push({
@@ -216,7 +256,9 @@ export class ArticleImageSearchService {
     }
 
     const imageCount = selectedImages.length;
-    logger.info(`[ARTICLE_IMAGE_SELECTION_COMPLETE] Successfully attached ${imageCount} real internet images for "${article.title}".`);
+    logger.info(
+      `[IMAGE_SAFETY_COMPLETE] Attached ${imageCount}/${targetImageCount} verified safe photos (Rejected: ${rejectedCount}) for "${article.title}".`
+    );
 
     // Replace placeholders [IMAGE_1]...[IMAGE_5] in article content
     let updatedContent = article.content || "";
@@ -225,17 +267,15 @@ export class ArticleImageSearchService {
       const imgData = selectedImages.find((img) => img.position === i);
 
       if (imgData) {
-        // Replace placeholder with structured markdown image & caption
         const markdownImg = `\n\n![${imgData.caption}](${imgData.imageUrl})\n*${imgData.caption}*\n\n`;
         updatedContent = updatedContent.replace(placeholder, markdownImg);
       } else {
-        // If fewer than 5 images available, clean up unused placeholder seamlessly
         updatedContent = updatedContent.replace(placeholder, "");
       }
     }
 
     return {
-      success: imageCount >= 1,
+      success: imageCount >= targetImageCount,
       images: selectedImages,
       imageCount,
       updatedContent,
@@ -278,12 +318,12 @@ export class ArticleImageSearchService {
       }
     } catch (e) {}
 
-    // Stage 2: Wikimedia Commons Real News/Event Photos (with 5000ms timeout)
+    // Stage 2: Wikimedia Commons Primary Search (with 5000ms timeout)
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       const q = this.encodeQueryParam(query);
-      const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${q}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|size|mime&format=json&origin=*`;
+      const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${q}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url|size|mime&iiurlwidth=1280&format=json&origin=*`;
       const res = await fetch(url, {
         headers: {
           "User-Agent": "MirrorLaikipiaNews/1.0 (news@mirrorlaikipia.edu; https://mirrorlaikipia.edu)",
@@ -296,11 +336,11 @@ export class ArticleImageSearchService {
         const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
         for (const page of pages as any[]) {
           const info = page?.imageinfo?.[0];
-          if (info && info.url) {
+          if (info && (info.thumburl || info.url)) {
             const mime = (info.mime || "").toLowerCase();
             if (mime.includes("image/jpeg") || mime.includes("image/jpg") || mime.includes("image/png") || mime.includes("image/webp")) {
               candidates.push({
-                url: info.url,
+                url: info.thumburl || info.url,
                 title: page.title || query,
                 pageUrl: info.descriptionurl || info.url,
                 sourceDomain: "commons.wikimedia.org",
@@ -311,40 +351,38 @@ export class ArticleImageSearchService {
       }
     } catch (e) {}
 
-    // Stage 3: Bing Image Search with 4000ms timeout
+    // Stage 3: Wikimedia Commons Refined Entity / Topic Search
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const q = this.encodeQueryParam(query);
-      const url = `https://www.bing.com/images/search?q=${q}&qft=+filterui:photo-photo`;
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const html = await res.text();
-        const blockRegex = /\{&quot;[^{}]*?&quot;murl&quot;:&quot;(https?:\/\/[^&]+?)&quot;[^{}]*?\}/gi;
-        let match;
-        while ((match = blockRegex.exec(html)) !== null) {
-          try {
-            const rawJson = match[0].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-            const obj = JSON.parse(rawJson);
-            if (obj.murl) {
-              let host = "";
-              try {
-                host = new URL(obj.purl || obj.murl).hostname.replace("www.", "");
-              } catch (e) {}
-              candidates.push({
-                url: obj.murl,
-                title: obj.t || obj.desc || query,
-                pageUrl: obj.purl || obj.murl,
-                sourceDomain: host || "bing.com",
-              });
+      const words = (query || "").split(/\s+/).filter((w) => w.length >= 4);
+      if (words.length >= 2) {
+        const refinedQ = this.encodeQueryParam(words.slice(0, 3).join(" "));
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${refinedQ}&gsrnamespace=6&gsrlimit=15&prop=imageinfo&iiprop=url|size|mime&iiurlwidth=1280&format=json&origin=*`;
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "MirrorLaikipiaNews/1.0 (news@mirrorlaikipia.edu; https://mirrorlaikipia.edu)",
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
+          for (const page of pages as any[]) {
+            const info = page?.imageinfo?.[0];
+            if (info && (info.thumburl || info.url)) {
+              const mime = (info.mime || "").toLowerCase();
+              if (mime.includes("image/jpeg") || mime.includes("image/jpg") || mime.includes("image/png") || mime.includes("image/webp")) {
+                candidates.push({
+                  url: info.thumburl || info.url,
+                  title: page.title || query,
+                  pageUrl: info.descriptionurl || info.url,
+                  sourceDomain: "commons.wikimedia.org",
+                });
+              }
             }
-          } catch (e) {}
+          }
         }
       }
     } catch (e) {}
@@ -365,48 +403,6 @@ export class ArticleImageSearchService {
     if (url.includes(".svg") || url.includes(".gif")) return false;
 
     return true;
-  }
-
-  /**
-   * Downloads image buffer and verifies size, format, HTTP 200.
-   */
-  private static async downloadImageBuffer(
-    url: string
-  ): Promise<{ buffer: Buffer; contentType: string } | null> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) return null;
-
-      const contentType = res.headers.get("content-type") || "image/jpeg";
-      if (!contentType.includes("image/")) return null;
-
-      const arrayBuf = await res.arrayBuffer();
-      if (!arrayBuf || arrayBuf.byteLength < 5000) return null; // Minimum 5KB
-
-      const buffer = Buffer.from(arrayBuf);
-
-      // Verify JPEG/PNG/WEBP Magic Bytes
-      const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
-      const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-      const isWebp = buffer.toString("utf8", 8, 12) === "WEBP";
-
-      if (!isJpeg && !isPng && !isWebp) return null;
-
-      return { buffer, contentType };
-    } catch (e) {
-      return null;
-    }
   }
 
   /**

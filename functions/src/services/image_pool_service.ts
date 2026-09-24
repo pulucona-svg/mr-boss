@@ -8,8 +8,8 @@ import { ArticleImageSearchService } from "./article_image_service";
 import { ImageSearchResult } from "../types/image_worker";
 
 function getImageKit(): ImageKit {
-  const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || "public_fS58uA9h5vC6EwGv29Z=";
-  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "private_Ym87v5...=";
+  const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || "";
+  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "";
   const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT || "https://ik.imagekit.io/ubgbitinve";
 
   return new ImageKit({

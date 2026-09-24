@@ -4,98 +4,32 @@ import * as logger from "firebase-functions/logger";
 import ImageKit from "imagekit";
 import { ImageSearchResult } from "../types/image_worker";
 import { ArticleImageData } from "../types/explore";
+import { ImageSafetyGateService } from "./image_safety_gate_service";
 
 export class ImageValidationService {
-  private static readonly EXCLUDED_TERMS = [
-    "ai generated",
-    "ai-generated",
-    "dall-e",
-    "dalle",
-    "midjourney",
-    "stable diffusion",
-    "stablediffusion",
-    "imagen",
-    "logo",
-    "watermark",
-    "meme",
-    "clipart",
-    "icon",
-    "vector",
-    "illustration",
-    "drawing",
-    "cartoon",
-    "symbol",
-    "diagram",
-    "chart",
-    "poster",
-    "badge",
-    "stamp",
-    "graphic",
-    "coat_of_arms",
-    "screenshot",
-    "banner",
-    "advertisement",
-    "infographic",
-    "stock placeholder",
-  ];
-
   /**
-   * Validates metadata candidate for AI exclusion terms and invalid extensions.
+   * Validates metadata candidate using ImageSafetyGateService.
    */
   public static isValidMetadata(cand: ImageSearchResult): boolean {
-    const combined = `${cand.imageUrl} ${cand.caption}`.toLowerCase();
-    for (const term of this.EXCLUDED_TERMS) {
-      if (combined.includes(term)) return false;
-    }
-    if (cand.imageUrl.endsWith(".svg") || cand.imageUrl.endsWith(".gif")) return false;
-    return true;
+    const check = ImageSafetyGateService.filterCandidateMetadata(cand.imageUrl, cand.caption, cand.sourceDomain);
+    return check.safe;
   }
 
   /**
-   * Downloads image buffer via HTTP, checking status 200, content-type, and magic bytes.
+   * Downloads and validates image buffer with ImageSafetyGateService.
    */
   public static async downloadAndValidateBuffer(
     url: string
   ): Promise<{ buffer: Buffer; contentType: string } | null> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) return null;
-
-      const contentType = res.headers.get("content-type") || "image/jpeg";
-      if (!contentType.includes("image/")) return null;
-
-      const arrayBuf = await res.arrayBuffer();
-      if (!arrayBuf || arrayBuf.byteLength < 5000) return null; // Min 5KB
-
-      const buffer = Buffer.from(arrayBuf);
-
-      // Verify JPEG/PNG/WEBP Magic Bytes
-      const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
-      const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-      const isWebp = buffer.toString("utf8", 8, 12) === "WEBP";
-
-      if (!isJpeg && !isPng && !isWebp) return null;
-
-      return { buffer, contentType };
-    } catch (e) {
-      return null;
+    const res = await ImageSafetyGateService.downloadAndValidateBuffer(url);
+    if (res.success && res.buffer) {
+      return { buffer: res.buffer, contentType: res.contentType || "image/jpeg" };
     }
+    return null;
   }
 
   /**
-   * Processes candidate metadata array: Downloads, validates, checks SHA-256 duplicates, uploads to ImageKit, and formats article placeholders.
+   * Processes candidate metadata array: Downloads, validates, checks visual safety, checks SHA-256 duplicates, uploads to ImageKit, and formats article placeholders.
    */
   public static async processCandidateMetadata(
     db: admin.firestore.Firestore,
@@ -116,16 +50,23 @@ export class ImageValidationService {
     for (const cand of candidates) {
       if (selectedImages.length >= targetCount) break;
 
-      // 1. Metadata check
+      // 1. Metadata check (Stage A)
       if (!this.isValidMetadata(cand)) continue;
 
-      // 2. Download buffer & validate magic bytes
+      // 2. Download buffer & validate magic bytes (Stage B)
       const dl = await this.downloadAndValidateBuffer(cand.imageUrl);
       if (!dl) continue;
 
       const { buffer, contentType } = dl;
 
-      // 3. SHA-256 hash deduplication
+      // 3. Visual Safety AI Classifier check (Stage C)
+      const visualSafety = await ImageSafetyGateService.classifyImageVisualSafety(buffer, contentType, article.title);
+      if (!visualSafety.isSafe) {
+        logger.warn(`[IMAGE_VALIDATION_REJECT] Visual safety rejection for "${cand.imageUrl.slice(0, 80)}": ${visualSafety.reason}`);
+        continue;
+      }
+
+      // 4. SHA-256 hash deduplication
       const hash = crypto.createHash("sha256").update(buffer).digest("hex");
       if (usedHashes.has(hash)) continue;
       usedHashes.add(hash);
@@ -133,7 +74,7 @@ export class ImageValidationService {
       const isUsedInDb = await this.isImageHashUsedInDb(db, hash);
       if (isUsedInDb) continue;
 
-      // 4. ImageKit Upload
+      // 5. ImageKit Upload (Stage D)
       const uploadRes = await this.uploadToImageKit(
         ik,
         buffer,

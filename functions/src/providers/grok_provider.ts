@@ -47,4 +47,40 @@ export class GrokProvider extends BaseAIProvider {
 
     return this.parseNewsJson(content, categoryName);
   }
+
+  async generateMetadata(prompt: string, worker: AIWorker): Promise<any> {
+    const apiKey = worker.apiKey;
+    if (!apiKey) {
+      throw new Error(`Grok API key missing for worker ${worker.workerId}`);
+    }
+
+    const client = new OpenAI({
+      apiKey,
+      baseURL: worker.baseUrl || "https://api.groq.com/openai/v1",
+    });
+
+    const model = worker.model || "openai/gpt-oss-120b";
+    logger.info(`[GROK_METADATA] Worker="${worker.workerId}" Model="${model}"`);
+
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: "Return only strictly valid JSON. Never invent sources, quotes, people, or events.",
+        },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error(`Grok worker ${worker.workerId} returned empty metadata.`);
+    }
+
+    return JSON.parse(content);
+  }
 }
+

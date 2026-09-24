@@ -133,19 +133,25 @@ export class CanonicalExploreService {
 
   private static async discoveryLoop(db: admin.firestore.Firestore, initialWorker: AIWorker): Promise<void> {
     while (true) {
+      if (!WorkerManager.isWorkerEligible(initialWorker.workerId)) {
+        return;
+      }
+
       const job = await this.claimDiscoveryJob(db, initialWorker);
       if (!job) return;
 
       const availableWorkers = [
         initialWorker,
         ...WorkerManager.createEnvironmentPoolWorkers("DISCOVERY").filter((w) => w.workerId !== initialWorker.workerId),
-      ];
+      ].filter((w) => WorkerManager.isWorkerEligible(w.workerId));
 
       let accepted = 0;
       let lastError = "";
 
       for (const worker of availableWorkers) {
         if (accepted >= job.target) break;
+        if (!WorkerManager.isWorkerEligible(worker.workerId)) continue;
+
         try {
           const provider = AIProviderRegistry.getProvider(worker.provider);
           for (let attempt = 0; attempt < 3 && accepted < job.target; attempt++) {
@@ -155,10 +161,21 @@ export class CanonicalExploreService {
               if (await this.enqueueCandidate(db, story, job, worker)) accepted++;
             }
           }
-          if (accepted > 0) break;
+          if (accepted > 0) {
+            await WorkerManager.recordWorkerSuccess(db, worker.workerId, 150);
+            break;
+          }
         } catch (err: any) {
           lastError = err?.message || String(err);
-          logger.warn(`[EXPLORE_DISCOVERY_WORKER_WARN] Worker "${worker.workerId}" (${worker.provider}) failed for job "${job.id}": ${lastError}. Trying next discovery worker.`);
+          const classification = WorkerManager.classifyError(err, worker.failureCount);
+          if (classification.type === "RATE_LIMIT") {
+            await WorkerManager.putWorkerInCooldown(db, worker.workerId, classification.cooldownSeconds, classification.cleanMessage);
+          } else if (classification.type === "AUTH") {
+            await WorkerManager.disableWorker(db, worker.workerId, classification.cleanMessage);
+          }
+          logger.warn(
+            `[EXPLORE_DISCOVERY_WORKER_WARN] Worker "${worker.workerId}" (${worker.provider}) failed for job "${job.id}": ${lastError}. Trying next discovery worker.`
+          );
         }
       }
 
@@ -178,6 +195,8 @@ export class CanonicalExploreService {
   }
 
   private static async claimDiscoveryJob(db: admin.firestore.Firestore, worker: AIWorker): Promise<any | null> {
+    if (!WorkerManager.isWorkerEligible(worker.workerId)) return null;
+
     const snap = await db.collection("discovery_jobs").where("status", "==", "queued").limit(10).get();
     for (const doc of snap.docs) {
       const claimed = await db.runTransaction(async (tx) => {
@@ -219,16 +238,23 @@ export class CanonicalExploreService {
   static async processArticleQueue(db: admin.firestore.Firestore, maxWorkers = 15): Promise<void> {
     await this.recoverExpiredArticleLeases(db);
     const workers = WorkerManager.createEnvironmentPoolWorkers("WRITER")
-      .filter((worker) => ["openai", "gemini", "kimi", "grok"].includes(worker.provider))
+      .filter((worker) => WorkerManager.isWorkerEligible(worker.workerId))
       .slice(0, maxWorkers);
     await Promise.all(workers.map((worker) => this.articleLoop(db, worker)));
   }
 
   private static async articleLoop(db: admin.firestore.Firestore, worker: AIWorker): Promise<void> {
     while (true) {
+      if (!WorkerManager.isWorkerEligible(worker.workerId)) {
+        logger.info(`[AI_WORKER_LOOP_EXIT] Worker "${worker.workerId}" is in cooldown or disabled. Exiting loop.`);
+        return;
+      }
+
       const claimed = await WorkerManager.claimNextJobWithTransaction(db, worker, "article_jobs");
       if (!claimed) return;
       const { jobId, jobData } = claimed;
+      const startTime = Date.now();
+
       try {
         const result = await ExploreGenerationPipeline.generateArticleForTopic(
           db, jobData.title, jobData.category, true,
@@ -236,19 +262,65 @@ export class CanonicalExploreService {
             discoveryWorker: jobData.discoveryWorker, discoveryProvider: jobData.discoveryProvider, categoryId: jobData.categoryId }, worker
         );
         if (!result.success) throw new Error(result.error || "Article failed readiness validation");
+
+        const latencyMs = Date.now() - startTime;
+        await WorkerManager.recordWorkerSuccess(db, worker.workerId, latencyMs);
+
         const batch = db.batch();
-        batch.update(db.collection("article_jobs").doc(jobId), { status: "published", articleId: result.articleId, leaseExpiresAt: null, completedAt: admin.firestore.FieldValue.serverTimestamp() });
-        batch.update(db.collection("story_candidates").doc(jobId), { status: "published", articleId: result.articleId, publishedAt: admin.firestore.FieldValue.serverTimestamp() });
+        batch.update(db.collection("article_jobs").doc(jobId), {
+          status: "published",
+          articleId: result.articleId,
+          leaseExpiresAt: null,
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        batch.update(db.collection("story_candidates").doc(jobId), {
+          status: "published",
+          articleId: result.articleId,
+          publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
         await batch.commit();
+
         await this.enforceRetention(db, jobData.categoryId, 30);
-        logger.info("[EXPLORE_ARTICLE_PUBLISHED]", { jobId, articleId: result.articleId, workerId: worker.workerId, provider: worker.provider });
+        logger.info(
+          `[AI_WORKER] worker="${worker.workerId}" provider="${worker.provider}" key="${worker.apiKeyReference}" status="idle" action="published" job="${jobId}" articleId="${result.articleId}"`
+        );
       } catch (error: any) {
-        const message = error?.message || String(error);
-        const retryAfter = /retry-after\s*[:=]?\s*(\d+)/i.exec(message);
-        const cooldown = /429|rate.?limit/i.test(message) ? Number(retryAfter?.[1] || 60) / 60 : 0;
-        if (cooldown) await WorkerManager.putWorkerInCooldown(db, worker.workerId, cooldown, message);
-        await this.failArticleJob(db, jobId, jobData, message);
-        logger.error("[EXPLORE_ARTICLE_FAILED]", { jobId, workerId: worker.workerId, provider: worker.provider, error: message });
+        const classification = WorkerManager.classifyError(error, worker.failureCount);
+
+        if (classification.type === "RATE_LIMIT") {
+          await WorkerManager.putWorkerInCooldown(db, worker.workerId, classification.cooldownSeconds, classification.cleanMessage);
+          await this.failArticleJob(db, jobId, jobData, classification.cleanMessage, 10_000);
+          logger.warn(
+            `[AI_WORKER] worker="${worker.workerId}" provider="${worker.provider}" key="${worker.apiKeyReference}" status="cooldown" error="429_rate_limit" cooldownSeconds=${classification.cooldownSeconds} action="release_and_retry" job="${jobId}"`
+          );
+          return; // Exit this worker loop; other healthy workers continue
+        } else if (classification.type === "AUTH") {
+          await WorkerManager.disableWorker(db, worker.workerId, classification.cleanMessage);
+          await this.failArticleJob(db, jobId, jobData, classification.cleanMessage, 0); // Immediate retry for other healthy workers
+          logger.error(
+            `[AI_WORKER] worker="${worker.workerId}" provider="${worker.provider}" key="${worker.apiKeyReference}" status="disabled" error="401_auth_failure" action="quarantine_key" job="${jobId}"`
+          );
+          return; // Exit this worker loop
+        } else if (classification.type === "MALFORMED") {
+          await this.failArticleJob(db, jobId, jobData, classification.cleanMessage, 5_000);
+          logger.warn(
+            `[AI_WORKER] worker="${worker.workerId}" provider="${worker.provider}" key="${worker.apiKeyReference}" status="retry" error="malformed_output" action="release_and_retry" job="${jobId}"`
+          );
+          if (classification.cooldownSeconds > 10) {
+            await WorkerManager.putWorkerInCooldown(db, worker.workerId, classification.cooldownSeconds, classification.cleanMessage);
+            return;
+          }
+        } else {
+          // Timeout, server error, or other transient
+          await this.failArticleJob(db, jobId, jobData, classification.cleanMessage, 15_000);
+          logger.warn(
+            `[AI_WORKER] worker="${worker.workerId}" provider="${worker.provider}" key="${worker.apiKeyReference}" status="retry" error="${classification.type}" action="release_and_retry" job="${jobId}"`
+          );
+          if (classification.cooldownSeconds > 10) {
+            await WorkerManager.putWorkerInCooldown(db, worker.workerId, classification.cooldownSeconds, classification.cleanMessage);
+            return;
+          }
+        }
       }
     }
   }
@@ -282,20 +354,26 @@ export class CanonicalExploreService {
     await ref.update({ status: attempts >= 3 ? "failed" : "queued", attempts, lastError: error, retryAt: admin.firestore.Timestamp.fromMillis(Date.now() + 60_000), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 
-  private static async failArticleJob(db: admin.firestore.Firestore, id: string, data: any, error: string): Promise<void> {
+  private static async failArticleJob(
+    db: admin.firestore.Firestore,
+    id: string,
+    data: any,
+    error: string,
+    retryDelayMs: number = 60_000
+  ): Promise<void> {
     const attempts = (data.attempts || 0) + 1;
     const ref = db.collection("article_jobs").doc(id);
     const update = {
-      status: attempts >= 3 ? "failed" : "queued",
+      status: attempts >= 5 ? "failed" : "queued",
       attempts,
       lastError: error,
       assignedWorker: null,
       leaseExpiresAt: null,
-      retryAt: attempts >= 3 ? null : admin.firestore.Timestamp.fromMillis(Date.now() + 60_000),
+      retryAt: attempts >= 5 ? null : admin.firestore.Timestamp.fromMillis(Date.now() + retryDelayMs),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
     await ref.update(update);
-    if (attempts >= 3) await db.collection("failed_article_jobs").doc(id).set({ ...data, ...update, failedAt: admin.firestore.FieldValue.serverTimestamp() });
+    if (attempts >= 5) await db.collection("failed_article_jobs").doc(id).set({ ...data, ...update, failedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 
   static async recoverExpiredArticleLeases(db: admin.firestore.Firestore): Promise<void> {
