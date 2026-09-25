@@ -9,7 +9,7 @@ import '../services/auth_service.dart';
 import '../services/file_service.dart';
 import '../services/upload_service.dart';
 import '../services/timetable_upload_service.dart';
-import 'user_provider.dart';
+import '../services/admin_service.dart';
 
 export 'user_provider.dart' show userProfileProvider, UserProfile;
 export '../repositories/news_repository.dart';
@@ -25,3 +25,5 @@ final authServiceProvider = Provider((ref) => AuthService());
 final fileServiceProvider = Provider((ref) => FileService());
 final uploadServiceProvider = Provider((ref) => UploadService());
 final timetableUploadServiceProvider = Provider((ref) => TimetableUploadService());
+final adminServiceProvider = ChangeNotifierProvider((ref) => AdminService());
+

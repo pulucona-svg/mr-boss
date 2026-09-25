@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/subscription_model.dart';
 import 'persistence_service.dart';
+import 'interstitial_ad_service.dart';
+
 
 class SubscriptionService extends ChangeNotifier {
   static final SubscriptionService _instance = SubscriptionService._internal();
@@ -322,18 +324,27 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> showRewardedAd({required Function onRewardEarned}) async {
+    if (InterstitialAdService.isFullScreenAdShowing) {
+      debugPrint('SubscriptionService: Full-screen ad already displaying, cannot show rewarded ad.');
+      return;
+    }
+
     if (_rewardedAd == null) {
       _loadRewardedAd();
       return;
     }
 
+    InterstitialAdService.isFullScreenAdShowing = true;
+
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
+        InterstitialAdService.isFullScreenAdShowing = false;
         ad.dispose();
         _rewardedAd = null;
         _loadRewardedAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        InterstitialAdService.isFullScreenAdShowing = false;
         ad.dispose();
         _rewardedAd = null;
         _loadRewardedAd();

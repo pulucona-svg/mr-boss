@@ -1,20 +1,15 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import '../widgets/skeleton.dart';
-import '../widgets/glass_card.dart';
 import '../widgets/academic_fields.dart';
 import '../providers/providers.dart';
-import '../services/course_service.dart';
 import 'help_support_screen.dart';
 import 'reset_password_screen.dart';
 import 'library_screen.dart';
 import 'login_screen.dart';
-import '../providers/firebase_auth_provider.dart';
 
 import 'subscription_screen.dart';
 import '../services/subscription_service.dart';
@@ -22,6 +17,9 @@ import '../services/subscription_service.dart';
 import 'analytics_screen.dart';
 import '../services/usage_service.dart';
 import '../services/persistence_service.dart';
+import '../services/admin_service.dart';
+import 'admin/admin_menu_bottom_sheet.dart';
+
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -42,6 +40,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (_isLoading) {
       _simulateLoading();
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(adminServiceProvider).isCurrentUserAdmin();
+    });
   }
 
   void _simulateLoading() async {
@@ -51,6 +52,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _openAdminConsole(AdminService adminService) async {
+    final isVerified = await adminService.isCurrentUserAdmin();
+    if (!isVerified || !mounted) return;
+
+    AdminCapabilities? capabilities = adminService.cachedCapabilities;
+    capabilities ??= await adminService.getAdminCapabilities();
+
+    if (!mounted) return;
+
+    if (capabilities != null && capabilities.authorized) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (bottomSheetContext) => AdminMenuBottomSheet(
+          capabilities: capabilities!,
+        ),
+      );
+    } else {
+      final errorMsg = adminService.errorMessage ?? 'Unable to retrieve administrative capabilities from backend.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -116,9 +147,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ] : [],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.emoji_events_outlined, color: Colors.amber),
-                      onPressed: () {},
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final adminService = ref.watch(adminServiceProvider);
+                        final isAdmin = adminService.isAdmin;
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                isAdmin ? Icons.emoji_events_rounded : Icons.emoji_events_outlined,
+                                color: Colors.amber,
+                              ),
+                              onPressed: () => _openAdminConsole(adminService),
+                            ),
+                            if (isAdmin)
+                              Positioned(
+                                right: 8,
+                                top: 8,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF00E676),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -396,6 +454,98 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final adminService = ref.watch(adminServiceProvider);
+                        if (!adminService.isAdmin) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: GestureDetector(
+                            onTap: () => _openAdminConsole(adminService),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: isDark
+                                      ? [const Color(0xFF1F1C38), const Color(0xFF141228)]
+                                      : [Colors.amber.shade50, Colors.white],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.amber.withValues(alpha: 0.4),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withValues(alpha: 0.15),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.admin_panel_settings_rounded,
+                                      color: Colors.amber,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              "Admin Console",
+                                              style: TextStyle(
+                                                color: textColor,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: const Text(
+                                                "VERIFIED",
+                                                style: TextStyle(
+                                                  color: Color(0xFF00E676),
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          "Tap to open administrative capabilities menu",
+                                          style: TextStyle(
+                                            color: isDark ? Colors.white60 : Colors.black54,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_forward_ios_rounded,
+                                    color: isDark ? Colors.white38 : Colors.black38,
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
 

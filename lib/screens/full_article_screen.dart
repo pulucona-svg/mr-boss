@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/article_viewer_model.dart';
 import '../models/explore_models.dart';
 import '../widgets/skeleton.dart';
+import '../services/interstitial_ad_service.dart';
+
 
 class FullArticleScreen extends StatefulWidget {
   final NewsArticle? article;
@@ -125,7 +127,12 @@ class _FullArticleScreenState extends State<FullArticleScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor, size: 20),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            Navigator.pop(context);
+            InterstitialAdService().maybeShowOnTransition(
+              transitionPoint: 'full_article_screen_exit',
+            );
+          },
         ),
         actions: [
           IconButton(

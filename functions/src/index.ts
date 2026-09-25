@@ -377,3 +377,9 @@ export const triggerNewsRotation = onCall(async (request) => {
   await Promise.all(categories.map((category) => CanonicalExploreService.enforceRetention(db, category.categoryId, category.retentionLimit)));
   return { success: true, mode: mode || "hourly" };
 });
+
+/**
+ * ADMIN CONTROL SYSTEM - Phase 1 Endpoints
+ */
+export {getAdminCapabilities, syncAdminClaim} from "./admin/admin_capabilities";
+

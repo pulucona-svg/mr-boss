@@ -26,6 +26,7 @@ import 'services/device_id_manager.dart';
 import 'services/top_notification_service.dart';
 import 'services/user_service.dart';
 import 'services/offline_upload_queue_service.dart';
+import 'services/interstitial_ad_service.dart';
 import 'providers/providers.dart';
 
 void main() async {
@@ -58,8 +59,11 @@ Future<void> _initServices() async {
       UsageService().init(),
       OfflineUploadQueueService().initialize(),
     ]);
+
+    InterstitialAdService().initialize();
     
     DownloadService().performRetentionCleanup();
+
     
     debugPrint('All services initialized successfully');
   } catch (e) {
@@ -91,6 +95,7 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
     return MaterialApp(
       title: 'Mirror Laikipia',
       debugShowCheckedModeBanner: false,
+      navigatorKey: InterstitialAdService.navigatorKey,
       scaffoldMessengerKey: ConnectivityService().messengerKey,
       theme: ThemeData(
         brightness: Brightness.light,
@@ -309,6 +314,12 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   ];
 
   void _onItemTapped(int index) {
+    final currentIndex = ref.read(uiStateProvider).mainNavigationIndex;
+    if (currentIndex != index) {
+      InterstitialAdService().maybeShowOnTransition(
+        transitionPoint: 'main_nav_tab_${currentIndex}_to_$index',
+      );
+    }
     ref.read(uiStateProvider.notifier).setMainNavigationIndex(index);
     _pageController.animateToPage(
       index,

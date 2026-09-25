@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/subscription_model.dart';
 import '../providers/service_providers.dart';
+import '../services/interstitial_ad_service.dart';
 
 class PurchaseModal extends ConsumerStatefulWidget {
   final SubscriptionPackage package;
@@ -29,11 +30,13 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
   @override
   void initState() {
     super.initState();
+    InterstitialAdService.isFullScreenAdShowing = true;
     _phoneController = TextEditingController(text: widget.phoneNumber);
   }
 
   @override
   void dispose() {
+    InterstitialAdService.isFullScreenAdShowing = false;
     _phoneController.dispose();
     super.dispose();
   }
