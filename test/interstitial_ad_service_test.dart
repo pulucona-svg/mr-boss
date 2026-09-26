@@ -32,12 +32,12 @@ void main() {
       );
       expect(
         InterstitialAdService.defaultSessionInterval,
-        equals(const Duration(minutes: 15)),
+        equals(const Duration(minutes: 5)),
       );
     });
 
     test('3. Interval is configurable for testing without altering production default', () {
-      expect(service.sessionInterval, equals(const Duration(minutes: 15)));
+      expect(service.sessionInterval, equals(const Duration(minutes: 5)));
       service.sessionIntervalForTesting = const Duration(seconds: 30);
       expect(service.sessionInterval, equals(const Duration(seconds: 30)));
     });
@@ -101,7 +101,7 @@ void main() {
       expect(service.isEligible, isFalse);
       expect(service.activeSecondsInCurrentInterval, equals(0));
       expect(InterstitialAdService.isFullScreenAdShowing, isFalse);
-      expect(service.sessionInterval, equals(const Duration(minutes: 15)));
+      expect(service.sessionInterval, equals(const Duration(minutes: 5)));
       expect(service.isSubscribedOverrideForTesting, isNull);
       expect(service.isOfflineOverrideForTesting, isNull);
       expect(service.skipAdLoadingForTesting, isFalse);

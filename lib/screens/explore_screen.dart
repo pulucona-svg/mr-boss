@@ -17,9 +17,13 @@ import '../services/connectivity_service.dart';
 import '../providers/ui_provider.dart';
 import 'more_options_screen.dart';
 import 'full_article_screen.dart';
+import 'admin/create_news_article_admin_screen.dart';
+import 'admin/deactivated_articles_admin_screen.dart';
+import '../services/admin_service.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
-  const ExploreScreen({super.key});
+  final bool isAdminMode;
+  const ExploreScreen({super.key, this.isAdminMode = false});
 
   @override
   ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
@@ -47,6 +51,279 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   late List<NewsArticle> _latestNews;
   late List<NewsArticle> _allMixedNews;
   final Map<String, List<NewsArticle>> _categoryNewsMap = {};
+
+  final Set<String> _selectedArticleIds = {};
+  bool _isPerformingAdminAction = false;
+
+  void _toggleArticleSelection(String articleId) {
+    if (!widget.isAdminMode) return;
+    setState(() {
+      if (_selectedArticleIds.contains(articleId)) {
+        _selectedArticleIds.remove(articleId);
+      } else {
+        _selectedArticleIds.add(articleId);
+      }
+    });
+  }
+
+  Future<void> _deactivateSelectedArticles() async {
+    if (_selectedArticleIds.isEmpty || _isPerformingAdminAction) return;
+    setState(() => _isPerformingAdminAction = true);
+    try {
+      final ids = _selectedArticleIds.toList();
+      await AdminService().deactivateArticles(ids);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${ids.length} article(s) deactivated.'),
+            backgroundColor: const Color(0xFF00B2FF),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() {
+          _selectedArticleIds.clear();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to deactivate: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPerformingAdminAction = false);
+      }
+    }
+  }
+
+  Future<void> _confirmAndDeleteSelectedArticles() async {
+    if (_selectedArticleIds.isEmpty || _isPerformingAdminAction) return;
+
+    final count = _selectedArticleIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF140C37),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Confirm Deletion', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete $count article(s)? This will also purge associated media from ImageKit and cannot be undone.',
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete Permanently', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isPerformingAdminAction = true);
+    try {
+      final ids = _selectedArticleIds.toList();
+      await AdminService().deleteArticles(ids);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$count article(s) permanently deleted.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() {
+          _selectedArticleIds.clear();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPerformingAdminAction = false);
+      }
+    }
+  }
+
+  Widget _buildAdminSelectionActionBar(Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      color: const Color(0xFF1F1D42),
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 20),
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _selectedArticleIds.clear()),
+              tooltip: 'Cancel selection',
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${_selectedArticleIds.length} selected',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Spacer(),
+            if (_isPerformingAdminAction)
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00F2FF)),
+              )
+            else
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _deactivateSelectedArticles,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.visibility_off_outlined, color: Colors.amber, size: 18),
+                        label: const Text(
+                          'DEACTIVATE',
+                          style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: _confirmAndDeleteSelectedArticles,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent, size: 18),
+                        label: const Text(
+                          'DELETE',
+                          style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminHeader(BuildContext context, Color textColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              if (Navigator.canPop(context))
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Back to Admin',
+                ),
+              Text(
+                'News Articles',
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white, size: 28),
+            color: const Color(0xFF181739),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Colors.white12),
+            ),
+            onSelected: (value) {
+              if (value == 'create') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CreateNewsArticleAdminScreen()),
+                );
+              } else if (value == 'activate') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DeactivatedArticlesAdminScreen()),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'create',
+                child: Row(
+                  children: [
+                    Icon(Icons.add_circle_outline, color: Color(0xFF00F2FF), size: 20),
+                    SizedBox(width: 12),
+                    Text('CREATE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'activate',
+                child: Row(
+                  children: [
+                    Icon(Icons.restore_page_outlined, color: Color(0xFF00F2FF), size: 20),
+                    SizedBox(width: 12),
+                    Text('ACTIVATE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -350,13 +627,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final isOffline = ConnectivityService().isOffline;
 
     final firstCat = _categories.isNotEmpty ? _categories.first : 'For You';
-    final canPopScreen = uiState.exploreCategory == firstCat;
+    final canPopScreen = widget.isAdminMode
+        ? _selectedArticleIds.isEmpty
+        : (uiState.exploreCategory == firstCat);
 
     return PopScope(
       canPop: canPopScreen,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (_categories.isNotEmpty) {
+        if (_selectedArticleIds.isNotEmpty) {
+          setState(() {
+            _selectedArticleIds.clear();
+          });
+          return;
+        }
+        if (!widget.isAdminMode && _categories.isNotEmpty) {
           _onCategoryTap(_categories.first);
         }
       },
@@ -396,7 +681,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       ],
                     ),
                   ),
-                _buildStaticHeader(context, textColor),
+                if (widget.isAdminMode && _selectedArticleIds.isNotEmpty)
+                  _buildAdminSelectionActionBar(textColor)
+                else if (widget.isAdminMode)
+                  _buildAdminHeader(context, textColor)
+                else
+                  _buildStaticHeader(context, textColor),
                 _buildCategoryTabs(isDark, uiState),
                 Expanded(
                   child: _categories.isEmpty
@@ -691,7 +981,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             }
             final actualIndex = index - (index ~/ 6);
             final isStretched = actualIndex % 7 == 0;
-            return _buildNewsCard(context, _latestNews[actualIndex], isDark, textColor, isStretched: isStretched);
+            final article = _latestNews[actualIndex];
+            return _buildNewsCard(
+              context,
+              article,
+              isDark,
+              textColor,
+              isStretched: isStretched,
+              isAdminMode: widget.isAdminMode,
+              isSelected: _selectedArticleIds.contains(article.id),
+              isSelectionActive: _selectedArticleIds.isNotEmpty,
+              onToggleSelect: () => _toggleArticleSelection(article.id),
+            );
           },
         );
       }
@@ -715,7 +1016,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             }
             final actualIndex = index - (index ~/ 6);
             final isStretched = actualIndex % 7 == 0;
-            return _buildNewsCard(context, articles[actualIndex], isDark, textColor, isStretched: isStretched, displayedCategory: category);
+            final article = articles[actualIndex];
+            return _buildNewsCard(
+              context,
+              article,
+              isDark,
+              textColor,
+              isStretched: isStretched,
+              displayedCategory: category,
+              isAdminMode: widget.isAdminMode,
+              isSelected: _selectedArticleIds.contains(article.id),
+              isSelectionActive: _selectedArticleIds.isNotEmpty,
+              onToggleSelect: () => _toggleArticleSelection(article.id),
+            );
           },
         );
       }
@@ -772,8 +1085,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           itemBuilder: (context, index) {
             final realIndex = index % _topStories.length;
             final story = _topStories[realIndex];
+            final isStorySelected = _selectedArticleIds.contains(story.id);
+            final isSelectionActive = _selectedArticleIds.isNotEmpty;
             return GestureDetector(
               onTap: () async {
+                if (widget.isAdminMode && isSelectionActive) {
+                  _toggleArticleSelection(story.id);
+                  return;
+                }
                 final repository = ref.read(newsRepositoryProvider);
                 NewsArticle? article = await repository.getArticle(story.id);
                 article ??= NewsArticle(
@@ -798,9 +1117,20 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   );
                 }
               },
+              onLongPress: widget.isAdminMode ? () => _toggleArticleSelection(story.id) : null,
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
+                  border: isStorySelected ? Border.all(color: const Color(0xFF00F2FF), width: 2.5) : null,
+                  boxShadow: isStorySelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF00F2FF).withOpacity(0.5),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24),
@@ -854,11 +1184,25 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                           ),
                         ),
                       ),
-                      const Positioned(
-                        top: 12,
-                        right: 12,
-                        child: Icon(Icons.more_vert, color: Colors.white, size: 20),
-                      ),
+                      if (isStorySelected)
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF00F2FF),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.check, color: Colors.black, size: 16),
+                          ),
+                        )
+                      else
+                        const Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Icon(Icons.more_vert, color: Colors.white, size: 20),
+                        ),
                       Positioned(
                         bottom: 20,
                         left: 16,
@@ -1076,7 +1420,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             
             final article = _allMixedNews[actualDataIndex];
             final isStretched = actualDataIndex % 7 == 0;
-            return _buildNewsCard(context, article, isDark, textColor, isStretched: isStretched);
+            return _buildNewsCard(
+              context,
+              article,
+              isDark,
+              textColor,
+              isStretched: isStretched,
+              isAdminMode: widget.isAdminMode,
+              isSelected: _selectedArticleIds.contains(article.id),
+              isSelectionActive: _selectedArticleIds.isNotEmpty,
+              onToggleSelect: () => _toggleArticleSelection(article.id),
+            );
           },
           childCount: _allMixedNews.length + (_allMixedNews.length ~/ 5) + 1,
         ),
@@ -1085,7 +1439,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 }
 
-Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Color textColor, {bool isStretched = false, String? displayedCategory}) {
+Widget _buildNewsCard(
+  BuildContext context,
+  NewsArticle article,
+  bool isDark,
+  Color textColor, {
+  bool isStretched = false,
+  String? displayedCategory,
+  bool isAdminMode = false,
+  bool isSelected = false,
+  bool isSelectionActive = false,
+  VoidCallback? onToggleSelect,
+}) {
   final categoryBadgeText = displayedCategory ?? article.category;
   final readingTimeText = '${article.readingTimeMinutes} min read';
   final summaryText = article.summary.isNotEmpty ? article.summary : article.content;
@@ -1093,18 +1458,36 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
   if (isStretched) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FullArticleScreen(
-              article: article,
+        if (isAdminMode && isSelectionActive) {
+          onToggleSelect?.call();
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FullArticleScreen(
+                article: article,
+              ),
             ),
-          ),
-        );
+          );
+        }
       },
+      onLongPress: isAdminMode ? onToggleSelect : null,
       child: Container(
         height: 230,
         margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: isSelected ? Border.all(color: const Color(0xFF00F2FF), width: 2.5) : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF00F2FF).withOpacity(0.5),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
         child: Stack(
           children: [
             FadingImageThumbnail(
@@ -1127,6 +1510,19 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
                 ),
               ),
             ),
+            if (isSelected)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF00F2FF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check, color: Colors.black, size: 16),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Column(
@@ -1203,22 +1599,63 @@ Widget _buildNewsCard(BuildContext context, NewsArticle article, bool isDark, Co
   }
   return GestureDetector(
     onTap: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FullArticleScreen(
-            article: article,
+      if (isAdminMode && isSelectionActive) {
+        onToggleSelect?.call();
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FullArticleScreen(
+              article: article,
+            ),
           ),
-        ),
-      );
+        );
+      }
     },
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      color: Colors.transparent,
+    onLongPress: isAdminMode ? onToggleSelect : null,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: isSelected ? const EdgeInsets.all(8) : const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? (isDark ? const Color(0xFF00F2FF).withOpacity(0.12) : const Color(0xFF00F2FF).withOpacity(0.08))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        border: isSelected
+            ? Border.all(color: const Color(0xFF00F2FF), width: 2)
+            : Border.all(color: Colors.transparent, width: 2),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF00F2FF).withOpacity(0.25),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FadingImageThumbnail(imageUrls: article.imageUrls),
+          Stack(
+            children: [
+              FadingImageThumbnail(imageUrls: article.imageUrls),
+              if (isSelected)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF00F2FF),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check, color: Colors.black, size: 14),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

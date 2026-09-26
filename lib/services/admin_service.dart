@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../models/manual_ad.dart';
 
 /// Representation of an administrative module returned by the backend.
 class AdminMenuItem {
@@ -219,5 +220,205 @@ class AdminService extends ChangeNotifier {
     _cachedCapabilities = null;
     _isChecking = false;
     notifyListeners();
+  }
+
+  // =========================================================================
+  // MODULE 1: MANUAL ADS MANAGEMENT
+  // =========================================================================
+
+  /// Retrieves manual ads using the authoritative backend callable function.
+  Future<List<ManualAd>> getManualAds({bool forceRefresh = false}) async {
+    final bool admin = await isCurrentUserAdmin(forceRefresh: forceRefresh);
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [ADS] Attempting to fetch manual ads via callable function getAdminManualAds...');
+    final result = await _functions.httpsCallable('getAdminManualAds').call();
+    if (result.data is Map && result.data['ads'] is List) {
+      final list = (result.data['ads'] as List).whereType<Map>().map((m) {
+        final map = Map<String, dynamic>.from(m);
+        final id = map['id']?.toString() ?? '';
+        return ManualAd.fromMap(id, map);
+      }).toList();
+      debugPrint('AdminService: [ADS] Fetched ${list.length} ads via backend callable.');
+      return list;
+    }
+    return [];
+  }
+
+  /// Saves (creates or updates) a manual ad via backend callable function.
+  Future<ManualAd> saveManualAd(ManualAd ad) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [ADS] Attempting to save manual ad via callable function saveAdminManualAd...');
+    final result = await _functions.httpsCallable('saveAdminManualAd').call({
+      if (ad.id.isNotEmpty && !ad.id.startsWith('default_')) 'id': ad.id,
+      'title': ad.title,
+      'subtitle': ad.subtitle,
+      'imageUrl': ad.imageUrl,
+      'contactUrl': ad.contactUrl,
+      'colorValue': ad.colorValue,
+      'isActive': ad.isActive,
+      'isAsset': ad.isAsset,
+      'type': ad.type,
+      'placement': ad.placement,
+      if (ad.mediaFileId != null && ad.mediaFileId!.isNotEmpty) 'mediaFileId': ad.mediaFileId,
+    });
+
+    if (result.data is Map && result.data['id'] != null) {
+      final targetId = result.data['id'].toString();
+      debugPrint('AdminService: [ADS] Successfully saved ad $targetId via callable function.');
+      return ad.copyWith(id: targetId);
+    }
+    throw Exception('Failed to save ad: Invalid response from backend.');
+  }
+
+  /// Toggles the active status of a manual ad via backend callable function.
+  Future<bool> toggleManualAdStatus(String adId, bool isActive) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [ADS] Attempting toggleManualAdStatus via callable function...');
+    await _functions.httpsCallable('toggleAdminManualAdStatus').call({
+      'id': adId,
+      'isActive': isActive,
+    });
+    return true;
+  }
+
+  /// Deletes a manual ad with explicit admin confirmation via backend callable function.
+  Future<bool> deleteManualAd(String adId) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [ADS] Attempting deleteManualAd via callable function...');
+    await _functions.httpsCallable('deleteAdminManualAd').call({
+      'id': adId,
+    });
+    return true;
+  }
+
+  /// Seeds default offline ads into the database if empty via backend callable function.
+  Future<bool> seedDefaultAds({bool force = false}) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [ADS] Attempting seedDefaultAds via callable function...');
+    final res = await _functions.httpsCallable('seedDefaultManualAds').call({
+      'force': force,
+    });
+    if (res.data is Map && res.data['success'] == true) {
+      return true;
+    }
+    return false;
+  }
+
+  // ==========================================
+  // NEWS ARTICLES MODULE 2 ADMIN OPERATIONS
+  // ==========================================
+
+  /// Creates a new news article manually via backend callable function.
+  Future<Map<String, dynamic>> createAdminArticle({
+    required String categoryId,
+    required String categoryName,
+    required String source,
+    required String title,
+    required String sourceUrl,
+    required List<Map<String, dynamic>> subtopics,
+  }) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [NEWS] Creating article "$title" via callable function...');
+    final res = await _functions.httpsCallable('createAdminArticle').call({
+      'categoryId': categoryId,
+      'categoryName': categoryName,
+      'source': source,
+      'title': title,
+      'sourceUrl': sourceUrl,
+      'subtopics': subtopics,
+    });
+
+    if (res.data is Map) {
+      return Map<String, dynamic>.from(res.data as Map);
+    }
+    return {'success': true};
+  }
+
+  /// Deactivates one or more active articles.
+  Future<bool> deactivateArticles(List<String> articleIds) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [NEWS] Deactivating ${articleIds.length} articles via callable function...');
+    final res = await _functions.httpsCallable('deactivateAdminArticles').call({
+      'articleIds': articleIds,
+    });
+
+    return res.data is Map && res.data['success'] == true;
+  }
+
+  /// Restores one or more deactivated articles back to "published".
+  Future<bool> restoreArticles(List<String> articleIds) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [NEWS] Restoring ${articleIds.length} articles via callable function...');
+    final res = await _functions.httpsCallable('restoreAdminArticles').call({
+      'articleIds': articleIds,
+    });
+
+    return res.data is Map && res.data['success'] == true;
+  }
+
+  /// Permanently deletes one or more articles and their ImageKit assets.
+  Future<bool> deleteArticles(List<String> articleIds) async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [NEWS] Permanently deleting ${articleIds.length} articles via callable function...');
+    final res = await _functions.httpsCallable('deleteAdminArticles').call({
+      'articleIds': articleIds,
+    });
+
+    return res.data is Map && res.data['success'] == true;
+  }
+
+  /// Fetches deactivated articles for the Admin Activate/Recovery screen.
+  Future<List<Map<String, dynamic>>> getDeactivatedArticles() async {
+    final bool admin = await isCurrentUserAdmin();
+    if (!admin) {
+      throw Exception('Permission denied: User does not possess administrator privileges.');
+    }
+
+    debugPrint('AdminService: [NEWS] Fetching deactivated articles via callable function...');
+    final res = await _functions.httpsCallable('getDeactivatedArticles').call();
+
+    if (res.data is Map && res.data['articles'] is List) {
+      final list = res.data['articles'] as List;
+      return list
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    }
+    return [];
   }
 }

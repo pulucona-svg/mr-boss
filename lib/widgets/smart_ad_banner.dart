@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/subscription_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/interstitial_ad_service.dart';
 import 'ad_carousel.dart';
 
 class SmartAdBanner extends StatefulWidget {
@@ -114,7 +115,7 @@ class _SmartAdBannerState extends State<SmartAdBanner> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([SubscriptionService(), ConnectivityService()]),
+      listenable: Listenable.merge([SubscriptionService(), ConnectivityService(), InterstitialAdService()]),
       builder: (context, child) {
         final isSubscribed = SubscriptionService().isSubscribed;
         final isOffline = ConnectivityService().isOffline;
@@ -134,7 +135,10 @@ class _SmartAdBannerState extends State<SmartAdBanner> {
         }
 
         return Center(
-          child: AdCarousel(height: widget.fallbackHeight),
+          child: AdCarousel(
+            height: widget.fallbackHeight,
+            ads: InterstitialAdService().activeCarouselAds,
+          ),
         );
       },
     );

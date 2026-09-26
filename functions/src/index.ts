@@ -8,14 +8,17 @@ import { ThumbnailSearchService } from "./thumbnail_search_service";
 import { WorkerHealthMonitor } from "./services/worker_health_monitor";
 import { CanonicalExploreService } from "./services/canonical_explore_service";
 import { EnvConfig } from "./config/env_config";
+import { VideoAdService } from "./services/video_ad_service";
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
 
-// Print local startup health report (zero paid network calls)
-EnvConfig.runStartupVerificationAndReport().catch(() => {});
+// Print local startup health report in emulator (avoid blocking global scope during deployment discovery)
+if (process.env.FUNCTIONS_EMULATOR === "true") {
+  EnvConfig.runStartupVerificationAndReport().catch(() => {});
+}
 
 
 function getImageKit(): ImageKit {
@@ -35,15 +38,41 @@ function getImageKit(): ImageKit {
  * CALLABLE FUNCTION: Uploads a file buffer/base64 directly to ImageKit
  */
 export const uploadToImageKit = onCall(async (request) => {
-  const { file, fileName, folder } = request.data || {};
+  const { file, fileName, folder, isVideo: reqIsVideo, mediaType } = request.data || {};
   if (!file || !fileName) {
     throw new HttpsError("invalid-argument", "Missing file or fileName parameter.");
+  }
+
+  let uploadFile = file;
+  const isVideo =
+    reqIsVideo === true ||
+    mediaType === "video" ||
+    /\.(mp4|mov|webm|mkv|avi)$/i.test(fileName);
+
+  if (isVideo) {
+    try {
+      const inputBuffer = Buffer.from(file, "base64");
+      const trimResult = await VideoAdService.processVideoAd(
+        inputBuffer,
+        fileName,
+        30 // Strict 30-second duration limit
+      );
+      if (trimResult.trimmed) {
+        uploadFile = trimResult.buffer.toString("base64");
+      }
+    } catch (trimErr: any) {
+      logger.error("[IMAGEKIT_UPLOAD_TRIM_ERROR] Video processing failed:", trimErr);
+      throw new HttpsError(
+        "invalid-argument",
+        trimErr.message || "Automatic trimming failed. Please provide a video under 30 seconds."
+      );
+    }
   }
 
   try {
     const ik = getImageKit();
     const result = await ik.upload({
-      file,
+      file: uploadFile,
       fileName,
       folder: folder || "GENERAL",
     });
@@ -56,6 +85,28 @@ export const uploadToImageKit = onCall(async (request) => {
   } catch (err: any) {
     logger.error("[IMAGEKIT_UPLOAD_ERROR] ImageKit upload failed:", err);
     throw new HttpsError("internal", err.message || "Failed to upload file to ImageKit");
+  }
+});
+
+/**
+ * CALLABLE FUNCTION: Deletes a file from ImageKit by fileId
+ */
+export const deleteFromImageKit = onCall(async (request) => {
+  if (request.auth?.token.admin !== true) {
+    throw new HttpsError("permission-denied", "ImageKit file deletion requires admin privileges.");
+  }
+  const { fileId } = request.data || {};
+  if (!fileId || typeof fileId !== "string") {
+    throw new HttpsError("invalid-argument", "Missing or invalid fileId parameter.");
+  }
+
+  try {
+    const ik = getImageKit();
+    await ik.deleteFile(fileId);
+    return { success: true, fileId };
+  } catch (err: any) {
+    logger.error("[IMAGEKIT_DELETE_ERROR] ImageKit delete failed:", err);
+    throw new HttpsError("internal", err.message || "Failed to delete file from ImageKit");
   }
 });
 
@@ -379,7 +430,21 @@ export const triggerNewsRotation = onCall(async (request) => {
 });
 
 /**
- * ADMIN CONTROL SYSTEM - Phase 1 Endpoints
+ * ADMIN CONTROL SYSTEM - Admin Endpoints
  */
 export {getAdminCapabilities, syncAdminClaim} from "./admin/admin_capabilities";
+export {
+  getAdminManualAds,
+  saveAdminManualAd,
+  toggleAdminManualAdStatus,
+  deleteAdminManualAd,
+  seedDefaultManualAds,
+} from "./admin/admin_ads";
+export {
+  createAdminArticle,
+  deactivateAdminArticles,
+  restoreAdminArticles,
+  deleteAdminArticles,
+  getDeactivatedArticles,
+} from "./admin/admin_articles";
 

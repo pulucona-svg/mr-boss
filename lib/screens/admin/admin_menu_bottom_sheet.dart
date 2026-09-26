@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/admin_service.dart';
+import 'manual_ads_admin_screen.dart';
+import '../explore_screen.dart';
 
 class AdminMenuBottomSheet extends StatelessWidget {
   final AdminCapabilities capabilities;
@@ -234,25 +236,39 @@ class AdminMenuBottomSheet extends StatelessWidget {
                             ),
                       onTap: isEnabled
                           ? () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Row(
-                                    children: [
-                                      const Icon(Icons.info_outline, color: Color(0xFF20C8FF), size: 18),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          '${item.title}: Module coming in the next implementation phase.',
-                                          style: const TextStyle(fontSize: 13, color: Colors.white),
-                                        ),
-                                      ),
-                                    ],
+                              if (item.id == 'manual_ads') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const ManualAdsAdminScreen(),
                                   ),
-                                  behavior: SnackBarBehavior.floating,
-                                  backgroundColor: const Color(0xFF141232),
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
+                                );
+                              } else if (item.id == 'news_articles') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const ExploreScreen(isAdminMode: true),
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(Icons.info_outline, color: Color(0xFF20C8FF), size: 18),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            '${item.title}: Module coming in the next implementation phase.',
+                                            style: const TextStyle(fontSize: 13, color: Colors.white),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                    backgroundColor: const Color(0xFF141232),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
                             }
                           : null, // Vouchers must remain visibly disabled and must not perform an action
                     ),

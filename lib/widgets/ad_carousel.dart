@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../services/interstitial_ad_service.dart';
 
 class AdCarousel extends StatefulWidget {
   final List<Map<String, dynamic>>? ads;
@@ -36,6 +37,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
     super.initState();
     _pageController = PageController();
     _setupAds();
+    InterstitialAdService().addListener(_onAdServiceChanged);
 
     _cometController = AnimationController(
       vsync: this,
@@ -53,97 +55,137 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
     });
   }
 
+  void _onAdServiceChanged() {
+    if (!mounted) return;
+    if (widget.ads == null) {
+      setState(() {
+        _setupAds();
+        _currentIndex = 0;
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(0);
+        }
+        _initVideo();
+        _preCacheAll();
+      });
+    }
+  }
+
   @override
   void didUpdateWidget(AdCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.ads != oldWidget.ads) {
-      _setupAds();
-      _cometController.duration = widget.interval;
-      _cometController.forward(from: 0.0);
-      _currentIndex = 0;
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(0);
+    bool changed = false;
+    final oldAds = oldWidget.ads;
+    final newAds = widget.ads;
+    if (oldAds == null && newAds != null) {
+      changed = true;
+    } else if (oldAds != null && newAds == null) {
+      changed = true;
+    } else if (oldAds != null && newAds != null) {
+      if (oldAds.length != newAds.length) {
+        changed = true;
+      } else {
+        for (int i = 0; i < oldAds.length; i++) {
+          if (oldAds[i]['id'] != newAds[i]['id'] ||
+              oldAds[i]['url'] != newAds[i]['url'] ||
+              oldAds[i]['title'] != newAds[i]['title'] ||
+              oldAds[i]['isActive'] != newAds[i]['isActive']) {
+            changed = true;
+            break;
+          }
+        }
       }
-      _initVideo();
+    }
+
+    if (changed || widget.interval != oldWidget.interval) {
+      setState(() {
+        _setupAds();
+        _cometController.duration = widget.interval;
+        _cometController.forward(from: 0.0);
+        _currentIndex = 0;
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(0);
+        }
+        _initVideo();
+        _preCacheAll();
+      });
     }
   }
 
   void _setupAds() {
-    const defaultContactUrl = 'https://wa.me/254108462492';
-    _ads = widget.ads ?? [
-      {
-        'type': 'image',
-        'isAsset': true,
-        'title': 'Davy Cybers 💻',
-        'subtitle': 'In need of professional cyber services? Worry no more, Davy Cybers we have got you.',
-        'url': 'assets/ad_cyber.jpeg',
-        'color': const Color(0xFF20C8FF),
-        'contactUrl': defaultContactUrl,
-      },
-      {
-        'type': 'image',
-        'isAsset': true,
-        'title': 'Manu Data 🌐',
-        'subtitle': 'Tired of expensive data plans? Worry no more, Manu Data Solutions we have got you.',
-        'url': 'assets/ad_data.jpeg',
-        'color': const Color(0xFF00A85A),
-        'contactUrl': defaultContactUrl,
-      },
-      {
-        'type': 'image',
-        'isAsset': true,
-        'title': 'Snake Light 💡',
-        'subtitle': 'In need of snake light? Say less, we got you with a discount.',
-        'url': 'assets/ad_snake.jpeg',
-        'color': const Color(0xFFFF8A00),
-        'contactUrl': defaultContactUrl,
-      },
-      {
-        'type': 'image',
-        'title': 'Trending Now 🚀',
-        'subtitle': 'End of Semester CATs are here! 📚 Get your revision materials now.',
-        'url': 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800',
-        'color': const Color(0xFF7B5CFF),
-        'contactUrl': defaultContactUrl,
-      },
-    ];
+    if (widget.ads != null && widget.ads!.isNotEmpty) {
+      _ads = List<Map<String, dynamic>>.from(widget.ads!);
+      return;
+    }
+
+    final pool = InterstitialAdService().activeCarouselAds;
+    if (pool.isNotEmpty) {
+      _ads = List<Map<String, dynamic>>.from(pool);
+      return;
+    }
+
+    _ads = [];
   }
 
   void _preCacheAll() async {
     for (var ad in _ads) {
+      final url = (ad['url'] as String?) ?? (ad['imageUrl'] as String?) ?? '';
+      if (url.isEmpty) continue;
       if (ad['type'] == 'image') {
         if (ad['isAsset'] == true) {
-          precacheImage(AssetImage(ad['url']), context);
-        } else {
-          precacheImage(CachedNetworkImageProvider(ad['url']), context);
+          precacheImage(AssetImage(url), context);
+        } else if (url.startsWith('http')) {
+          precacheImage(CachedNetworkImageProvider(url), context);
         }
       } else if (ad['type'] == 'video') {
-        DefaultCacheManager().downloadFile(ad['url'], key: ad['url']);
+        if (url.startsWith('http')) {
+          unawaited(() async {
+            try {
+              await DefaultCacheManager().downloadFile(url, key: url);
+            } catch (_) {}
+          }());
+        }
       }
     }
   }
 
   void _initVideo() async {
-    final ad = _ads[_currentIndex];
-    if (ad['type'] == 'video') {
+    if (_ads.isEmpty) return;
+    final ad = _ads[_currentIndex % _ads.length];
+    final String url = (ad['url'] as String?) ?? (ad['imageUrl'] as String?) ?? '';
+    if (ad['type'] == 'video' && url.isNotEmpty) {
       _videoController?.dispose();
-      
-      // Try to get from cache first
-      final fileInfo = await DefaultCacheManager().getFileFromCache(ad['url']);
-      if (fileInfo != null) {
-        _videoController = VideoPlayerController.file(fileInfo.file);
-      } else {
-        _videoController = VideoPlayerController.networkUrl(Uri.parse(ad['url']));
-      }
+      _videoController = null;
 
-      _videoController!.initialize().then((_) {
-          if (mounted) {
-            setState(() {});
-            _videoController?.play();
-            _videoController?.setLooping(true);
-            _videoController?.setVolume(0);
-          }
-        });
+      try {
+        final fileInfo = await DefaultCacheManager().getFileFromCache(url);
+        if (fileInfo != null) {
+          _videoController = VideoPlayerController.file(fileInfo.file);
+        } else if (url.startsWith('http')) {
+          _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
+          unawaited(() async {
+            try {
+              await DefaultCacheManager().downloadFile(url, key: url);
+            } catch (_) {}
+          }());
+        } else {
+          _videoController = VideoPlayerController.asset(url);
+        }
+
+        await _videoController!.initialize();
+        if (mounted) {
+          setState(() {});
+          _videoController?.play();
+          _videoController?.setLooping(true);
+          _videoController?.setVolume(0);
+        }
+      } catch (e) {
+        debugPrint('AdCarousel: [VIDEO_ERROR] Failed to load carousel video ad: $e');
+        if (mounted) {
+          setState(() {
+            _videoController = null;
+          });
+        }
+      }
     } else {
       _videoController?.dispose();
       _videoController = null;
@@ -170,6 +212,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
 
   @override
   void dispose() {
+    InterstitialAdService().removeListener(_onAdServiceChanged);
     _pageController.dispose();
     _cometController.dispose();
     _videoController?.dispose();
@@ -179,6 +222,10 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    if (_ads.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return CustomPaint(
       painter: CometPainter(
         progress: _cometController.value,
@@ -202,42 +249,59 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
           },
           itemBuilder: (context, index) {
             final ad = _ads[index % _ads.length];
-            final color = ad['color'] as Color;
+            final dynamic rawColor = ad['color'] ?? ad['colorValue'];
+            final Color color = rawColor is Color
+                ? rawColor
+                : (rawColor is int ? Color(rawColor) : const Color(0xFF20C8FF));
+            final String mediaUrl = (ad['url'] as String?) ?? (ad['imageUrl'] as String?) ?? '';
 
             final isCompact = widget.height < 140;
 
             return Stack(
               children: [
+                // Dark background base layer for letterboxing / pillarboxing
+                const Positioned.fill(
+                  child: ColoredBox(color: Color(0xFF0A0A18)),
+                ),
                 if (ad['type'] == 'video' && 
                     _currentIndex == (index % _ads.length) &&
                     _videoController != null && 
                     _videoController!.value.isInitialized)
-                  SizedBox.expand(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _videoController!.value.size.width,
-                        height: _videoController!.value.size.height,
-                        child: VideoPlayer(_videoController!),
+                  Positioned.fill(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: _videoController!.value.size.width,
+                          height: _videoController!.value.size.height,
+                          child: VideoPlayer(_videoController!),
+                        ),
                       ),
                     ),
                   )
                 else if (ad['type'] == 'image')
-                  SizedBox.expand(
-                    child: ad['isAsset'] == true 
-                      ? Image.asset(ad['url'], fit: BoxFit.cover)
-                      : CachedNetworkImage(
-                        imageUrl: ad['url'],
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: Colors.white10,
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  Positioned.fill(
+                    child: Center(
+                      child: ad['isAsset'] == true 
+                        ? Image.asset(
+                            mediaUrl,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                          )
+                        : CachedNetworkImage(
+                          imageUrl: mediaUrl,
+                          fit: BoxFit.contain,
+                          alignment: Alignment.center,
+                          placeholder: (context, url) => Container(
+                            color: Colors.white10,
+                            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: Colors.black26,
+                            child: const Icon(Icons.broken_image, color: Colors.white24, size: 50),
+                          ),
                         ),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.black26,
-                          child: const Icon(Icons.broken_image, color: Colors.white24, size: 50),
-                        ),
-                      ),
+                    ),
                   )
                 else
                   Container(
