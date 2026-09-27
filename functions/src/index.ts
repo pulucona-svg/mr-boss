@@ -448,3 +448,161 @@ export {
   getDeactivatedArticles,
 } from "./admin/admin_articles";
 
+/**
+ * PAYSTACK SUBSCRIPTION INTEGRATION ENDPOINTS
+ */
+import {
+  AUTHORITATIVE_PACKAGES,
+  initializePaymentOnPaystack,
+  verifyPaystackSignature,
+  fulfillSubscription,
+} from "./services/paystack_server_service";
+
+/**
+ * CALLABLE: Initialize Paystack payment securely on backend
+ */
+export const initializePaystackPayment = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "User must be authenticated to purchase a subscription.");
+  }
+
+  const userId = request.auth.uid;
+  const { packageId, paymentMethod, phoneNumber, userEmail } = request.data || {};
+
+  if (!packageId || !AUTHORITATIVE_PACKAGES[packageId]) {
+    throw new HttpsError("invalid-argument", `Invalid or unsupported packageId: ${packageId}`);
+  }
+
+  if (!["mpesa", "airtelMoney", "mastercard"].includes(paymentMethod)) {
+    throw new HttpsError("invalid-argument", `Unsupported payment method: ${paymentMethod}`);
+  }
+
+  const pkg = AUTHORITATIVE_PACKAGES[packageId];
+
+  // Enforce minimum KES 100 for card payments
+  if (paymentMethod === "mastercard" && pkg.priceKes < 100) {
+    throw new HttpsError("failed-precondition", "Card payment does not support payments below Ksh.100.");
+  }
+
+  // Authoritative email: authenticated user's token email, or profile email, or fallback
+  const authenticatedEmail = request.auth.token?.email || userEmail?.trim() || `user_${userId}@mirrorlaikipia.app`;
+
+  const reference = `ML_${packageId.toUpperCase()}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  // Store pending payment in Firestore
+  await db.collection("payments").doc(reference).set({
+    reference,
+    userId,
+    packageId: pkg.id,
+    packageName: pkg.title,
+    expectedAmountKes: pkg.priceKes,
+    expectedAmountSubunits: pkg.amountSubunits,
+    durationDays: pkg.durationDays,
+    currency: "KES",
+    paymentMethod,
+    phoneNumber: phoneNumber || null,
+    userEmail: authenticatedEmail,
+    status: "pending",
+    fulfilled: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  try {
+    const initResult = await initializePaymentOnPaystack({
+      packageId,
+      paymentMethod,
+      phoneNumber,
+      userEmail: authenticatedEmail,
+      userId,
+      reference,
+    });
+
+    if (!initResult.success) {
+      await db.collection("payments").doc(reference).update({
+        status: "init_failed",
+        errorMessage: initResult.message || "Failed to initialize payment",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {
+        success: false,
+        reference,
+        paystackStatus: initResult.paystackStatus,
+        displayText: initResult.displayText,
+        message: initResult.message,
+      };
+    }
+
+    return {
+      success: true,
+      reference,
+      paystackStatus: initResult.paystackStatus,
+      displayText: initResult.displayText,
+      message: initResult.displayText,
+      authorizationUrl: (initResult as any).authorizationUrl,
+      accessCode: (initResult as any).accessCode,
+    };
+  } catch (err: any) {
+    logger.error(`[PAYSTACK_INIT_ERROR] Error initializing payment for ${reference}:`, err);
+    await db.collection("payments").doc(reference).update({
+      status: "init_failed",
+      errorMessage: err.message || "Failed to initialize payment",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    throw new HttpsError("internal", err.message || "Failed to initialize payment on Paystack");
+  }
+});
+
+/**
+ * CALLABLE: Verify Paystack payment and fulfill subscription
+ */
+export const verifyPaystackPayment = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "User must be authenticated.");
+  }
+
+  const { reference } = request.data || {};
+  if (!reference || typeof reference !== "string") {
+    throw new HttpsError("invalid-argument", "Missing reference parameter.");
+  }
+
+  try {
+    const fulfillResult = await fulfillSubscription(db, reference, "verify");
+    return fulfillResult;
+  } catch (err: any) {
+    logger.error(`[PAYSTACK_VERIFY_ERROR] Verification failed for ${reference}:`, err);
+    throw new HttpsError("internal", err.message || "Failed to verify transaction");
+  }
+});
+
+/**
+ * HTTPS WEBHOOK: Public endpoint for Paystack charge.success webhooks
+ */
+export const paystackWebhook = onRequest({ cors: false }, async (req, res) => {
+  const signature = (req.headers["x-paystack-signature"] as string) || "";
+
+  if (!req.rawBody || !verifyPaystackSignature(req.rawBody, signature)) {
+    logger.warn("[PAYSTACK_WEBHOOK_UNAUTHORIZED] Invalid or missing signature");
+    res.status(401).send("Invalid signature");
+    return;
+  }
+
+  try {
+    const event = req.body;
+    logger.info(`[PAYSTACK_WEBHOOK_EVENT] Event="${event?.event}", Ref="${event?.data?.reference}"`);
+
+    if (event?.event === "charge.success") {
+      const reference = event.data?.reference;
+      if (reference) {
+        await fulfillSubscription(db, reference, "webhook");
+      }
+    }
+
+    res.status(200).send("Webhook processed");
+  } catch (err: any) {
+    logger.error("[PAYSTACK_WEBHOOK_ERROR] Failed to process webhook event:", err);
+    res.status(500).send("Webhook processing error");
+  }
+});
+
+

@@ -27,6 +27,7 @@ import 'services/top_notification_service.dart';
 import 'services/user_service.dart';
 import 'services/offline_upload_queue_service.dart';
 import 'services/interstitial_ad_service.dart';
+import 'services/paystack_service.dart';
 import 'providers/providers.dart';
 
 void main() async {
@@ -58,6 +59,7 @@ Future<void> _initServices() async {
       SubscriptionService().init(),
       UsageService().init(),
       OfflineUploadQueueService().initialize(),
+      PaystackService().init(),
     ]);
 
     InterstitialAdService().initialize();

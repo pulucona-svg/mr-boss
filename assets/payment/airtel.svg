@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40">
+  <rect width="120" height="40" rx="8" fill="#ED1C24"/>
+  <circle cx="20" cy="20" r="10" fill="#FFFFFF"/>
+  <path d="M16 23 C16 17 24 17 24 23" stroke="#ED1C24" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <circle cx="20" cy="20" r="2" fill="#ED1C24"/>
+  <text x="68" y="22" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="14" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.5">airtel</text>
+  <text x="68" y="32" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="9" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.5">money</text>
+</svg>

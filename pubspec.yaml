@@ -126,6 +126,9 @@ flutter:
     - assets/chat_bg_neutral.svg
     - assets/chat_wallpaper.jpeg
     - assets/login_bg.jpeg
+    - assets/payment/mpesa.svg
+    - assets/payment/airtel.svg
+    - assets/payment/mastercard.svg
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

@@ -24,6 +24,10 @@ class SubscriptionHistory {
   final String packageTitle;
   final double amount;
   final String transactionCode;
+  final int? paystackTransactionId;
+  final String? paystackReference;
+  final String? paymentChannel;
+  final String? operatorReceiptNumber;
   final DateTime purchaseDate;
   final DateTime activationDate;
   final DateTime expiryDate;
@@ -35,6 +39,10 @@ class SubscriptionHistory {
     required this.packageTitle,
     required this.amount,
     required this.transactionCode,
+    this.paystackTransactionId,
+    this.paystackReference,
+    this.paymentChannel,
+    this.operatorReceiptNumber,
     required this.purchaseDate,
     required this.activationDate,
     required this.expiryDate,
@@ -47,12 +55,20 @@ class SubscriptionHistory {
     DateTime? activationDate,
     DateTime? expiryDate,
     int? downloadCount,
+    int? paystackTransactionId,
+    String? paystackReference,
+    String? paymentChannel,
+    String? operatorReceiptNumber,
   }) {
     return SubscriptionHistory(
       id: id,
       packageTitle: packageTitle,
       amount: amount,
       transactionCode: transactionCode,
+      paystackTransactionId: paystackTransactionId ?? this.paystackTransactionId,
+      paystackReference: paystackReference ?? this.paystackReference,
+      paymentChannel: paymentChannel ?? this.paymentChannel,
+      operatorReceiptNumber: operatorReceiptNumber ?? this.operatorReceiptNumber,
       purchaseDate: purchaseDate,
       activationDate: activationDate ?? this.activationDate,
       expiryDate: expiryDate ?? this.expiryDate,
@@ -66,6 +82,10 @@ class SubscriptionHistory {
     'packageTitle': packageTitle,
     'amount': amount,
     'transactionCode': transactionCode,
+    if (paystackTransactionId != null) 'paystackTransactionId': paystackTransactionId,
+    if (paystackReference != null) 'paystackReference': paystackReference,
+    if (paymentChannel != null) 'paymentChannel': paymentChannel,
+    if (operatorReceiptNumber != null) 'operatorReceiptNumber': operatorReceiptNumber,
     'purchaseDate': purchaseDate.toIso8601String(),
     'activationDate': activationDate.toIso8601String(),
     'expiryDate': expiryDate.toIso8601String(),
@@ -78,6 +98,10 @@ class SubscriptionHistory {
     packageTitle: json['packageTitle'],
     amount: json['amount'],
     transactionCode: json['transactionCode'],
+    paystackTransactionId: json['paystackTransactionId'] as int?,
+    paystackReference: json['paystackReference'] as String?,
+    paymentChannel: json['paymentChannel'] as String?,
+    operatorReceiptNumber: json['operatorReceiptNumber'] as String?,
     purchaseDate: DateTime.parse(json['purchaseDate']),
     activationDate: DateTime.parse(json['activationDate']),
     expiryDate: DateTime.parse(json['expiryDate']),
@@ -93,6 +117,10 @@ class SubscriptionHistory {
       packageTitle: json['packageTitle'] ?? '',
       amount: (json['amount'] ?? 0.0).toDouble(),
       transactionCode: json['transactionCode'] ?? '',
+      paystackTransactionId: json['paystackTransactionId'] as int?,
+      paystackReference: json['paystackReference'] as String?,
+      paymentChannel: json['paymentChannel'] as String?,
+      operatorReceiptNumber: json['operatorReceiptNumber'] as String?,
       purchaseDate: json['purchaseDate'] is String 
           ? DateTime.parse(json['purchaseDate']) 
           : (json['purchaseDate'] as dynamic).toDate(),
