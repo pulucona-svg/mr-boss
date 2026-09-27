@@ -1,6 +1,27 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+enum TopNotificationType {
+  success,
+  error,
+  warning,
+  info,
+}
+
+class _NotificationItem {
+  final String message;
+  final TopNotificationType type;
+  final Color? backgroundColor;
+  final IconData? icon;
+
+  const _NotificationItem({
+    required this.message,
+    required this.type,
+    this.backgroundColor,
+    this.icon,
+  });
+}
+
 class TopNotificationService {
   static final TopNotificationService _instance = TopNotificationService._internal();
   factory TopNotificationService() => _instance;
@@ -9,16 +30,73 @@ class TopNotificationService {
   static bool pendingWelcome = false;
 
   OverlayEntry? _overlayEntry;
-  final List<String> _queue = [];
+  final List<_NotificationItem> _queue = [];
   bool _isShowing = false;
   BuildContext? _lastContext;
 
-  void showNotification(BuildContext context, String message) {
+  static TopNotificationType inferType(String message) {
+    final lower = message.toLowerCase();
+
+    // 1. Error / Failure detection
+    if (lower.contains('fail') ||
+        lower.contains('error') ||
+        lower.contains('invalid') ||
+        lower.contains('cancel') ||
+        lower.contains('decline') ||
+        lower.contains('reject') ||
+        lower.contains('denied') ||
+        lower.contains('reversed') ||
+        lower.contains('expired') ||
+        lower.contains('offline') ||
+        lower.contains('not completed') ||
+        lower.contains('not support') ||
+        lower.contains('timed out') ||
+        lower.contains('timeout') ||
+        lower.contains('cannot') ||
+        lower.contains('unable') ||
+        lower.contains('please enter')) {
+      return TopNotificationType.error;
+    }
+
+    // 2. Warning detection
+    if (lower.contains('warning') ||
+        lower.contains('caution') ||
+        lower.contains('attention') ||
+        lower.contains('restricted') ||
+        lower.contains('alert')) {
+      return TopNotificationType.warning;
+    }
+
+    // 3. Info detection
+    if (lower.contains('coming soon') ||
+        lower.contains('where should we start')) {
+      return TopNotificationType.info;
+    }
+
+    // 4. Default to success
+    return TopNotificationType.success;
+  }
+
+  void showNotification(
+    BuildContext context,
+    String message, {
+    TopNotificationType? type,
+    Color? backgroundColor,
+    IconData? icon,
+  }) {
     _lastContext = context;
     // Prevent exact duplicate consecutive messages in the queue
-    if (_queue.isNotEmpty && _queue.last == message) return;
-    
-    _queue.add(message);
+    if (_queue.isNotEmpty && _queue.last.message == message) return;
+
+    final resolvedType = type ?? inferType(message);
+
+    _queue.add(_NotificationItem(
+      message: message,
+      type: resolvedType,
+      backgroundColor: backgroundColor,
+      icon: icon,
+    ));
+
     if (!_isShowing) {
       _processQueue();
     }
@@ -31,7 +109,7 @@ class TopNotificationService {
     }
 
     _isShowing = true;
-    final message = _queue.removeAt(0);
+    final item = _queue.removeAt(0);
 
     try {
       // Find the overlay from the context provided
@@ -40,8 +118,8 @@ class TopNotificationService {
         _isShowing = false;
         return;
       }
-      
-      _overlayEntry = _createOverlayEntry(message);
+
+      _overlayEntry = _createOverlayEntry(item);
       overlayState.insert(_overlayEntry!);
 
       // Wait for the notification duration (matches animation timing)
@@ -61,10 +139,13 @@ class TopNotificationService {
     _processQueue();
   }
 
-  OverlayEntry _createOverlayEntry(String message) {
+  OverlayEntry _createOverlayEntry(_NotificationItem item) {
     return OverlayEntry(
       builder: (context) => _TopNotificationWidget(
-        message: message,
+        message: item.message,
+        type: item.type,
+        backgroundColor: item.backgroundColor,
+        icon: item.icon,
       ),
     );
   }
@@ -72,9 +153,15 @@ class TopNotificationService {
 
 class _TopNotificationWidget extends StatefulWidget {
   final String message;
+  final TopNotificationType type;
+  final Color? backgroundColor;
+  final IconData? icon;
 
   const _TopNotificationWidget({
     required this.message,
+    this.type = TopNotificationType.success,
+    this.backgroundColor,
+    this.icon,
   });
 
   @override
@@ -84,6 +171,7 @@ class _TopNotificationWidget extends StatefulWidget {
 class _TopNotificationWidgetState extends State<_TopNotificationWidget> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _offsetAnimation;
+  Timer? _exitTimer;
 
   @override
   void initState() {
@@ -103,7 +191,7 @@ class _TopNotificationWidgetState extends State<_TopNotificationWidget> with Sin
     _controller.forward();
 
     // Start exit animation after 2.5 seconds (leaving 0.5s for the animation itself)
-    Timer(const Duration(milliseconds: 2500), () {
+    _exitTimer = Timer(const Duration(milliseconds: 2500), () {
       if (mounted) {
         _controller.reverse();
       }
@@ -112,14 +200,43 @@ class _TopNotificationWidgetState extends State<_TopNotificationWidget> with Sin
 
   @override
   void dispose() {
+    _exitTimer?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  Color get _resolvedBackgroundColor {
+    if (widget.backgroundColor != null) return widget.backgroundColor!;
+    switch (widget.type) {
+      case TopNotificationType.success:
+        return Colors.green.shade600;
+      case TopNotificationType.error:
+        return Colors.red.shade600;
+      case TopNotificationType.warning:
+        return Colors.orange.shade800;
+      case TopNotificationType.info:
+        return const Color(0xFF7B5CFF);
+    }
+  }
+
+  IconData get _resolvedIcon {
+    if (widget.icon != null) return widget.icon!;
+    switch (widget.type) {
+      case TopNotificationType.success:
+        return Icons.check_circle_outline;
+      case TopNotificationType.error:
+        return Icons.error_outline_rounded;
+      case TopNotificationType.warning:
+        return Icons.warning_amber_rounded;
+      case TopNotificationType.info:
+        return Icons.info_outline_rounded;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-    
+
     return Positioned(
       top: topPadding + 10,
       left: 20,
@@ -133,11 +250,11 @@ class _TopNotificationWidgetState extends State<_TopNotificationWidget> with Sin
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.green.shade600,
+                color: _resolvedBackgroundColor,
                 borderRadius: BorderRadius.circular(25),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -145,7 +262,7 @@ class _TopNotificationWidgetState extends State<_TopNotificationWidget> with Sin
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+                  Icon(_resolvedIcon, color: Colors.white, size: 20),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(

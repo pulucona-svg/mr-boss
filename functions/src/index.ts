@@ -447,6 +447,15 @@ export {
   deleteAdminArticles,
   getDeactivatedArticles,
 } from "./admin/admin_articles";
+export {
+  pinAdminMaterials,
+  unpinAdminMaterials,
+  archiveAdminMaterials,
+  trashAdminMaterials,
+  restoreAdminMaterials,
+  deleteAdminMaterials,
+  scheduledMaterialsTrashRetention,
+} from "./admin/admin_materials";
 
 /**
  * PAYSTACK SUBSCRIPTION INTEGRATION ENDPOINTS

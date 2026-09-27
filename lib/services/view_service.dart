@@ -13,9 +13,20 @@ class ResourceViewStats {
 }
 
 class ViewService extends ChangeNotifier {
-  static final ViewService _instance = ViewService._internal();
+  static ViewService _instance = ViewService._internal();
   factory ViewService() => _instance;
   ViewService._internal();
+
+  @visibleForTesting
+  static void resetInstance() {
+    _instance = ViewService._internal();
+  }
+
+  @override
+  // ignore: must_call_super
+  void dispose() {
+    // Prevent singleton disposal from destroying persistent instance
+  }
 
   // Maps Resource Title (as ID for now) to its stats
   final Map<String, ResourceViewStats> _statsMap = {};

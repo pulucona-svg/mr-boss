@@ -210,6 +210,9 @@ void main() {
       final purchaseButtonFinder = find.byType(ElevatedButton);
       final ElevatedButton button = tester.widget<ElevatedButton>(purchaseButtonFinder);
       expect(button.onPressed, isNull);
+
+      // Allow top notification entry/exit timer to complete cleanly
+      await tester.pump(const Duration(seconds: 4));
     });
 
     testWidgets('7. Mastercard at or above KES 100 shows clean card form', (tester) async {
@@ -255,6 +258,21 @@ void main() {
 
       // No overflows occurred
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('9. Purchase button does not contain a CircularProgressIndicator child', (tester) async {
+      await tester.pumpWidget(createTestWidget(dailyPackage, phone: '+254712345678'));
+      await tester.pumpAndSettle();
+
+      final purchaseButtonFinder = find.byType(ElevatedButton);
+      expect(purchaseButtonFinder, findsOneWidget);
+
+      // Verify NO CircularProgressIndicator exists INSIDE the ElevatedButton
+      final spinnerInsideButton = find.descendant(
+        of: purchaseButtonFinder,
+        matching: find.byType(CircularProgressIndicator),
+      );
+      expect(spinnerInsideButton, findsNothing);
     });
   });
 }

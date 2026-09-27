@@ -15,11 +15,20 @@ import '../widgets/filter_modal.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/search_dropdown.dart';
 import '../providers/providers.dart';
-import '../services/top_notification_service.dart';
 import 'help_support_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/feedback_utils.dart';
+import 'archive_trash_screen.dart';
+import '../services/admin_service.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
-  const DashboardScreen({super.key});
+  final bool isAdminMode;
+  const DashboardScreen({super.key, this.isAdminMode = false});
+
+  @visibleForTesting
+  static void resetLoadedState({bool loaded = false}) {
+    _DashboardScreenState._hasLoadedBefore = loaded;
+  }
 
   @override
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
@@ -38,12 +47,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _lastSearchValue = '';
   List<Resource> _shuffledResources = [];
 
+  // Admin Materials Selection State
+  bool _isSelectionMode = false;
+  final Set<String> _selectedTitles = {};
+
   @override
   void initState() {
     super.initState();
     final uiState = ref.read(uiStateProvider);
     _searchController.text = uiState.dashboardSearch;
     _lastSearchValue = uiState.dashboardSearch;
+
+    if (widget.isAdminMode) {
+      AdminService().isCurrentUserAdmin().then((isVerified) {
+        if (!isVerified && mounted && FirebaseAuth.instance.currentUser != null) {
+          Navigator.of(context).pop();
+        }
+      });
+    }
     
     _isLoading = !_hasLoadedBefore;
     if (_isLoading) {
@@ -52,6 +73,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _shuffledResources = List.from(ResourceService().allResources);
     }
     _searchFocusNode.addListener(_onSearchFocusChange);
+  }
+
+  void _enterSelectionMode(String title) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedTitles.add(title);
+    });
+  }
+
+  void _toggleSelection(String title) {
+    setState(() {
+      if (_selectedTitles.contains(title)) {
+        _selectedTitles.remove(title);
+        if (_selectedTitles.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedTitles.add(title);
+      }
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedTitles.clear();
+    });
   }
 
   void _onSearchFocusChange() {
@@ -104,7 +152,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         int cost = (s[i] == t[j]) ? 0 : 1;
         v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost].reduce((a, b) => a < b ? a : b);
       }
-      for (int j = 0; j < t.length + 1; j++) v0[j] = v1[j];
+      for (int j = 0; j < t.length + 1; j++) {
+        v0[j] = v1[j];
+      }
     }
     return v1[t.length];
   }
@@ -459,6 +509,150 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _overlayEntry = null;
   }
 
+  Widget _buildSelectionBar(List<Resource> filteredResources) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFF181739).withAlpha(204),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFF20C8FF).withAlpha(77)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF20C8FF).withAlpha(26),
+            blurRadius: 10,
+            spreadRadius: 2,
+          )
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          IconButton(
+            onPressed: _exitSelectionMode,
+            icon: const Icon(Icons.close, color: Colors.white, size: 24),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              _selectedTitles.length.toString(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
+          ),
+          if (_selectedTitles.length <= 4)
+            Builder(
+              builder: (context) {
+                final allPinned = _selectedTitles.every((t) => ResourceService().isPinned(t));
+
+                return IconButton(
+                  onPressed: () {
+                    final titles = _selectedTitles.toList();
+                    if (allPinned) {
+                      ResourceService().unpinMultiple(titles);
+                      FeedbackUtils.showActionFeedback(
+                        context: context,
+                        type: FeedbackActionType.unpin,
+                        count: titles.length,
+                        isDownloads: false,
+                      );
+                    } else {
+                      ResourceService().pinMultiple(titles);
+                      FeedbackUtils.showActionFeedback(
+                        context: context,
+                        type: FeedbackActionType.pin,
+                        count: titles.length,
+                        isDownloads: false,
+                      );
+                    }
+                    _exitSelectionMode();
+                  },
+                  icon: Icon(
+                    allPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                );
+              },
+            ),
+          IconButton(
+            onPressed: () {
+              final titles = _selectedTitles.toList();
+              ResourceService().archiveMultiple(titles);
+              FeedbackUtils.showActionFeedback(
+                context: context,
+                type: FeedbackActionType.archive,
+                count: titles.length,
+                isDownloads: false,
+              );
+              _exitSelectionMode();
+            },
+            icon: const Icon(Icons.archive_outlined, color: Colors.white, size: 24),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            onPressed: () {
+              final titles = _selectedTitles.toList();
+              ResourceService().deleteMultiple(titles);
+              FeedbackUtils.showActionFeedback(
+                context: context,
+                type: FeedbackActionType.moveToTrash,
+                count: titles.length,
+                isDownloads: false,
+              );
+              _exitSelectionMode();
+            },
+            icon: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onSelected: (value) {
+              if (value == 'select_all') {
+                setState(() {
+                  for (var res in filteredResources) {
+                    _selectedTitles.add(res.title);
+                  }
+                });
+              } else if (value == 'archives') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ArchiveTrashScreen(isDownloads: false, isTrash: false),
+                  ),
+                );
+              } else if (value == 'trash') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ArchiveTrashScreen(isDownloads: false, isTrash: true),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'archives', child: Text('Archives')),
+              const PopupMenuItem(value: 'trash', child: Text('Trash')),
+              const PopupMenuItem(value: 'select_all', child: Text('Select All')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
@@ -480,15 +674,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       builder: (context, child) {
         final allResources = ResourceService().allResources;
 
-        final sourceResources = _shuffledResources.isEmpty ? allResources : _shuffledResources;
+        // Pinned materials strictly at the top in their server pin order
+        final pinnedResources = allResources.where((r) => r.isPinned).toList();
+        final unpinnedActiveIds = allResources.where((r) => !r.isPinned).map((r) => r.id).toSet();
+        final validShuffled = _shuffledResources
+            .where((r) => unpinnedActiveIds.contains(r.id))
+            .toList();
+
+        final sourceResources = [
+          ...pinnedResources,
+          ...(validShuffled.isEmpty ? allResources.where((r) => !r.isPinned) : validShuffled),
+        ];
 
         final filteredResources = sourceResources.where((res) {
-          // 1. Filter out pinned non-timetable items
+          // 1. Filter out pinned non-timetable items (personal downloads only; never hide server-pinned items)
           final isPinned = DownloadService().isPinned(res.title);
           final isTimetableType = res.type.toLowerCase().contains('timetable') || 
                                 res.type.toLowerCase().contains('time tables') ||
                                 res.type.toLowerCase().contains('time table');
-          if (isPinned && !isTimetableType) return false;
+          if (!res.isPinned && isPinned && !isTimetableType) return false;
 
           // 2. Strict Category Match
           final isTimetableCategory = uiState.dashboardCategory == 'Time tables';
@@ -553,13 +757,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           return matchesFilters;
         }).toList();
 
+        final isAdmin = widget.isAdminMode;
         final isSearching = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
         final hasOtherFilters = uiState.dashboardFilters.isNotEmpty || uiState.dashboardCategory != 'All';
 
         return PopScope(
-          canPop: !isSearching && !hasOtherFilters,
+          canPop: isAdmin
+              ? (!isSearching && !hasOtherFilters && !_isSelectionMode)
+              : (!isSearching && !hasOtherFilters),
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) return;
+            if (isAdmin && _isSelectionMode) {
+              _exitSelectionMode();
+              return;
+            }
             _handleBack();
           },
           child: GestureDetector(
@@ -569,9 +780,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               _searchFocusNode.unfocus();
             },
             behavior: HitTestBehavior.opaque,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: isDark
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Container(
+                decoration: BoxDecoration(
+                  gradient: isDark
                     ? const LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -601,7 +814,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
+                                  Row(
+                                    children: [
+                                      if (isAdmin && Navigator.canPop(context))
+                                        IconButton(
+                                          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                                          onPressed: () {
+                                            if (_isSelectionMode) {
+                                              _exitSelectionMode();
+                                            } else {
+                                              Navigator.of(context).pop();
+                                            }
+                                          },
+                                          tooltip: 'Back to Admin',
+                                        ),
+                                      Text('Dashboard', style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w700)),
+                                    ],
+                                  ),
                                   Row(
                                     children: [
                                       ListenableBuilder(
@@ -841,7 +1070,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ),
                         ),
                       ),
-                      ..._buildGridWithAds(filteredResources, textColor),
+                      if (isAdmin && _isSelectionMode)
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _SelectionHeaderDelegate(
+                            child: _buildSelectionBar(filteredResources),
+                          ),
+                        ),
+                      ..._buildGridWithAds(filteredResources, textColor, isAdmin),
                       const SliverToBoxAdapter(child: SizedBox(height: 20)),
                     ],
                   ),
@@ -849,12 +1085,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ),
           ),
-        );
+        ),
+      );
       },
     );
   }
 
-  List<Widget> _buildGridWithAds(List<Resource> filteredResources, Color textColor) {
+  List<Widget> _buildGridWithAds(List<Resource> filteredResources, Color textColor, bool isAdmin) {
     if (filteredResources.isEmpty) {
       return [
         SliverFillRemaining(
@@ -897,7 +1134,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                    onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
                    onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
                    showPin: false,
-                   onTap: () {},
+                   isSelectionMode: isAdmin && _isSelectionMode,
+                   isSelected: isAdmin && _selectedTitles.contains(res.title),
+                   onLongPress: isAdmin
+                       ? () {
+                           if (!_isSelectionMode) {
+                             _enterSelectionMode(res.title);
+                           }
+                         }
+                       : null,
+                   onTap: () {
+                     if (isAdmin && _isSelectionMode) {
+                       _toggleSelection(res.title);
+                     }
+                   },
                  );
                },
                childCount: chunk.length,
@@ -920,4 +1170,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return slivers;
   }
+}
+
+class _SelectionHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  _SelectionHeaderDelegate({required this.child});
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return child;
+  }
+
+  @override
+  double get maxExtent => 56.0;
+
+  @override
+  double get minExtent => 56.0;
+
+  @override
+  bool shouldRebuild(covariant _SelectionHeaderDelegate oldDelegate) => true;
 }

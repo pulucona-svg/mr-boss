@@ -9,6 +9,7 @@ import '../providers/service_providers.dart';
 import '../services/connectivity_service.dart';
 import '../services/interstitial_ad_service.dart';
 import '../services/paystack_service.dart';
+import '../services/top_notification_service.dart';
 
 class PurchaseModal extends ConsumerStatefulWidget {
   final SubscriptionPackage package;
@@ -98,23 +99,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
 
     if (method == PaystackPaymentMethod.mastercard &&
         widget.package.price < PaystackService.minCardAmount) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text('Card payment does not support payments below Ksh.100.'),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFFC62828),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+      TopNotificationService().showNotification(
+        context,
+        'Card payment does not support payments below Ksh.100.',
       );
     }
 
@@ -149,23 +136,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
     // 1. Guard check for Mastercard below KES 100
     if (_selectedMethod == PaystackPaymentMethod.mastercard &&
         widget.package.price < PaystackService.minCardAmount) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text('Card payment does not support payments below Ksh.100.'),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFFC62828),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+      TopNotificationService().showNotification(
+        context,
+        'Card payment does not support payments below Ksh.100.',
       );
       return;
     }
@@ -175,10 +148,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
     if (_selectedMethod == PaystackPaymentMethod.mpesa ||
         _selectedMethod == PaystackPaymentMethod.airtelMoney) {
       if (!PaystackService.isValidKenyaPhone(phone)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please enter a valid 10-digit phone number (07XXXXXXXX or 01XXXXXXXX).'),
-          ),
+        TopNotificationService().showNotification(
+          context,
+          'Please enter a valid 10-digit phone number (07XXXXXXXX or 01XXXXXXXX).',
         );
         return;
       }
@@ -188,20 +160,23 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
     if (_selectedMethod == PaystackPaymentMethod.mastercard) {
       final numCleaned = _cardNumberController.text.replaceAll(' ', '').trim();
       if (numCleaned.length < 16) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid 16-digit card number.')),
+        TopNotificationService().showNotification(
+          context,
+          'Please enter a valid 16-digit card number.',
         );
         return;
       }
       if (!_cardExpiryController.text.contains('/') || _cardExpiryController.text.trim().length < 4) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid expiration date (MM/YY).')),
+        TopNotificationService().showNotification(
+          context,
+          'Please enter a valid expiration date (MM/YY).',
         );
         return;
       }
       if (_cardCvvController.text.trim().length < 3) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid 3-digit CVV.')),
+        TopNotificationService().showNotification(
+          context,
+          'Please enter a valid 3-digit CVV.',
         );
         return;
       }
@@ -209,17 +184,16 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
 
     // 4. Connectivity check
     if (ConnectivityService().isOffline) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You are currently offline. Please check your internet connection.'),
-        ),
+      TopNotificationService().showNotification(
+        context,
+        'You are currently offline. Please check your internet connection.',
       );
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _buttonText = 'Waiting...';
+      _buttonText = 'Waiting';
       _statusMessage = 'Please complete the authorization on your phone.';
     });
 
@@ -250,8 +224,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
             _buttonText = 'Purchase';
             _statusMessage = null;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result.message ?? 'Payment failed. Please try again.')),
+          TopNotificationService().showNotification(
+            context,
+            result.message ?? 'Payment failed. Please try again.',
           );
         }
         return;
@@ -269,7 +244,7 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
 
       if (mounted) {
         setState(() {
-          _buttonText = 'Waiting for payment confirmation...';
+          _buttonText = 'Waiting';
           _statusMessage = result.displayText ?? 'Please complete the authorization on your phone.';
         });
       }
@@ -339,8 +314,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
               _buttonText = 'Purchase';
               _statusMessage = null;
             });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(verifyResult.message)),
+            TopNotificationService().showNotification(
+              context,
+              verifyResult.message,
             );
           }
           return;
@@ -352,10 +328,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
               _buttonText = 'Purchase';
               _statusMessage = null;
             });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Payment was not completed or expired. Please try again.'),
-              ),
+            TopNotificationService().showNotification(
+              context,
+              'Payment was not completed or expired. Please try again.',
             );
           }
           return;
@@ -367,8 +342,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
               _buttonText = 'Purchase';
               _statusMessage = null;
             });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment was reversed.')),
+            TopNotificationService().showNotification(
+              context,
+              'Payment was reversed.',
             );
           }
           return;
@@ -389,13 +365,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
           _buttonText = 'Purchase';
           _statusMessage = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Payment confirmation timed out. If you already authorized on your phone, your subscription will activate automatically once confirmed.',
-            ),
-            duration: Duration(seconds: 5),
-          ),
+        TopNotificationService().showNotification(
+          context,
+          'Payment confirmation timed out. If you already authorized on your phone, your subscription will activate automatically once confirmed.',
         );
       }
     } catch (e) {
@@ -405,8 +377,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
           _buttonText = 'Purchase';
           _statusMessage = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Payment error: ${e.toString()}')),
+        TopNotificationService().showNotification(
+          context,
+          'Payment error: ${e.toString()}',
         );
       }
     }
@@ -614,33 +587,14 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
                                   ),
                                   elevation: 0,
                                 ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (_isLoading)
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 12),
-                                        child: SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.5,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    Flexible(
-                                      child: Text(
-                                        _buttonText,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                child: Text(
+                                  _buttonText,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               ),
                             ),

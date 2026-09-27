@@ -27,15 +27,19 @@ class Resource {
   final List<String> programCodes;
   final String materialFormat;
   final DateTime uploadDate;
-  String? status; // 'approved', 'waiting', 'declined'
+  String? status; // 'approved', 'waiting', 'declined', 'archived', 'trash'
   final String? declineReason;
   final DateTime? declineDate;
   final List<String> likedBy;
   final String visibility;
   final bool isAnonymous;
-  int _views;
-  int _likes;
-  int _comments;
+  final bool isPinned;
+  final DateTime? pinnedAt;
+  final DateTime? archivedAt;
+  final DateTime? deletedAt;
+  int views;
+  int likes;
+  int comments;
   bool isLiked;
 
   Resource({
@@ -70,21 +74,15 @@ class Resource {
     this.likedBy = const [],
     this.visibility = 'public',
     this.isAnonymous = false,
-    int views = 0,
-    int likes = 0,
-    int comments = 0,
+    this.isPinned = false,
+    this.pinnedAt,
+    this.archivedAt,
+    this.deletedAt,
+    this.views = 0,
+    this.likes = 0,
+    this.comments = 0,
     this.isLiked = false,
-  })  : _views = views,
-        _likes = likes,
-        _comments = comments;
-
-  int get views => _views;
-  int get likes => _likes;
-  int get comments => _comments;
-
-  set views(int val) => _views = val;
-  set likes(int val) => _likes = val;
-  set comments(int val) => _comments = val;
+  });
 
   factory Resource.fromMap(Map<String, dynamic> map, String docId, {String? currentUserId}) {
     final likedByList = List<String>.from(map['likedBy'] ?? []);
@@ -113,16 +111,40 @@ class Resource {
       uploaderRole: map['uploaderRole'] ?? '',
       uploaderId: map['uploaderId'] ?? '',
       uploaderProfilePic: map['uploaderProfilePic'],
-      uploadDate: map['uploadDate'] != null ? (map['uploadDate'] as Timestamp).toDate() : DateTime.now(),
+      uploadDate: map['uploadDate'] != null
+          ? (map['uploadDate'] is Timestamp
+              ? (map['uploadDate'] as Timestamp).toDate()
+              : (DateTime.tryParse(map['uploadDate'].toString()) ?? DateTime.now()))
+          : DateTime.now(),
       targetPrograms: List<String>.from(map['targetPrograms'] ?? []),
       programCodes: List<String>.from(map['programCodes'] ?? []),
       materialFormat: map['materialFormat'] ?? 'PDF',
       status: map['status'],
       declineReason: map['declineReason'],
-      declineDate: map['declineDate'] != null ? (map['declineDate'] as Timestamp).toDate() : null,
+      declineDate: map['declineDate'] != null
+          ? (map['declineDate'] is Timestamp
+              ? (map['declineDate'] as Timestamp).toDate()
+              : DateTime.tryParse(map['declineDate'].toString()))
+          : null,
       likedBy: likedByList,
       visibility: map['visibility'] ?? 'public',
       isAnonymous: map['isAnonymous'] ?? false,
+      isPinned: map['isPinned'] == true,
+      pinnedAt: map['pinnedAt'] != null
+          ? (map['pinnedAt'] is Timestamp
+              ? (map['pinnedAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['pinnedAt'].toString()))
+          : null,
+      archivedAt: map['archivedAt'] != null
+          ? (map['archivedAt'] is Timestamp
+              ? (map['archivedAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['archivedAt'].toString()))
+          : null,
+      deletedAt: map['deletedAt'] != null
+          ? (map['deletedAt'] is Timestamp
+              ? (map['deletedAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['deletedAt'].toString()))
+          : null,
       views: map['views'] ?? 0,
       likes: map['likes'] ?? 0,
       comments: map['comments'] ?? 0,
@@ -162,10 +184,108 @@ class Resource {
       'likedBy': likedBy,
       'visibility': visibility,
       'isAnonymous': isAnonymous,
-      'views': _views,
-      'likes': _likes,
-      'comments': _comments,
+      'isPinned': isPinned,
+      'pinnedAt': pinnedAt != null ? Timestamp.fromDate(pinnedAt!) : null,
+      'archivedAt': archivedAt != null ? Timestamp.fromDate(archivedAt!) : null,
+      'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null,
+      'views': views,
+      'likes': likes,
+      'comments': comments,
     };
+  }
+
+  Map<String, dynamic> toJson() {
+    final map = toMap();
+    map['uploadDate'] = uploadDate.toIso8601String();
+    if (declineDate != null) map['declineDate'] = declineDate!.toIso8601String();
+    if (pinnedAt != null) map['pinnedAt'] = pinnedAt!.toIso8601String();
+    if (archivedAt != null) map['archivedAt'] = archivedAt!.toIso8601String();
+    if (deletedAt != null) map['deletedAt'] = deletedAt!.toIso8601String();
+    return map;
+  }
+
+  Resource copyWith({
+    String? id,
+    String? title,
+    String? fileName,
+    String? type,
+    String? thumbnailUrl,
+    String? thumbnailId,
+    String? thumbnailStatus,
+    String? fileUrl,
+    String? fileId,
+    String? unitName,
+    String? unitCode,
+    String? year,
+    String? uploadYear,
+    String? publicationYear,
+    String? yearOfStudy,
+    String? semester,
+    List<String>? lecturers,
+    String? uploadedBy,
+    String? uploaderRole,
+    String? uploaderId,
+    String? uploaderProfilePic,
+    List<String>? targetPrograms,
+    List<String>? programCodes,
+    String? materialFormat,
+    DateTime? uploadDate,
+    String? status,
+    String? declineReason,
+    DateTime? declineDate,
+    List<String>? likedBy,
+    String? visibility,
+    bool? isAnonymous,
+    bool? isPinned,
+    DateTime? pinnedAt,
+    DateTime? archivedAt,
+    DateTime? deletedAt,
+    int? views,
+    int? likes,
+    int? comments,
+    bool? isLiked,
+  }) {
+    return Resource(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      fileName: fileName ?? this.fileName,
+      type: type ?? this.type,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      thumbnailId: thumbnailId ?? this.thumbnailId,
+      thumbnailStatus: thumbnailStatus ?? this.thumbnailStatus,
+      fileUrl: fileUrl ?? this.fileUrl,
+      fileId: fileId ?? this.fileId,
+      unitName: unitName ?? this.unitName,
+      unitCode: unitCode ?? this.unitCode,
+      year: year ?? this.year,
+      uploadYear: uploadYear ?? this.uploadYear,
+      publicationYear: publicationYear ?? this.publicationYear,
+      yearOfStudy: yearOfStudy ?? this.yearOfStudy,
+      semester: semester ?? this.semester,
+      lecturers: lecturers ?? this.lecturers,
+      uploadedBy: uploadedBy ?? this.uploadedBy,
+      uploaderRole: uploaderRole ?? this.uploaderRole,
+      uploaderId: uploaderId ?? this.uploaderId,
+      uploaderProfilePic: uploaderProfilePic ?? this.uploaderProfilePic,
+      uploadDate: uploadDate ?? this.uploadDate,
+      targetPrograms: targetPrograms ?? this.targetPrograms,
+      programCodes: programCodes ?? this.programCodes,
+      materialFormat: materialFormat ?? this.materialFormat,
+      status: status ?? this.status,
+      declineReason: declineReason ?? this.declineReason,
+      declineDate: declineDate ?? this.declineDate,
+      likedBy: likedBy ?? this.likedBy,
+      visibility: visibility ?? this.visibility,
+      isAnonymous: isAnonymous ?? this.isAnonymous,
+      isPinned: isPinned ?? this.isPinned,
+      pinnedAt: pinnedAt ?? this.pinnedAt,
+      archivedAt: archivedAt ?? this.archivedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      views: views ?? this.views,
+      likes: likes ?? this.likes,
+      comments: comments ?? this.comments,
+      isLiked: isLiked ?? this.isLiked,
+    );
   }
 
   Resource copyWithPoolData(List<String> poolPrograms, List<String> poolLecturers, List<String> poolProgramCodes) {
@@ -201,9 +321,9 @@ class Resource {
       likedBy: likedBy,
       visibility: visibility,
       isAnonymous: isAnonymous,
-      views: _views,
-      likes: _likes,
-      comments: _comments,
+      views: views,
+      likes: likes,
+      comments: comments,
       isLiked: isLiked,
     );
   }

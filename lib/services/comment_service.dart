@@ -4,9 +4,20 @@ import 'package:flutter/material.dart';
 import '../models/comment.dart';
 
 class CommentService extends ChangeNotifier {
-  static final CommentService _instance = CommentService._internal();
+  static CommentService _instance = CommentService._internal();
   factory CommentService() => _instance;
   CommentService._internal();
+
+  @visibleForTesting
+  static void resetInstance() {
+    _instance = CommentService._internal();
+  }
+
+  @override
+  // ignore: must_call_super
+  void dispose() {
+    // Prevent singleton disposal from destroying persistent instance
+  }
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 

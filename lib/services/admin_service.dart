@@ -67,8 +67,19 @@ class AdminCapabilities {
 /// The Flutter client does NOT decide who is an admin using hardcoded emails.
 /// Authorization is strictly enforced server-side via Firebase Auth Custom Claims (`admin: true`).
 class AdminService extends ChangeNotifier {
-  static final AdminService _instance = AdminService._internal();
+  static AdminService _instance = AdminService._internal();
   factory AdminService() => _instance;
+
+  @visibleForTesting
+  static void resetInstance() {
+    _instance = AdminService._internal();
+  }
+
+  @override
+  // ignore: must_call_super
+  void dispose() {
+    // Prevent singleton disposal from destroying persistent instance
+  }
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;

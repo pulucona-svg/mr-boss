@@ -3,10 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/subscription_model.dart';
 import '../widgets/purchase_modal.dart';
-import '../providers/user_provider.dart';
-import '../providers/upload_provider.dart';
 import '../providers/service_providers.dart';
 import '../widgets/countdown_timer.dart';
+import '../services/top_notification_service.dart';
 
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
@@ -41,27 +40,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   void _showSuccessMessage() {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Subscription successful. Enjoy ad-free access!',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFF00A85A),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 3),
-        margin: const EdgeInsets.all(20),
-      ),
+    TopNotificationService().showNotification(
+      context,
+      'Subscription successful. Enjoy ad-free access!',
+      type: TopNotificationType.success,
     );
   }
 

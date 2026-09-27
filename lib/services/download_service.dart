@@ -6,10 +6,21 @@ import 'subscription_service.dart';
 import 'connectivity_service.dart';
 
 class DownloadService extends ChangeNotifier {
-  static final DownloadService _instance = DownloadService._internal();
+  static DownloadService _instance = DownloadService._internal();
   factory DownloadService() => _instance;
   DownloadService._internal() {
     _restoreData();
+  }
+
+  @visibleForTesting
+  static void resetInstance() {
+    _instance = DownloadService._internal();
+  }
+
+  @override
+  // ignore: must_call_super
+  void dispose() {
+    // Prevent ChangeNotifier disposal from destroying persistent singleton
   }
 
   List<Map<String, String>> _pinnedResources = [];
@@ -104,6 +115,32 @@ class DownloadService extends ChangeNotifier {
     }
 
     return null;
+  }
+
+  /// Removes materials from local downloads/cache when detected as archived or trashed on the server.
+  void purgeArchivedOrTrashed(Set<String> titles) {
+    if (titles.isEmpty) return;
+    bool changed = false;
+
+    for (final title in titles) {
+      final res = _findAndRemove(title);
+      if (res != null) {
+        changed = true;
+        final url = res['fileUrl'] ?? res['thumbnail'] ?? res['thumbnailUrl'];
+        if (url != null) {
+          try {
+            DefaultCacheManager().removeFile(url);
+          } catch (e) {
+            debugPrint('DownloadService: [WARN] Failed to remove file from cache: $e');
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      _saveData();
+      notifyListeners();
+    }
   }
 
   void pin(String title) {
@@ -267,6 +304,13 @@ class DownloadService extends ChangeNotifier {
       _saveData();
     }
     
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void addDownloadedResourceForTesting(Map<String, String> resourceData) {
+    _unpinnedResources.insert(0, Map<String, String>.from(resourceData));
+    _saveData();
     notifyListeners();
   }
 

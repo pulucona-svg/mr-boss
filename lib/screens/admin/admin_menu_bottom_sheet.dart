@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/admin_service.dart';
 import 'manual_ads_admin_screen.dart';
+import 'materials_admin_menu_bottom_sheet.dart';
 import '../explore_screen.dart';
 
 class AdminMenuBottomSheet extends StatelessWidget {
@@ -247,6 +248,13 @@ class AdminMenuBottomSheet extends StatelessWidget {
                                   MaterialPageRoute(
                                     builder: (context) => const ExploreScreen(isAdminMode: true),
                                   ),
+                                );
+                              } else if (item.id == 'materials') {
+                                showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (modalContext) => const MaterialsAdminMenuBottomSheet(),
                                 );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(

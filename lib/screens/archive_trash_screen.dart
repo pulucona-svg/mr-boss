@@ -113,7 +113,7 @@ class _ArchiveTrashScreenState extends State<ArchiveTrashScreen> {
                   icon: const Icon(Icons.restore, color: Colors.white),
                   onPressed: _handleRestore,
                 ),
-                if (widget.isTrash)
+                if (widget.isTrash || !widget.isDownloads)
                   IconButton(
                     icon: const Icon(Icons.delete_forever, color: Colors.white),
                     onPressed: _handlePermanentDelete,
@@ -221,7 +221,7 @@ class _ArchiveTrashScreenState extends State<ArchiveTrashScreen> {
                                             width: 60,
                                             height: 60,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Container(
+                                            errorBuilder: (context, error, stackTrace) => Container(
                                               color: Colors.white10,
                                               width: 60,
                                               height: 60,
