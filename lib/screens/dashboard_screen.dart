@@ -20,6 +20,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/feedback_utils.dart';
 import 'archive_trash_screen.dart';
 import '../services/admin_service.dart';
+import '../widgets/upload_bottom_sheet.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   final bool isAdminMode;
@@ -49,7 +50,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   // Admin Materials Selection State
   bool _isSelectionMode = false;
-  final Set<String> _selectedTitles = {};
+  final Set<String> _selectedMaterialIds = {};
 
   @override
   void initState() {
@@ -75,22 +76,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _searchFocusNode.addListener(_onSearchFocusChange);
   }
 
-  void _enterSelectionMode(String title) {
+  void _enterSelectionMode(String materialId) {
     setState(() {
       _isSelectionMode = true;
-      _selectedTitles.add(title);
+      _selectedMaterialIds.add(materialId);
     });
   }
 
-  void _toggleSelection(String title) {
+  void _toggleSelection(String materialId) {
     setState(() {
-      if (_selectedTitles.contains(title)) {
-        _selectedTitles.remove(title);
-        if (_selectedTitles.isEmpty) {
+      if (_selectedMaterialIds.contains(materialId)) {
+        _selectedMaterialIds.remove(materialId);
+        if (_selectedMaterialIds.isEmpty) {
           _isSelectionMode = false;
         }
       } else {
-        _selectedTitles.add(title);
+        _selectedMaterialIds.add(materialId);
       }
     });
   }
@@ -98,8 +99,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void _exitSelectionMode() {
     setState(() {
       _isSelectionMode = false;
-      _selectedTitles.clear();
+      _selectedMaterialIds.clear();
     });
+  }
+
+  void _openModifyMaterial(Resource material) {
+    _exitSelectionMode();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => UploadBottomSheet(modifyingMaterial: material),
+    );
   }
 
   void _onSearchFocusChange() {
@@ -511,8 +522,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _buildSelectionBar(List<Resource> filteredResources) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
       height: 44,
       decoration: BoxDecoration(
         color: const Color(0xFF181739).withAlpha(204),
@@ -526,48 +537,89 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           )
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          IconButton(
-            onPressed: _exitSelectionMode,
-            icon: const Icon(Icons.close, color: Colors.white, size: 24),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              _selectedTitles.length.toString(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
-              ),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          visualDensity: VisualDensity.compact,
+          iconButtonTheme: IconButtonThemeData(
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              minimumSize: const Size(32, 32),
+              padding: EdgeInsets.zero,
             ),
           ),
-          if (_selectedTitles.length <= 4)
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              onPressed: _exitSelectionMode,
+              icon: const Icon(Icons.close, color: Colors.white, size: 24),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                _selectedMaterialIds.length.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+            ),
+          if (_selectedMaterialIds.length <= 4)
             Builder(
               builder: (context) {
-                final allPinned = _selectedTitles.every((t) => ResourceService().isPinned(t));
+                final allPinned = _selectedMaterialIds.every((id) {
+                  final res = ResourceService().allResources.firstWhere(
+                    (r) => r.id == id,
+                    orElse: () => Resource(
+                      id: id,
+                      title: id,
+                      fileName: '',
+                      type: '',
+                      thumbnailUrl: '',
+                      fileUrl: '',
+                      fileId: '',
+                      unitName: '',
+                      unitCode: '',
+                      year: '',
+                      uploadYear: '',
+                      publicationYear: '',
+                      yearOfStudy: '',
+                      semester: '',
+                      lecturers: const [],
+                      uploadedBy: '',
+                      uploaderRole: '',
+                      uploaderId: '',
+                      uploadDate: DateTime.now(),
+                      status: '',
+                      visibility: '',
+                      targetPrograms: [],
+                      materialFormat: '',
+                    ),
+                  );
+                  return ResourceService().isPinned(res.title) || res.isPinned;
+                });
 
                 return IconButton(
                   onPressed: () {
-                    final titles = _selectedTitles.toList();
+                    final ids = _selectedMaterialIds.toList();
                     if (allPinned) {
-                      ResourceService().unpinMultiple(titles);
+                      ResourceService().unpinMaterialsById(ids);
                       FeedbackUtils.showActionFeedback(
                         context: context,
                         type: FeedbackActionType.unpin,
-                        count: titles.length,
+                        count: ids.length,
                         isDownloads: false,
                       );
                     } else {
-                      ResourceService().pinMultiple(titles);
+                      ResourceService().pinMaterialsById(ids);
                       FeedbackUtils.showActionFeedback(
                         context: context,
                         type: FeedbackActionType.pin,
-                        count: titles.length,
+                        count: ids.length,
                         isDownloads: false,
                       );
                     }
@@ -585,12 +637,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           IconButton(
             onPressed: () {
-              final titles = _selectedTitles.toList();
-              ResourceService().archiveMultiple(titles);
+              final ids = _selectedMaterialIds.toList();
+              ResourceService().archiveMaterialsById(ids);
               FeedbackUtils.showActionFeedback(
                 context: context,
                 type: FeedbackActionType.archive,
-                count: titles.length,
+                count: ids.length,
                 isDownloads: false,
               );
               _exitSelectionMode();
@@ -601,12 +653,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           IconButton(
             onPressed: () {
-              final titles = _selectedTitles.toList();
-              ResourceService().deleteMultiple(titles);
+              final ids = _selectedMaterialIds.toList();
+              ResourceService().deleteMaterialsById(ids);
               FeedbackUtils.showActionFeedback(
                 context: context,
                 type: FeedbackActionType.moveToTrash,
-                count: titles.length,
+                count: ids.length,
                 isDownloads: false,
               );
               _exitSelectionMode();
@@ -615,6 +667,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
+          if (_selectedMaterialIds.length == 1)
+            IconButton(
+              onPressed: () {
+                final selectedId = _selectedMaterialIds.first;
+                final selectedResource = filteredResources.firstWhere(
+                  (r) => r.id == selectedId,
+                  orElse: () => ResourceService().allResources.firstWhere(
+                    (r) => r.id == selectedId,
+                    orElse: () => Resource(
+                      id: selectedId,
+                      title: '',
+                      fileName: '',
+                      type: 'Notes',
+                      thumbnailUrl: '',
+                      fileUrl: '',
+                      fileId: '',
+                      unitName: '',
+                      unitCode: '',
+                      year: '',
+                      uploadYear: '',
+                      publicationYear: '',
+                      yearOfStudy: '',
+                      semester: '',
+                      lecturers: const [],
+                      uploadedBy: '',
+                      uploaderRole: '',
+                      uploaderId: '',
+                      uploadDate: DateTime.now(),
+                      status: 'approved',
+                      visibility: 'public',
+                      targetPrograms: [],
+                      materialFormat: 'PDF',
+                    ),
+                  ),
+                );
+                _openModifyMaterial(selectedResource);
+              },
+              icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 24),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
             padding: EdgeInsets.zero,
@@ -623,7 +716,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               if (value == 'select_all') {
                 setState(() {
                   for (var res in filteredResources) {
-                    _selectedTitles.add(res.title);
+                    _selectedMaterialIds.add(res.id);
                   }
                 });
               } else if (value == 'archives') {
@@ -650,7 +743,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   @override
@@ -1135,17 +1229,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                    onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
                    showPin: false,
                    isSelectionMode: isAdmin && _isSelectionMode,
-                   isSelected: isAdmin && _selectedTitles.contains(res.title),
+                   isSelected: isAdmin && _selectedMaterialIds.contains(res.id),
                    onLongPress: isAdmin
                        ? () {
                            if (!_isSelectionMode) {
-                             _enterSelectionMode(res.title);
+                             _enterSelectionMode(res.id);
                            }
                          }
                        : null,
                    onTap: () {
                      if (isAdmin && _isSelectionMode) {
-                       _toggleSelection(res.title);
+                       _toggleSelection(res.id);
                      }
                    },
                  );

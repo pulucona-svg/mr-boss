@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,7 +9,9 @@ import 'course_service.dart';
 import 'download_service.dart';
 import 'offline_upload_queue_service.dart';
 import 'persistence_service.dart';
+import 'notification_service.dart';
 import '../models/material_model.dart';
+import '../models/notification.dart';
 export '../models/material_model.dart' show Resource;
 
 // Riverpod Providers are now consolidated in lib/providers/service_providers.dart
@@ -17,6 +21,16 @@ class ResourceService extends ChangeNotifier {
   factory ResourceService() => _instance;
   ResourceService._internal() {
     _restoreData();
+  }
+
+  static bool get _isTesting {
+    if (!kIsWeb) {
+      try {
+        if (Platform.environment.containsKey('FLUTTER_TEST')) return true;
+      } catch (_) {}
+    }
+    final binding = WidgetsBinding.instance;
+    return binding.runtimeType.toString().contains('Test');
   }
 
   @visibleForTesting
@@ -36,6 +50,10 @@ class ResourceService extends ChangeNotifier {
   List<Resource> _userUploads = [];
   List<Resource> _archivedResources = [];
   List<Map<String, dynamic>> _trashedResources = [];
+  List<Resource> _pendingResources = [];
+  List<Resource> _approvedResources = [];
+  List<Resource> _modifiedResources = [];
+  List<Resource> _rejectedResources = [];
   StreamSubscription? _allResourcesSub;
   StreamSubscription? _userUploadsSub;
 
@@ -55,6 +73,12 @@ class ResourceService extends ChangeNotifier {
     // 2. Clear current state to prevent leakage
     _allResources = [];
     _userUploads = [];
+    _archivedResources = [];
+    _trashedResources = [];
+    _pendingResources = [];
+    _approvedResources = [];
+    _modifiedResources = [];
+    _rejectedResources = [];
     notifyListeners();
 
     // 3. Attach fresh listeners
@@ -94,6 +118,10 @@ class ResourceService extends ChangeNotifier {
     _userUploads = [];
     _archivedResources = [];
     _trashedResources = [];
+    _pendingResources = [];
+    _approvedResources = [];
+    _modifiedResources = [];
+    _rejectedResources = [];
     _activeResourceId = null;
     notifyListeners();
   }
@@ -113,6 +141,11 @@ class ResourceService extends ChangeNotifier {
   List<Resource> get allResources {
     return _allResources;
   }
+
+  List<Resource> get pendingResources => List.unmodifiable(_pendingResources);
+  List<Resource> get approvedResources => List.unmodifiable(_approvedResources);
+  List<Resource> get modifiedResources => List.unmodifiable(_modifiedResources);
+  List<Resource> get rejectedResources => List.unmodifiable(_rejectedResources);
 
   List<Resource> get userUploads {
     final queued = OfflineUploadQueueService().queuedResources;
@@ -335,32 +368,67 @@ class ResourceService extends ChangeNotifier {
     final active = <Resource>[];
     final archived = <Resource>[];
     final trashed = <Map<String, dynamic>>[];
+    final pending = <Resource>[];
+    final approved = <Resource>[];
+    final modified = <Resource>[];
+    final rejected = <Resource>[];
 
     for (final res in loaded) {
-      if (res.status == 'archived') {
+      final status = (res.status ?? '').toLowerCase().trim();
+      if (status == 'archived') {
         archived.add(res);
-      } else if (res.status == 'trash' || res.status == 'trashed') {
+      } else if (status == 'trash' || status == 'trashed') {
         trashed.add({
           'resource': res,
           'deletedAt': (res.deletedAt ?? res.uploadDate).toIso8601String(),
         });
-      } else if (res.status != 'declined') {
+      } else if (status == 'pending' || status == 'waiting') {
+        pending.add(res);
+      } else if (status == 'rejected' || status == 'declined') {
+        rejected.add(res);
+      } else if (status == 'modified') {
+        modified.add(res);
+        active.add(res);
+      } else if (status == 'approved') {
+        approved.add(res);
+        active.add(res);
+      } else {
+        // Legacy or unmoderated materials with empty/null status -> active and approved
+        approved.add(res);
         active.add(res);
       }
     }
 
+    // Pending: strictly ordered oldest uploaded material first
+    pending.sort((a, b) => a.uploadDate.compareTo(b.uploadDate));
+    // Approved: newest first
+    approved.sort((a, b) => (b.approvedAt ?? b.uploadDate).compareTo(a.approvedAt ?? a.uploadDate));
+    // Modified: newest first
+    modified.sort((a, b) => (b.updatedAt ?? b.uploadDate).compareTo(a.updatedAt ?? a.uploadDate));
+    // Rejected: newest first
+    rejected.sort((a, b) => (b.rejectedAt ?? b.uploadDate).compareTo(a.rejectedAt ?? a.uploadDate));
+
     _allResources = _sortResources(active);
     _archivedResources = archived;
     _trashedResources = trashed;
+    _pendingResources = pending;
+    _approvedResources = approved;
+    _modifiedResources = modified;
+    _rejectedResources = rejected;
 
     // Critical security reconciliation:
-    // If a normal user downloaded a material that is now archived, trashed, or deleted,
+    // If a normal user downloaded a material that is now archived, trashed, or rejected,
     // immediately remove it from local downloads and disk cache.
-    final invalidTitles = <String>{
+    final invalidIdentifiers = <String>{
+      ...archived.map((r) => r.id).where((id) => id.isNotEmpty),
+      ...trashed.map((item) => (item['resource'] as Resource).id).where((id) => id.isNotEmpty),
+      ...rejected.map((r) => r.id).where((id) => id.isNotEmpty),
       ...archived.map((r) => r.title),
       ...trashed.map((item) => (item['resource'] as Resource).title),
+      ...rejected.map((r) => r.title),
     };
-    DownloadService().purgeArchivedOrTrashed(invalidTitles);
+    DownloadService().purgeArchivedOrTrashed(invalidIdentifiers);
+    DownloadService().reconcileUpdatedResources(active);
 
     _saveToPersistence();
     notifyListeners();
@@ -393,7 +461,23 @@ class ResourceService extends ChangeNotifier {
           final item = _trashedResources.firstWhere((item) => (item['resource'] as Resource).id == id);
           return item['resource'] as Resource;
         } catch (_) {
-          return null;
+          try {
+            return _pendingResources.firstWhere((r) => r.id == id);
+          } catch (_) {
+            try {
+              return _rejectedResources.firstWhere((r) => r.id == id);
+            } catch (_) {
+              try {
+                return _approvedResources.firstWhere((r) => r.id == id);
+              } catch (_) {
+                try {
+                  return _modifiedResources.firstWhere((r) => r.id == id);
+                } catch (_) {
+                  return null;
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -416,17 +500,42 @@ class ResourceService extends ChangeNotifier {
     }
   }
 
-  bool isPinned(String title) {
-    return _allResources.any((r) => r.title == title && r.isPinned);
+  bool isPinned(String idOrTitle) {
+    return _allResources.any((r) => (r.id == idOrTitle || r.title == idOrTitle) && r.isPinned);
   }
 
-  void pinMultiple(List<String> titles) async {
-    final toPin = <Resource>[];
-    for (final t in titles) {
-      final match = findResourceByTitle(t);
-      if (match != null) toPin.add(match);
+  bool isPinnedById(String id) {
+    return _allResources.any((r) => r.id == id && r.isPinned);
+  }
+
+  List<Resource> _resolveResources(List<String> identifiers, List<Resource> source) {
+    final result = <Resource>[];
+    for (final idOrTitle in identifiers) {
+      final matchById = source.where((r) => r.id.isNotEmpty && r.id == idOrTitle).toList();
+      if (matchById.isNotEmpty) {
+        result.addAll(matchById);
+      } else {
+        final matchByTitle = source.where((r) => r.title == idOrTitle).toList();
+        result.addAll(matchByTitle);
+      }
     }
+    final seen = <Resource>{};
+    return result.where((r) => seen.add(r)).toList();
+  }
+
+  void pinMaterialsById(List<String> ids) => pinMultiple(ids);
+  void unpinMaterialsById(List<String> ids) => unpinMultiple(ids);
+  void archiveMaterialsById(List<String> ids) => archiveMultiple(ids);
+  void deleteMaterialsById(List<String> ids) => deleteMultiple(ids);
+  void restoreMaterialsById(List<String> ids) => restoreMultiple(ids);
+  void permanentlyDeleteMaterialsById(List<String> ids) => permanentlyDeleteMultiple(ids);
+
+  void pinMultiple(List<String> identifiers) async {
+    final toPin = _resolveResources(identifiers, _allResources);
     if (toPin.isEmpty) return;
+
+    final targetIds = toPin.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
+    final targetTitles = toPin.map((r) => r.title).toSet();
 
     final now = DateTime.now();
     // Preserve selection order:
@@ -440,7 +549,7 @@ class ResourceService extends ChangeNotifier {
 
     // Keep existing pinned items not in toPin
     final existingPinned = _allResources
-        .where((r) => r.isPinned && !titles.contains(r.title))
+        .where((r) => r.isPinned && !targetIds.contains(r.id) && (r.id.isNotEmpty || !targetTitles.contains(r.title)))
         .toList();
 
     final allPinned = [...updatedPinned, ...existingPinned];
@@ -450,15 +559,19 @@ class ResourceService extends ChangeNotifier {
     final evicted = allPinned.skip(4).map((r) => r.copyWith(isPinned: false, pinnedAt: null)).toList();
 
     // Reconstruct unpinned items
-    final finalPinnedTitles = finalPinned.map((r) => r.title).toSet();
+    final finalPinnedIds = finalPinned.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
     final unpinned = _allResources
-        .where((r) => !finalPinnedTitles.contains(r.title))
-        .map((r) => titles.contains(r.title) ? r.copyWith(isPinned: false, pinnedAt: null) : r)
+        .where((r) => !finalPinnedIds.contains(r.id))
+        .map((r) => (targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)))
+            ? r.copyWith(isPinned: false, pinnedAt: null)
+            : r)
         .toList();
 
     _allResources = [...finalPinned, ...unpinned];
     _saveToPersistence();
     notifyListeners();
+
+    if (_isTesting) return;
 
     // Persist to backend / Firestore
     try {
@@ -479,18 +592,27 @@ class ResourceService extends ChangeNotifier {
           });
         }
       }
-      await batch.commit();
+      await batch.commit().timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('ResourceService: [ERROR] pinMultiple Firestore batch failed: $e');
     }
+
+    try {
+      if (targetIds.isNotEmpty) {
+        await _functions.httpsCallable('pinAdminMaterials').call({'materialIds': targetIds.toList()}).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {}
   }
 
-  void unpinMultiple(List<String> titles) async {
-    final toUnpin = _allResources.where((r) => titles.contains(r.title)).toList();
+  void unpinMultiple(List<String> identifiers) async {
+    final toUnpin = _resolveResources(identifiers, _allResources);
     if (toUnpin.isEmpty) return;
 
+    final targetIds = toUnpin.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
+    final targetTitles = toUnpin.map((r) => r.title).toSet();
+
     final updated = _allResources.map((r) {
-      if (titles.contains(r.title)) {
+      if (targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title))) {
         return r.copyWith(isPinned: false, pinnedAt: null);
       }
       return r;
@@ -499,6 +621,8 @@ class ResourceService extends ChangeNotifier {
     _allResources = _sortResources(updated);
     _saveToPersistence();
     notifyListeners();
+
+    if (_isTesting) return;
 
     try {
       final batch = _firestore.batch();
@@ -510,15 +634,24 @@ class ResourceService extends ChangeNotifier {
           });
         }
       }
-      await batch.commit();
+      await batch.commit().timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('ResourceService: [ERROR] unpinMultiple Firestore batch failed: $e');
     }
+
+    try {
+      if (targetIds.isNotEmpty) {
+        await _functions.httpsCallable('unpinAdminMaterials').call({'materialIds': targetIds.toList()}).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {}
   }
 
-  void archiveMultiple(List<String> titles) async {
-    final toArchive = _allResources.where((r) => titles.contains(r.title)).toList();
+  void archiveMultiple(List<String> identifiers) async {
+    final toArchive = _resolveResources(identifiers, _allResources);
     if (toArchive.isEmpty) return;
+
+    final targetIds = toArchive.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
+    final targetTitles = toArchive.map((r) => r.title).toSet();
 
     final now = DateTime.now();
     final archivedItems = toArchive.map((r) => r.copyWith(
@@ -528,17 +661,19 @@ class ResourceService extends ChangeNotifier {
       pinnedAt: null,
     )).toList();
 
-    _allResources.removeWhere((r) => titles.contains(r.title));
+    _allResources.removeWhere((r) => targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)));
     for (final res in archivedItems) {
-      _archivedResources.removeWhere((r) => r.title == res.title);
+      _archivedResources.removeWhere((r) => (res.id.isNotEmpty && r.id == res.id) || (res.id.isEmpty && r.title == res.title));
       _archivedResources.insert(0, res);
     }
 
-    // Purge local downloads immediately
-    DownloadService().purgeArchivedOrTrashed(titles.toSet());
+    // Purge local downloads immediately targeting exact ID and title
+    DownloadService().purgeArchivedOrTrashed({...targetIds, ...targetTitles});
 
     _saveToPersistence();
     notifyListeners();
+
+    if (_isTesting) return;
 
     try {
       final batch = _firestore.batch();
@@ -552,18 +687,26 @@ class ResourceService extends ChangeNotifier {
           });
         }
       }
-      await batch.commit();
+      await batch.commit().timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('ResourceService: [ERROR] archiveMultiple Firestore batch failed: $e');
     }
+
+    try {
+      if (targetIds.isNotEmpty) {
+        await _functions.httpsCallable('archiveAdminMaterials').call({'materialIds': targetIds.toList()}).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {}
   }
 
-  void deleteMultiple(List<String> titles) async {
-    final toTrash = [
-      ..._allResources.where((r) => titles.contains(r.title)),
-      ..._archivedResources.where((r) => titles.contains(r.title)),
-    ];
+  void deleteMultiple(List<String> identifiers) async {
+    final toTrashActive = _resolveResources(identifiers, _allResources);
+    final toTrashArchived = _resolveResources(identifiers, _archivedResources);
+    final toTrash = [...toTrashActive, ...toTrashArchived];
     if (toTrash.isEmpty) return;
+
+    final targetIds = toTrash.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
+    final targetTitles = toTrash.map((r) => r.title).toSet();
 
     final now = DateTime.now();
     final trashedItems = toTrash.map((r) => r.copyWith(
@@ -573,22 +716,27 @@ class ResourceService extends ChangeNotifier {
       pinnedAt: null,
     )).toList();
 
-    _allResources.removeWhere((r) => titles.contains(r.title));
-    _archivedResources.removeWhere((r) => titles.contains(r.title));
+    _allResources.removeWhere((r) => targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)));
+    _archivedResources.removeWhere((r) => targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)));
 
     for (final res in trashedItems) {
-      _trashedResources.removeWhere((item) => (item['resource'] as Resource).title == res.title);
+      _trashedResources.removeWhere((item) {
+        final r = item['resource'] as Resource;
+        return (res.id.isNotEmpty && r.id == res.id) || (res.id.isEmpty && r.title == res.title);
+      });
       _trashedResources.insert(0, {
         'resource': res,
         'deletedAt': now.toIso8601String(),
       });
     }
 
-    // Purge local downloads immediately
-    DownloadService().purgeArchivedOrTrashed(titles.toSet());
+    // Purge local downloads immediately targeting exact ID and title
+    DownloadService().purgeArchivedOrTrashed({...targetIds, ...targetTitles});
 
     _saveToPersistence();
     notifyListeners();
+
+    if (_isTesting) return;
 
     try {
       final batch = _firestore.batch();
@@ -602,24 +750,28 @@ class ResourceService extends ChangeNotifier {
           });
         }
       }
-      await batch.commit();
+      await batch.commit().timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('ResourceService: [ERROR] deleteMultiple Firestore batch failed: $e');
     }
+
+    try {
+      if (targetIds.isNotEmpty) {
+        await _functions.httpsCallable('trashAdminMaterials').call({'materialIds': targetIds.toList()}).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {}
   }
 
-  void restoreMultiple(List<String> titles) async {
-    final fromTrash = _trashedResources
-        .where((item) => titles.contains((item['resource'] as Resource).title))
-        .map((item) => item['resource'] as Resource)
-        .toList();
-
-    final fromArchive = _archivedResources
-        .where((r) => titles.contains(r.title))
-        .toList();
+  void restoreMultiple(List<String> identifiers) async {
+    final trashedResourcesList = _trashedResources.map((item) => item['resource'] as Resource).toList();
+    final fromTrash = _resolveResources(identifiers, trashedResourcesList);
+    final fromArchive = _resolveResources(identifiers, _archivedResources);
 
     final toRestore = [...fromTrash, ...fromArchive];
     if (toRestore.isEmpty) return;
+
+    final targetIds = toRestore.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
+    final targetTitles = toRestore.map((r) => r.title).toSet();
 
     final now = DateTime.now();
     final restoredItems = toRestore.map((r) => r.copyWith(
@@ -628,17 +780,22 @@ class ResourceService extends ChangeNotifier {
       deletedAt: null,
     )).toList();
 
-    _trashedResources.removeWhere((item) => titles.contains((item['resource'] as Resource).title));
-    _archivedResources.removeWhere((r) => titles.contains(r.title));
+    _trashedResources.removeWhere((item) {
+      final r = item['resource'] as Resource;
+      return targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title));
+    });
+    _archivedResources.removeWhere((r) => targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)));
 
     for (final res in restoredItems) {
-      _allResources.removeWhere((r) => r.title == res.title);
+      _allResources.removeWhere((r) => (res.id.isNotEmpty && r.id == res.id) || (res.id.isEmpty && r.title == res.title));
       _allResources.add(res);
     }
     _allResources = _sortResources(_allResources);
 
     _saveToPersistence();
     notifyListeners();
+
+    if (_isTesting) return;
 
     try {
       final batch = _firestore.batch();
@@ -652,53 +809,422 @@ class ResourceService extends ChangeNotifier {
           });
         }
       }
-      await batch.commit();
+      await batch.commit().timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint('ResourceService: [ERROR] restoreMultiple Firestore batch failed: $e');
     }
+
+    try {
+      if (targetIds.isNotEmpty) {
+        await _functions.httpsCallable('restoreAdminMaterials').call({'materialIds': targetIds.toList()}).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {}
   }
 
-  void permanentlyDeleteMultiple(List<String> titles) async {
-    final toDelete = [
-      ..._trashedResources
-          .where((item) => titles.contains((item['resource'] as Resource).title))
-          .map((item) => item['resource'] as Resource),
-      ..._archivedResources.where((r) => titles.contains(r.title)),
-      ..._allResources.where((r) => titles.contains(r.title)),
-    ];
+  void permanentlyDeleteMultiple(List<String> identifiers) async {
+    final trashedResourcesList = _trashedResources.map((item) => item['resource'] as Resource).toList();
+    final fromTrash = _resolveResources(identifiers, trashedResourcesList);
+    final fromArchive = _resolveResources(identifiers, _archivedResources);
+    final fromActive = _resolveResources(identifiers, _allResources);
 
+    final toDelete = [...fromTrash, ...fromArchive, ...fromActive];
     if (toDelete.isEmpty) return;
 
-    _trashedResources.removeWhere((item) => titles.contains((item['resource'] as Resource).title));
-    _archivedResources.removeWhere((r) => titles.contains(r.title));
-    _allResources.removeWhere((r) => titles.contains(r.title));
+    final targetIds = toDelete.map((r) => r.id).where((id) => id.isNotEmpty).toSet();
+    final targetTitles = toDelete.map((r) => r.title).toSet();
 
-    DownloadService().purgeArchivedOrTrashed(titles.toSet());
+    _trashedResources.removeWhere((item) {
+      final r = item['resource'] as Resource;
+      return targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title));
+    });
+    _archivedResources.removeWhere((r) => targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)));
+    _allResources.removeWhere((r) => targetIds.contains(r.id) || (r.id.isEmpty && targetTitles.contains(r.title)));
+
+    DownloadService().purgeArchivedOrTrashed({...targetIds, ...targetTitles});
 
     _saveToPersistence();
     notifyListeners();
+
+    if (_isTesting) return;
 
     for (final res in toDelete) {
       try {
         if (res.fileId.isNotEmpty) {
           try {
-            await _functions.httpsCallable('deleteFromImageKit').call({'fileId': res.fileId});
+            await _functions.httpsCallable('deleteFromImageKit').call({'fileId': res.fileId}).timeout(const Duration(seconds: 3));
           } catch (e) {
             debugPrint('ResourceService: [WARN] Failed to delete fileId ${res.fileId} from ImageKit: $e');
           }
         }
         if (res.thumbnailId != null && res.thumbnailId!.isNotEmpty) {
           try {
-            await _functions.httpsCallable('deleteFromImageKit').call({'fileId': res.thumbnailId});
+            await _functions.httpsCallable('deleteFromImageKit').call({'fileId': res.thumbnailId}).timeout(const Duration(seconds: 3));
           } catch (e) {
             debugPrint('ResourceService: [WARN] Failed to delete thumbnailId ${res.thumbnailId} from ImageKit: $e');
           }
         }
         if (res.id.isNotEmpty) {
-          await _firestore.collection('resources').doc(res.id).delete();
+          await _firestore.collection('resources').doc(res.id).delete().timeout(const Duration(seconds: 3));
         }
       } catch (e) {
         debugPrint('ResourceService: [ERROR] permanentlyDeleteMultiple failed for ${res.id}: $e');
+      }
+    }
+
+    try {
+      if (targetIds.isNotEmpty) {
+        await _functions.httpsCallable('deleteAdminMaterials').call({'materialIds': targetIds.toList()}).timeout(const Duration(seconds: 3));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> modifyMaterial(
+    Resource updatedResource, {
+    String? oldFileId,
+    String? oldThumbnailId,
+    bool isModerationModify = false,
+  }) async {
+    final docId = updatedResource.id;
+    if (docId.isEmpty) return;
+
+    final isModified = isModerationModify || updatedResource.status == 'modified';
+    final targetStatus = isModified ? 'modified' : updatedResource.status;
+
+    // 1. In-place update in whichever bucket this material belongs to
+    final archiveIdx = _archivedResources.indexWhere((r) => r.id == docId);
+    final trashIdx = _trashedResources.indexWhere((item) {
+      final r = item['resource'] as Resource;
+      return r.id == docId;
+    });
+    final pendingIdx = _pendingResources.indexWhere((r) => r.id == docId);
+
+    if (archiveIdx != -1) {
+      // Material is in Archives -> keep it archived in-place
+      final currentArchived = _archivedResources[archiveIdx];
+      final preservedResource = updatedResource.copyWith(
+        status: 'archived',
+        archivedAt: currentArchived.archivedAt,
+        isPinned: false,
+        pinnedAt: null,
+      );
+      _archivedResources[archiveIdx] = preservedResource;
+      _allResources.removeWhere((r) => r.id == docId);
+    } else if (trashIdx != -1) {
+      // Material is in Trash -> keep it in Trash in-place
+      final currentTrashItem = _trashedResources[trashIdx];
+      final currentTrashRes = currentTrashItem['resource'] as Resource;
+      final preservedResource = updatedResource.copyWith(
+        status: 'trash',
+        deletedAt: currentTrashRes.deletedAt,
+        isPinned: false,
+        pinnedAt: null,
+      );
+      _trashedResources[trashIdx] = {
+        'resource': preservedResource,
+        'deletedAt': currentTrashItem['deletedAt'],
+      };
+      _allResources.removeWhere((r) => r.id == docId);
+    } else if (isModified || pendingIdx != -1) {
+      // Moderation modified material: becomes approved & modified
+      _pendingResources.removeWhere((r) => r.id == docId);
+      final finalModRes = updatedResource.copyWith(
+        status: 'modified',
+        approvedAt: updatedResource.approvedAt ?? DateTime.now(),
+        updatedAt: DateTime.now(),
+        approvedByAdmin: true,
+      );
+      _modifiedResources.removeWhere((r) => r.id == docId);
+      _modifiedResources.insert(0, finalModRes);
+
+      _allResources.removeWhere((r) => r.id == docId);
+      _allResources.insert(0, finalModRes);
+      _allResources = _sortResources(_allResources);
+
+      NotificationService().addModerationNotification(
+        type: NotificationType.materialModified,
+        resourceTitle: finalModRes.title,
+        id: 'notif_modify_$docId',
+        materialId: docId,
+        remark: finalModRes.adminRemark,
+      );
+    } else {
+      // Active material
+      final idx = _allResources.indexWhere((r) => r.id == docId);
+      if (idx != -1) {
+        _allResources[idx] = updatedResource;
+      } else {
+        _allResources.insert(0, updatedResource);
+      }
+      _allResources = _sortResources(_allResources);
+    }
+
+    // 2. In-place update user uploads if present
+    final userIdx = _userUploads.indexWhere((r) => r.id == docId);
+    if (userIdx != -1) {
+      _userUploads[userIdx] = isModified
+          ? updatedResource.copyWith(status: 'modified', approvedByAdmin: true)
+          : updatedResource;
+    }
+
+    // 3. Reconcile downloads / cache: If fileUrl changed, remove old cached file and update record
+    DownloadService().reconcileUpdatedResources([updatedResource]);
+
+    _saveToPersistence();
+    notifyListeners();
+
+    if (_isTesting) return;
+
+    // 4. Update backend via Cloud Function modifyAdminMaterial (with fallback to direct firestore update)
+    try {
+      await _functions.httpsCallable('modifyAdminMaterial').call({
+        'materialId': docId,
+        'unitName': updatedResource.unitName,
+        'unitCode': updatedResource.unitCode,
+        'title': updatedResource.title,
+        'materialType': updatedResource.type,
+        'catType': updatedResource.type == 'CATs'
+            ? (updatedResource.title.contains('CAT 2') ? 'CAT 2' : 'CAT 1')
+            : null,
+        'yearOfPublication': int.tryParse(updatedResource.publicationYear),
+        'yearOfStudy': updatedResource.yearOfStudy,
+        'semester': updatedResource.semester,
+        'targetPrograms': updatedResource.targetPrograms,
+        'programCodes': updatedResource.programCodes,
+        'lecturers': updatedResource.lecturers,
+        'fileUrl': updatedResource.fileUrl,
+        'fileId': updatedResource.fileId,
+        'fileName': updatedResource.fileName,
+        'materialFormat': updatedResource.materialFormat,
+        'thumbnailUrl': updatedResource.thumbnailUrl,
+        'thumbnailId': updatedResource.thumbnailId,
+        'thumbnailStatus': updatedResource.thumbnailStatus,
+        'isAnonymous': updatedResource.isAnonymous,
+        'yearOfUpload': int.tryParse(updatedResource.uploadYear),
+        'oldFileId': oldFileId,
+        'oldThumbnailId': oldThumbnailId,
+        if (isModified) 'status': 'modified',
+        if (updatedResource.adminRemark != null && updatedResource.adminRemark!.trim().isNotEmpty)
+          'adminRemark': updatedResource.adminRemark!.trim(),
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('ResourceService: [WARN] modifyAdminMaterial callable error, writing directly to Firestore: $e');
+      try {
+        final statusToPersist = (archiveIdx != -1)
+            ? 'archived'
+            : (trashIdx != -1 ? 'trash' : targetStatus);
+        final mapData = <String, dynamic>{
+          ...updatedResource.toMap(),
+          'status': statusToPersist,
+          'updatedByAdmin': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        if (isModified) {
+          mapData['approvedAt'] = FieldValue.serverTimestamp();
+        }
+        await _firestore.collection('resources').doc(docId).update(mapData).timeout(const Duration(seconds: 4));
+      } catch (err) {
+        debugPrint('ResourceService: [ERROR] Firestore update failed: $err');
+      }
+    }
+  }
+
+  Future<void> approveMaterial(String materialId, {String? adminRemark}) async {
+    final cleanId = materialId.trim();
+    if (cleanId.isEmpty) return;
+
+    final existing = findResourceById(cleanId);
+    final now = DateTime.now();
+
+    final approvedRes = existing?.copyWith(
+      status: 'approved',
+      approvedAt: now,
+      approvedByAdmin: true,
+      adminRemark: adminRemark,
+      updatedAt: now,
+    );
+
+    _pendingResources.removeWhere((r) => r.id == cleanId);
+    if (approvedRes != null) {
+      _approvedResources.removeWhere((r) => r.id == cleanId);
+      _approvedResources.insert(0, approvedRes);
+
+      _allResources.removeWhere((r) => r.id == cleanId);
+      _allResources.insert(0, approvedRes);
+      _allResources = _sortResources(_allResources);
+
+      final userIdx = _userUploads.indexWhere((r) => r.id == cleanId);
+      if (userIdx != -1) {
+        _userUploads[userIdx] = approvedRes;
+      }
+
+      NotificationService().addModerationNotification(
+        type: NotificationType.materialApproved,
+        resourceTitle: approvedRes.title,
+        id: 'notif_approve_$cleanId',
+        materialId: cleanId,
+        remark: adminRemark,
+      );
+    }
+
+    _saveToPersistence();
+    notifyListeners();
+
+    if (_isTesting) return;
+
+    try {
+      await _functions.httpsCallable('approveAdminMaterial').call({
+        'materialId': cleanId,
+        if (adminRemark != null && adminRemark.trim().isNotEmpty) 'adminRemark': adminRemark.trim(),
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('ResourceService: [WARN] approveAdminMaterial callable error, writing directly to Firestore: $e');
+      try {
+        final updateData = <String, dynamic>{
+          'status': 'approved',
+          'approvedAt': FieldValue.serverTimestamp(),
+          'approvedByAdmin': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        if (adminRemark != null && adminRemark.trim().isNotEmpty) {
+          updateData['adminRemark'] = adminRemark.trim();
+        }
+        await _firestore.collection('resources').doc(cleanId).update(updateData);
+      } catch (err) {
+        debugPrint('ResourceService: [ERROR] Direct Firestore approve failed: $err');
+      }
+    }
+  }
+
+  Future<void> rejectMaterial(
+    String materialId, {
+    required List<String> rejectionReasons,
+    String? adminRemark,
+  }) async {
+    final cleanId = materialId.trim();
+    if (cleanId.isEmpty) return;
+
+    final existing = findResourceById(cleanId);
+    final now = DateTime.now();
+
+    final rejectedRes = existing?.copyWith(
+      status: 'rejected',
+      rejectedAt: now,
+      deletedAt: now,
+      rejectedByAdmin: true,
+      rejectionReasons: rejectionReasons,
+      adminRemark: adminRemark,
+      updatedAt: now,
+    );
+
+    _pendingResources.removeWhere((r) => r.id == cleanId);
+    _allResources.removeWhere((r) => r.id == cleanId);
+    _approvedResources.removeWhere((r) => r.id == cleanId);
+    _modifiedResources.removeWhere((r) => r.id == cleanId);
+
+    if (rejectedRes != null) {
+      _rejectedResources.removeWhere((r) => r.id == cleanId);
+      _rejectedResources.insert(0, rejectedRes);
+
+      final userIdx = _userUploads.indexWhere((r) => r.id == cleanId);
+      if (userIdx != -1) {
+        _userUploads[userIdx] = rejectedRes;
+      }
+
+      DownloadService().purgeArchivedOrTrashed({cleanId, rejectedRes.title});
+
+      NotificationService().addModerationNotification(
+        type: NotificationType.materialRejected,
+        resourceTitle: rejectedRes.title,
+        id: 'notif_reject_$cleanId',
+        materialId: cleanId,
+        rejectionReasons: rejectionReasons,
+        remark: adminRemark,
+      );
+    }
+
+    _saveToPersistence();
+    notifyListeners();
+
+    if (_isTesting) return;
+
+    try {
+      await _functions.httpsCallable('rejectAdminMaterial').call({
+        'materialId': cleanId,
+        'rejectionReasons': rejectionReasons,
+        if (adminRemark != null && adminRemark.trim().isNotEmpty) 'adminRemark': adminRemark.trim(),
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('ResourceService: [WARN] rejectAdminMaterial callable error, writing directly to Firestore: $e');
+      try {
+        final updateData = <String, dynamic>{
+          'status': 'rejected',
+          'rejectedAt': FieldValue.serverTimestamp(),
+          'deletedAt': FieldValue.serverTimestamp(),
+          'rejectedByAdmin': true,
+          'rejectionReasons': rejectionReasons,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        if (adminRemark != null && adminRemark.trim().isNotEmpty) {
+          updateData['adminRemark'] = adminRemark.trim();
+        }
+        await _firestore.collection('resources').doc(cleanId).update(updateData);
+      } catch (err) {
+        debugPrint('ResourceService: [ERROR] Direct Firestore reject failed: $err');
+      }
+    }
+  }
+
+  Future<void> reconsiderMaterial(String materialId) async {
+    final cleanId = materialId.trim();
+    if (cleanId.isEmpty) return;
+
+    final existing = findResourceById(cleanId);
+    final now = DateTime.now();
+
+    final reconsideredRes = existing?.copyWith(
+      status: 'pending',
+      reconsideredAt: now,
+      clearRejection: true,
+      clearAdminRemark: true,
+      clearDeletedAt: true,
+      updatedAt: now,
+    );
+
+    _rejectedResources.removeWhere((r) => r.id == cleanId);
+    if (reconsideredRes != null) {
+      _pendingResources.removeWhere((r) => r.id == cleanId);
+      _pendingResources.add(reconsideredRes);
+      _pendingResources.sort((a, b) => a.uploadDate.compareTo(b.uploadDate));
+
+      final userIdx = _userUploads.indexWhere((r) => r.id == cleanId);
+      if (userIdx != -1) {
+        _userUploads[userIdx] = reconsideredRes;
+      }
+    }
+
+    _saveToPersistence();
+    notifyListeners();
+
+    if (_isTesting) return;
+
+    try {
+      await _functions.httpsCallable('reconsiderAdminMaterial').call({
+        'materialId': cleanId,
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('ResourceService: [WARN] reconsiderAdminMaterial callable error, writing directly to Firestore: $e');
+      try {
+        await _firestore.collection('resources').doc(cleanId).update({
+          'status': 'pending',
+          'reconsideredAt': FieldValue.serverTimestamp(),
+          'rejectedAt': FieldValue.delete(),
+          'deletedAt': FieldValue.delete(),
+          'rejectionReasons': FieldValue.delete(),
+          'adminRemark': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (err) {
+        debugPrint('ResourceService: [ERROR] Direct Firestore reconsider failed: $err');
       }
     }
   }

@@ -455,6 +455,10 @@ export {
   restoreAdminMaterials,
   deleteAdminMaterials,
   scheduledMaterialsTrashRetention,
+  modifyAdminMaterial,
+  approveAdminMaterial,
+  rejectAdminMaterial,
+  reconsiderAdminMaterial,
 } from "./admin/admin_materials";
 
 /**

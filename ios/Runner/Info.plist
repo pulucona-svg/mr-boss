@@ -3,8 +3,8 @@
 <plist version="1.0">
 	<dict>
 		<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
+		<string>ca-app-pub-3940256099942544~1458002511</string>
+		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>

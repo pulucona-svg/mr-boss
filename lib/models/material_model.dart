@@ -27,9 +27,16 @@ class Resource {
   final List<String> programCodes;
   final String materialFormat;
   final DateTime uploadDate;
-  String? status; // 'approved', 'waiting', 'declined', 'archived', 'trash'
+  String? status; // 'approved', 'waiting', 'declined', 'archived', 'trash', 'pending', 'rejected', 'modified'
   final String? declineReason;
   final DateTime? declineDate;
+  final List<String>? rejectionReasons;
+  final String? adminRemark;
+  final DateTime? approvedAt;
+  final DateTime? rejectedAt;
+  final DateTime? reconsideredAt;
+  final bool approvedByAdmin;
+  final bool rejectedByAdmin;
   final List<String> likedBy;
   final String visibility;
   final bool isAnonymous;
@@ -37,6 +44,8 @@ class Resource {
   final DateTime? pinnedAt;
   final DateTime? archivedAt;
   final DateTime? deletedAt;
+  final bool updatedByAdmin;
+  final DateTime? updatedAt;
   int views;
   int likes;
   int comments;
@@ -71,6 +80,13 @@ class Resource {
     this.status,
     this.declineReason,
     this.declineDate,
+    this.rejectionReasons,
+    this.adminRemark,
+    this.approvedAt,
+    this.rejectedAt,
+    this.reconsideredAt,
+    this.approvedByAdmin = false,
+    this.rejectedByAdmin = false,
     this.likedBy = const [],
     this.visibility = 'public',
     this.isAnonymous = false,
@@ -78,6 +94,8 @@ class Resource {
     this.pinnedAt,
     this.archivedAt,
     this.deletedAt,
+    this.updatedByAdmin = false,
+    this.updatedAt,
     this.views = 0,
     this.likes = 0,
     this.comments = 0,
@@ -126,6 +144,25 @@ class Resource {
               ? (map['declineDate'] as Timestamp).toDate()
               : DateTime.tryParse(map['declineDate'].toString()))
           : null,
+      rejectionReasons: map['rejectionReasons'] != null ? List<String>.from(map['rejectionReasons']) : null,
+      adminRemark: map['adminRemark'],
+      approvedAt: map['approvedAt'] != null
+          ? (map['approvedAt'] is Timestamp
+              ? (map['approvedAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['approvedAt'].toString()))
+          : null,
+      rejectedAt: map['rejectedAt'] != null
+          ? (map['rejectedAt'] is Timestamp
+              ? (map['rejectedAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['rejectedAt'].toString()))
+          : null,
+      reconsideredAt: map['reconsideredAt'] != null
+          ? (map['reconsideredAt'] is Timestamp
+              ? (map['reconsideredAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['reconsideredAt'].toString()))
+          : null,
+      approvedByAdmin: map['approvedByAdmin'] == true,
+      rejectedByAdmin: map['rejectedByAdmin'] == true,
       likedBy: likedByList,
       visibility: map['visibility'] ?? 'public',
       isAnonymous: map['isAnonymous'] ?? false,
@@ -144,6 +181,12 @@ class Resource {
           ? (map['deletedAt'] is Timestamp
               ? (map['deletedAt'] as Timestamp).toDate()
               : DateTime.tryParse(map['deletedAt'].toString()))
+          : null,
+      updatedByAdmin: map['updatedByAdmin'] == true,
+      updatedAt: map['updatedAt'] != null
+          ? (map['updatedAt'] is Timestamp
+              ? (map['updatedAt'] as Timestamp).toDate()
+              : DateTime.tryParse(map['updatedAt'].toString()))
           : null,
       views: map['views'] ?? 0,
       likes: map['likes'] ?? 0,
@@ -181,6 +224,13 @@ class Resource {
       'status': status,
       'declineReason': declineReason,
       'declineDate': declineDate != null ? Timestamp.fromDate(declineDate!) : null,
+      if (rejectionReasons != null) 'rejectionReasons': rejectionReasons,
+      if (adminRemark != null) 'adminRemark': adminRemark,
+      if (approvedAt != null) 'approvedAt': Timestamp.fromDate(approvedAt!),
+      if (rejectedAt != null) 'rejectedAt': Timestamp.fromDate(rejectedAt!),
+      if (reconsideredAt != null) 'reconsideredAt': Timestamp.fromDate(reconsideredAt!),
+      'approvedByAdmin': approvedByAdmin,
+      'rejectedByAdmin': rejectedByAdmin,
       'likedBy': likedBy,
       'visibility': visibility,
       'isAnonymous': isAnonymous,
@@ -188,6 +238,8 @@ class Resource {
       'pinnedAt': pinnedAt != null ? Timestamp.fromDate(pinnedAt!) : null,
       'archivedAt': archivedAt != null ? Timestamp.fromDate(archivedAt!) : null,
       'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null,
+      'updatedByAdmin': updatedByAdmin,
+      if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
       'views': views,
       'likes': likes,
       'comments': comments,
@@ -198,9 +250,13 @@ class Resource {
     final map = toMap();
     map['uploadDate'] = uploadDate.toIso8601String();
     if (declineDate != null) map['declineDate'] = declineDate!.toIso8601String();
+    if (approvedAt != null) map['approvedAt'] = approvedAt!.toIso8601String();
+    if (rejectedAt != null) map['rejectedAt'] = rejectedAt!.toIso8601String();
+    if (reconsideredAt != null) map['reconsideredAt'] = reconsideredAt!.toIso8601String();
     if (pinnedAt != null) map['pinnedAt'] = pinnedAt!.toIso8601String();
     if (archivedAt != null) map['archivedAt'] = archivedAt!.toIso8601String();
     if (deletedAt != null) map['deletedAt'] = deletedAt!.toIso8601String();
+    if (updatedAt != null) map['updatedAt'] = updatedAt!.toIso8601String();
     return map;
   }
 
@@ -233,6 +289,13 @@ class Resource {
     String? status,
     String? declineReason,
     DateTime? declineDate,
+    List<String>? rejectionReasons,
+    String? adminRemark,
+    DateTime? approvedAt,
+    DateTime? rejectedAt,
+    DateTime? reconsideredAt,
+    bool? approvedByAdmin,
+    bool? rejectedByAdmin,
     List<String>? likedBy,
     String? visibility,
     bool? isAnonymous,
@@ -240,10 +303,15 @@ class Resource {
     DateTime? pinnedAt,
     DateTime? archivedAt,
     DateTime? deletedAt,
+    bool? updatedByAdmin,
+    DateTime? updatedAt,
     int? views,
     int? likes,
     int? comments,
     bool? isLiked,
+    bool clearRejection = false,
+    bool clearAdminRemark = false,
+    bool clearDeletedAt = false,
   }) {
     return Resource(
       id: id ?? this.id,
@@ -274,13 +342,22 @@ class Resource {
       status: status ?? this.status,
       declineReason: declineReason ?? this.declineReason,
       declineDate: declineDate ?? this.declineDate,
+      rejectionReasons: clearRejection ? null : (rejectionReasons ?? this.rejectionReasons),
+      adminRemark: clearAdminRemark ? null : (adminRemark ?? this.adminRemark),
+      approvedAt: approvedAt ?? this.approvedAt,
+      rejectedAt: clearRejection ? null : (rejectedAt ?? this.rejectedAt),
+      reconsideredAt: reconsideredAt ?? this.reconsideredAt,
+      approvedByAdmin: approvedByAdmin ?? this.approvedByAdmin,
+      rejectedByAdmin: clearRejection ? false : (rejectedByAdmin ?? this.rejectedByAdmin),
       likedBy: likedBy ?? this.likedBy,
       visibility: visibility ?? this.visibility,
       isAnonymous: isAnonymous ?? this.isAnonymous,
       isPinned: isPinned ?? this.isPinned,
       pinnedAt: pinnedAt ?? this.pinnedAt,
       archivedAt: archivedAt ?? this.archivedAt,
-      deletedAt: deletedAt ?? this.deletedAt,
+      deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
+      updatedByAdmin: updatedByAdmin ?? this.updatedByAdmin,
+      updatedAt: updatedAt ?? this.updatedAt,
       views: views ?? this.views,
       likes: likes ?? this.likes,
       comments: comments ?? this.comments,
@@ -318,9 +395,22 @@ class Resource {
       status: status,
       declineReason: declineReason,
       declineDate: declineDate,
+      rejectionReasons: rejectionReasons,
+      adminRemark: adminRemark,
+      approvedAt: approvedAt,
+      rejectedAt: rejectedAt,
+      reconsideredAt: reconsideredAt,
+      approvedByAdmin: approvedByAdmin,
+      rejectedByAdmin: rejectedByAdmin,
       likedBy: likedBy,
       visibility: visibility,
       isAnonymous: isAnonymous,
+      isPinned: isPinned,
+      pinnedAt: pinnedAt,
+      archivedAt: archivedAt,
+      deletedAt: deletedAt,
+      updatedByAdmin: updatedByAdmin,
+      updatedAt: updatedAt,
       views: views,
       likes: likes,
       comments: comments,
@@ -348,6 +438,29 @@ class UploadMaterialModel {
   final File? thumbnail;
   final List<File> files;
   final bool isAnonymous;
+  final String? existingMaterialId;
+  final String? existingFileUrl;
+  final String? existingFileName;
+  final String? existingFileId;
+  final String? existingThumbnailUrl;
+  final String? existingThumbnailId;
+  final String? existingThumbnailStatus;
+  final DateTime? existingUploadDate;
+  final String? existingUploaderRole;
+  final String? existingUploaderProfilePic;
+  final int existingViews;
+  final int existingLikes;
+  final int existingComments;
+  final List<String> existingLikedBy;
+  final String? existingStatus;
+  final bool existingIsPinned;
+  final DateTime? existingPinnedAt;
+  final bool updatedByAdmin;
+  final DateTime? updatedAt;
+  final bool isModerationModify;
+  final String? adminRemark;
+  final DateTime? existingApprovedAt;
+  final List<String>? existingRejectionReasons;
 
   UploadMaterialModel({
     required this.unitName,
@@ -368,6 +481,29 @@ class UploadMaterialModel {
     this.thumbnail,
     this.files = const [],
     this.isAnonymous = false,
+    this.existingMaterialId,
+    this.existingFileUrl,
+    this.existingFileName,
+    this.existingFileId,
+    this.existingThumbnailUrl,
+    this.existingThumbnailId,
+    this.existingThumbnailStatus,
+    this.existingUploadDate,
+    this.existingUploaderRole,
+    this.existingUploaderProfilePic,
+    this.existingViews = 0,
+    this.existingLikes = 0,
+    this.existingComments = 0,
+    this.existingLikedBy = const [],
+    this.existingStatus,
+    this.existingIsPinned = false,
+    this.existingPinnedAt,
+    this.updatedByAdmin = false,
+    this.updatedAt,
+    this.isModerationModify = false,
+    this.adminRemark,
+    this.existingApprovedAt,
+    this.existingRejectionReasons,
   });
 
   Map<String, dynamic> toJson() {
@@ -386,9 +522,18 @@ class UploadMaterialModel {
       'materialType': materialType,
       'catType': catType,
       'fileFormat': fileFormat,
-      'fileName': file?.path.split(RegExp(r'[/\\]')).last,
+      'fileName': file?.path.split(RegExp(r'[/\\]')).last ?? existingFileName,
       'thumbnailName': thumbnail?.path.split(RegExp(r'[/\\]')).last,
       'isAnonymous': isAnonymous,
+      if (existingMaterialId != null) 'existingMaterialId': existingMaterialId,
+      if (existingFileUrl != null) 'existingFileUrl': existingFileUrl,
+      if (existingFileId != null) 'existingFileId': existingFileId,
+      if (existingThumbnailUrl != null) 'existingThumbnailUrl': existingThumbnailUrl,
+      if (existingThumbnailId != null) 'existingThumbnailId': existingThumbnailId,
+      if (existingThumbnailStatus != null) 'existingThumbnailStatus': existingThumbnailStatus,
+      if (existingUploadDate != null) 'existingUploadDate': existingUploadDate!.toIso8601String(),
+      if (updatedByAdmin) 'updatedByAdmin': true,
+      if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
     };
   }
 
@@ -409,6 +554,16 @@ class UploadMaterialModel {
       'catType': catType,
       'fileFormat': fileFormat,
       'isAnonymous': isAnonymous,
+      if (existingMaterialId != null) 'existingMaterialId': existingMaterialId,
+      if (existingFileUrl != null) 'existingFileUrl': existingFileUrl,
+      if (existingFileName != null) 'existingFileName': existingFileName,
+      if (existingFileId != null) 'existingFileId': existingFileId,
+      if (existingThumbnailUrl != null) 'existingThumbnailUrl': existingThumbnailUrl,
+      if (existingThumbnailId != null) 'existingThumbnailId': existingThumbnailId,
+      if (existingThumbnailStatus != null) 'existingThumbnailStatus': existingThumbnailStatus,
+      if (existingUploadDate != null) 'existingUploadDate': existingUploadDate,
+      if (updatedByAdmin) 'updatedByAdmin': true,
+      if (updatedAt != null) 'updatedAt': updatedAt,
     };
   }
 
@@ -429,6 +584,37 @@ class UploadMaterialModel {
       catType: map['catType']?.toString(),
       fileFormat: map['fileFormat']?.toString(),
       isAnonymous: map['isAnonymous'] ?? false,
+      existingMaterialId: map['existingMaterialId']?.toString(),
+      existingFileUrl: map['existingFileUrl']?.toString(),
+      existingFileName: map['existingFileName']?.toString(),
+      existingFileId: map['existingFileId']?.toString(),
+      existingThumbnailUrl: map['existingThumbnailUrl']?.toString(),
+      existingThumbnailId: map['existingThumbnailId']?.toString(),
+      existingThumbnailStatus: map['existingThumbnailStatus']?.toString(),
+      existingUploadDate: map['existingUploadDate'] != null
+          ? (map['existingUploadDate'] is DateTime
+              ? map['existingUploadDate'] as DateTime
+              : DateTime.tryParse(map['existingUploadDate'].toString()))
+          : null,
+      existingUploaderRole: map['existingUploaderRole']?.toString(),
+      existingUploaderProfilePic: map['existingUploaderProfilePic']?.toString(),
+      existingViews: map['existingViews'] ?? 0,
+      existingLikes: map['existingLikes'] ?? 0,
+      existingComments: map['existingComments'] ?? 0,
+      existingLikedBy: List<String>.from(map['existingLikedBy'] ?? []),
+      existingStatus: map['existingStatus']?.toString(),
+      existingIsPinned: map['existingIsPinned'] == true,
+      existingPinnedAt: map['existingPinnedAt'] != null
+          ? (map['existingPinnedAt'] is DateTime
+              ? map['existingPinnedAt'] as DateTime
+              : DateTime.tryParse(map['existingPinnedAt'].toString()))
+          : null,
+      updatedByAdmin: map['updatedByAdmin'] == true,
+      updatedAt: map['updatedAt'] != null
+          ? (map['updatedAt'] is DateTime
+              ? map['updatedAt'] as DateTime
+              : DateTime.tryParse(map['updatedAt'].toString()))
+          : null,
     );
   }
 
@@ -451,6 +637,29 @@ class UploadMaterialModel {
     File? thumbnail,
     List<File>? files,
     bool? isAnonymous,
+    String? existingMaterialId,
+    String? existingFileUrl,
+    String? existingFileName,
+    String? existingFileId,
+    String? existingThumbnailUrl,
+    String? existingThumbnailId,
+    String? existingThumbnailStatus,
+    DateTime? existingUploadDate,
+    String? existingUploaderRole,
+    String? existingUploaderProfilePic,
+    int? existingViews,
+    int? existingLikes,
+    int? existingComments,
+    List<String>? existingLikedBy,
+    String? existingStatus,
+    bool? existingIsPinned,
+    DateTime? existingPinnedAt,
+    bool? updatedByAdmin,
+    DateTime? updatedAt,
+    bool? isModerationModify,
+    String? adminRemark,
+    DateTime? existingApprovedAt,
+    List<String>? existingRejectionReasons,
   }) {
     return UploadMaterialModel(
       unitName: unitName ?? this.unitName,
@@ -471,6 +680,29 @@ class UploadMaterialModel {
       thumbnail: thumbnail ?? this.thumbnail,
       files: files ?? this.files,
       isAnonymous: isAnonymous ?? this.isAnonymous,
+      existingMaterialId: existingMaterialId ?? this.existingMaterialId,
+      existingFileUrl: existingFileUrl ?? this.existingFileUrl,
+      existingFileName: existingFileName ?? this.existingFileName,
+      existingFileId: existingFileId ?? this.existingFileId,
+      existingThumbnailUrl: existingThumbnailUrl ?? this.existingThumbnailUrl,
+      existingThumbnailId: existingThumbnailId ?? this.existingThumbnailId,
+      existingThumbnailStatus: existingThumbnailStatus ?? this.existingThumbnailStatus,
+      existingUploadDate: existingUploadDate ?? this.existingUploadDate,
+      existingUploaderRole: existingUploaderRole ?? this.existingUploaderRole,
+      existingUploaderProfilePic: existingUploaderProfilePic ?? this.existingUploaderProfilePic,
+      existingViews: existingViews ?? this.existingViews,
+      existingLikes: existingLikes ?? this.existingLikes,
+      existingComments: existingComments ?? this.existingComments,
+      existingLikedBy: existingLikedBy ?? this.existingLikedBy,
+      existingStatus: existingStatus ?? this.existingStatus,
+      existingIsPinned: existingIsPinned ?? this.existingIsPinned,
+      existingPinnedAt: existingPinnedAt ?? this.existingPinnedAt,
+      updatedByAdmin: updatedByAdmin ?? this.updatedByAdmin,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isModerationModify: isModerationModify ?? this.isModerationModify,
+      adminRemark: adminRemark ?? this.adminRemark,
+      existingApprovedAt: existingApprovedAt ?? this.existingApprovedAt,
+      existingRejectionReasons: existingRejectionReasons ?? this.existingRejectionReasons,
     );
   }
 }

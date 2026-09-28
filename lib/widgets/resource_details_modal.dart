@@ -31,6 +31,7 @@ class ResourceDetailsModal extends ConsumerWidget {
   final String fileUrl;
   final bool showDownload;
   final bool isAnonymous;
+  final bool updatedByAdmin;
 
   const ResourceDetailsModal({
     super.key,
@@ -54,14 +55,18 @@ class ResourceDetailsModal extends ConsumerWidget {
     required this.fileUrl,
     this.showDownload = true,
     this.isAnonymous = false,
+    this.updatedByAdmin = false,
   });
 
   Map<String, String> _getResourceData(List<String> displayPrograms, List<String> displayLecturers, WidgetRef ref) {
     final userProfile = ref.read(userProfileProvider);
     final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
-    final String displayUploadedBy = isAnonymous
+    final String baseUploader = isAnonymous
         ? (isMe ? 'Anonymous (You)' : 'Anonymous')
         : (isMe ? userProfile.username : uploadedBy);
+    final String displayUploadedBy = updatedByAdmin
+        ? '$baseUploader (updated by admin)'
+        : (isAnonymous ? baseUploader : '$baseUploader ($uploaderRole)');
 
     return {
       'title': title,
@@ -240,9 +245,12 @@ class ResourceDetailsModal extends ConsumerWidget {
 
     final userProfile = ref.watch(userProfileProvider);
     final bool isMe = uploaderId == userProfile.uid || uploadedBy == 'Me';
-    final String displayUploadedBy = isAnonymous
+    final String baseUploader = isAnonymous
         ? (isMe ? 'Anonymous (You)' : 'Anonymous')
         : (isMe ? userProfile.username : uploadedBy);
+    final String displayUploadedBy = updatedByAdmin
+        ? '$baseUploader (updated by admin)'
+        : (isAnonymous ? baseUploader : '$baseUploader ($uploaderRole)');
 
     final bgColor = isDark ? const Color(0xFF141232) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
@@ -401,7 +409,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                         isDark,
                         Icons.cloud_upload_outlined, 
                         'Uploaded By', 
-                        '$displayUploadedBy ($uploaderRole)',
+                        displayUploadedBy,
                         isLast: true,
                         customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath, userProfile.photoURL),                  ),
                     ] : [
@@ -448,7 +456,7 @@ class ResourceDetailsModal extends ConsumerWidget {
                         isDark,
                         Icons.cloud_upload_outlined, 
                         'Uploaded By', 
-                        isAnonymous ? displayUploadedBy : '$displayUploadedBy ($uploaderRole)',
+                        displayUploadedBy,
                         customValueWidget: _buildUploaderProfilePic(ref, isMe, userProfile.profileImagePath, userProfile.photoURL),
                       ),
                       
@@ -751,8 +759,8 @@ class ResourceDetailsModal extends ConsumerWidget {
                       height: 1.4,
                     ),
                   )
-                else if (customValueWidget != null)
-                  customValueWidget,
+                else
+                  ?customValueWidget,
                 
                 if (!isLast) ...[
                   const SizedBox(height: 12),

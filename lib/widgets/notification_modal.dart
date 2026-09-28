@@ -91,13 +91,12 @@ class NotificationModal extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: n.type == NotificationType.like 
-                                    ? const Color(0xFFFF8A00).withAlpha(51)
-                                    : const Color(0xFF20C8FF).withAlpha(51),
+                                color: _getIconBackgroundColor(n.type),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                n.type == NotificationType.like ? Icons.favorite : Icons.reply,
-                                color: n.type == NotificationType.like ? const Color(0xFFFF8A00) : const Color(0xFF20C8FF),
+                                _getNotificationIcon(n.type),
+                                color: _getIconColor(n.type),
                                 size: 16,
                               ),
                             ),
@@ -106,26 +105,14 @@ class NotificationModal extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  RichText(
-                                    text: TextSpan(
-                                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                                      children: [
-                                        TextSpan(
-                                          text: n.senderName,
-                                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                                        ),
-                                        TextSpan(
-                                          text: n.type == NotificationType.like 
-                                              ? ' liked your comment on ' 
-                                              : ' replied to your comment on ',
-                                        ),
-                                        TextSpan(
-                                          text: n.resourceTitle,
-                                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                                        ),
-                                      ],
+                                  _buildNotificationText(n),
+                                  if (n.remark != null && n.remark!.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Remark: ${n.remark!}',
+                                      style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
                                     ),
-                                  ),
+                                  ],
                                   const SizedBox(height: 4),
                                   Text(
                                     _formatTimestamp(n.timestamp),
@@ -151,6 +138,126 @@ class NotificationModal extends StatelessWidget {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getIconBackgroundColor(NotificationType type) {
+    switch (type) {
+      case NotificationType.like:
+        return const Color(0xFFFF8A00).withAlpha(51);
+      case NotificationType.reply:
+        return const Color(0xFF20C8FF).withAlpha(51);
+      case NotificationType.materialApproved:
+        return const Color(0xFF00E676).withAlpha(51);
+      case NotificationType.materialModified:
+        return const Color(0xFF20C8FF).withAlpha(51);
+      case NotificationType.materialRejected:
+        return const Color(0xFFFF5252).withAlpha(51);
+    }
+  }
+
+  IconData _getNotificationIcon(NotificationType type) {
+    switch (type) {
+      case NotificationType.like:
+        return Icons.favorite;
+      case NotificationType.reply:
+        return Icons.reply;
+      case NotificationType.materialApproved:
+        return Icons.check_circle_rounded;
+      case NotificationType.materialModified:
+        return Icons.edit_note_rounded;
+      case NotificationType.materialRejected:
+        return Icons.cancel_rounded;
+    }
+  }
+
+  Color _getIconColor(NotificationType type) {
+    switch (type) {
+      case NotificationType.like:
+        return const Color(0xFFFF8A00);
+      case NotificationType.reply:
+        return const Color(0xFF20C8FF);
+      case NotificationType.materialApproved:
+        return const Color(0xFF00E676);
+      case NotificationType.materialModified:
+        return const Color(0xFF20C8FF);
+      case NotificationType.materialRejected:
+        return const Color(0xFFFF5252);
+    }
+  }
+
+  Widget _buildNotificationText(AppNotification n) {
+    if (n.type == NotificationType.materialApproved) {
+      return RichText(
+        text: TextSpan(
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+          children: [
+            const TextSpan(text: 'Your uploaded material '),
+            TextSpan(
+              text: '"${n.resourceTitle}"',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const TextSpan(text: ' was approved! Thank you for contributing.'),
+          ],
+        ),
+      );
+    } else if (n.type == NotificationType.materialModified) {
+      return RichText(
+        text: TextSpan(
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+          children: [
+            const TextSpan(text: 'Your uploaded material '),
+            TextSpan(
+              text: '"${n.resourceTitle}"',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const TextSpan(text: ' was modified and approved by an admin.'),
+          ],
+        ),
+      );
+    } else if (n.type == NotificationType.materialRejected) {
+      final reasonsText = n.rejectionReasons != null && n.rejectionReasons!.isNotEmpty
+          ? '\nReason: ${n.rejectionReasons!.join(", ")}'
+          : '';
+      return RichText(
+        text: TextSpan(
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+          children: [
+            const TextSpan(text: 'Your uploaded material '),
+            TextSpan(
+              text: '"${n.resourceTitle}"',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const TextSpan(text: ' was not approved.'),
+            if (reasonsText.isNotEmpty)
+              TextSpan(
+                text: reasonsText,
+                style: const TextStyle(color: Color(0xFFFF8A80), fontSize: 12),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+        children: [
+          TextSpan(
+            text: n.senderName,
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          TextSpan(
+            text: n.type == NotificationType.like
+                ? ' liked your comment on '
+                : ' replied to your comment on ',
+          ),
+          TextSpan(
+            text: n.resourceTitle,
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           ),
         ],
       ),

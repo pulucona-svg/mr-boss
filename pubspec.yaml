@@ -90,14 +90,21 @@ flutter_launcher_icons:
   min_sdk_android: 21
 
 flutter_native_splash:
-  color: "#070716"
-  background_image: "assets/splashyote.png"
-  android_gravity: fill
-  ios_content_mode: scaleAspectFill
+  color: "#FFFFFF"
+  image: "assets/splash_logo.png"
+  branding: "assets/splash_branding.png"
+  color_dark: "#FFFFFF"
+  image_dark: "assets/splash_logo.png"
+  branding_dark: "assets/splash_branding.png"
+  android_gravity: center
+  branding_bottom_padding: 32
+  ios_content_mode: scaleAspectFit
   fullscreen: true
   android_12:
-    image: "assets/splashyote.png"
-    color: "#070716"
+    image: "assets/splash_logo.png"
+    color: "#FFFFFF"
+    icon_background_color: "#FFFFFF"
+    branding: "assets/splash_branding.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -114,6 +121,8 @@ flutter:
     - assets/icon.png
     - assets/images/anonymous_mask.png
     - assets/splashyote.png
+    - assets/splash_logo.png
+    - assets/splash_branding.png
     - assets/ad_cyber.jpeg
     - assets/ad_data.jpeg
     - assets/ad_snake.jpeg

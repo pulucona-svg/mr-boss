@@ -25,6 +25,7 @@ class ResourceCard extends ConsumerStatefulWidget {
     this.showPin = true,
     this.showDownload = true,
     this.onLongPress,
+    this.forceShowStatusTag = false,
   });
 
   final Resource resource;
@@ -36,6 +37,7 @@ class ResourceCard extends ConsumerStatefulWidget {
   final bool showPin;
   final bool showDownload;
   final VoidCallback? onLongPress;
+  final bool forceShowStatusTag;
 
   @override
   ConsumerState<ResourceCard> createState() => _ResourceCardState();
@@ -197,6 +199,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         uploaderProfilePic: widget.resource.uploaderProfilePic,
         showDownload: true,
         isAnonymous: widget.resource.isAnonymous,
+        updatedByAdmin: widget.resource.updatedByAdmin,
       ),
     );
   }
@@ -239,7 +242,74 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
   }
 
   Widget _statusTag() {
-    return const SizedBox.shrink();
+    final resourceService = ref.watch(resourceServiceProvider);
+    final userProfile = ref.watch(userProfileProvider);
+    final bool isMyUpload = (userProfile.uid.isNotEmpty && widget.resource.uploaderId == userProfile.uid) ||
+        widget.resource.uploadedBy == 'Me' ||
+        resourceService.userUploads.any((r) => r.id == widget.resource.id);
+
+    if (!widget.forceShowStatusTag && !isMyUpload) {
+      return const SizedBox.shrink();
+    }
+
+    final rawStatus = (widget.resource.status ?? '').toLowerCase().trim();
+    if (rawStatus.isEmpty) return const SizedBox.shrink();
+
+    Color tagColor;
+    String label;
+    IconData icon;
+
+    if (rawStatus == 'pending' || rawStatus == 'waiting') {
+      tagColor = const Color(0xFFFFB300);
+      label = 'Pending Admin Approval';
+      icon = Icons.access_time_rounded;
+    } else if (rawStatus == 'modified') {
+      tagColor = const Color(0xFF20C8FF);
+      label = 'Modified';
+      icon = Icons.edit_note_rounded;
+    } else if (rawStatus == 'approved') {
+      tagColor = const Color(0xFF00E676);
+      label = 'Approved';
+      icon = Icons.check_circle_rounded;
+    } else if (rawStatus == 'rejected' || rawStatus == 'declined') {
+      tagColor = const Color(0xFFFF5252);
+      label = 'Rejected';
+      icon = Icons.cancel_rounded;
+    } else {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: tagColor.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: tagColor.withValues(alpha: 0.4), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 12, color: tagColor),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              softWrap: true,
+              style: TextStyle(
+                color: tagColor,
+                fontSize: 9.5,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.2,
+                height: 1.15,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _handleDownload() async {
@@ -529,6 +599,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [

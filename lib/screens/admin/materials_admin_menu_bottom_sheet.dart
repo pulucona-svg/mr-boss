@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../services/top_notification_service.dart';
 import '../dashboard_screen.dart';
+import 'materials_approve_screen.dart';
 
 /// Modal bottom sheet for the Materials Admin Menu.
 ///
 /// Contains exactly:
 /// - Manage: Opens the existing Materials Home page in Admin Mode.
-/// - Approve: Reserved for future phase (displays notification).
+/// - Approve: Opens the Materials Approve moderation screen.
 class MaterialsAdminMenuBottomSheet extends StatelessWidget {
   const MaterialsAdminMenuBottomSheet({super.key});
 
@@ -158,10 +158,10 @@ class MaterialsAdminMenuBottomSheet extends StatelessWidget {
                   // 2. Approve
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.015),
+                      color: Colors.white.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.white10,
+                        color: const Color(0xFF00E676).withValues(alpha: 0.2),
                         width: 1,
                       ),
                     ),
@@ -170,51 +170,40 @@ class MaterialsAdminMenuBottomSheet extends StatelessWidget {
                       leading: Container(
                         padding: const EdgeInsets.all(9),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
+                          color: const Color(0xFF00E676).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
                           Icons.check_circle_outline_rounded,
-                          color: Colors.white30,
+                          color: Color(0xFF00E676),
                           size: 20,
                         ),
                       ),
                       title: const Text(
                         'Approve',
                         style: TextStyle(
-                          color: Colors.white38,
+                          color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       subtitle: const Text(
-                        'Module coming in the next implementation phase',
+                        'Review, approve, modify, or reject user-uploaded materials',
                         style: TextStyle(
-                          color: Colors.white24,
+                          color: Colors.white60,
                           fontSize: 12,
                         ),
                       ),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
-                        ),
-                        child: const Text(
-                          'Coming Soon',
-                          style: TextStyle(
-                            color: Colors.amber,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: Colors.white38,
                       ),
                       onTap: () {
-                        TopNotificationService().showNotification(
-                          context,
-                          'Approve: Module coming in the next implementation phase.',
-                          type: TopNotificationType.info,
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const MaterialsApproveScreen(),
+                          ),
                         );
                       },
                     ),

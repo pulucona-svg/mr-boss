@@ -1,4 +1,10 @@
-enum NotificationType { like, reply }
+enum NotificationType {
+  like,
+  reply,
+  materialApproved,
+  materialModified,
+  materialRejected,
+}
 
 class AppNotification {
   final String id;
@@ -7,6 +13,11 @@ class AppNotification {
   final String resourceTitle;
   final DateTime timestamp;
   bool isRead;
+  final String? title;
+  final String? message;
+  final String? materialId;
+  final String? remark;
+  final List<String>? rejectionReasons;
 
   AppNotification({
     required this.id,
@@ -15,5 +26,10 @@ class AppNotification {
     required this.resourceTitle,
     required this.timestamp,
     this.isRead = false,
+    this.title,
+    this.message,
+    this.materialId,
+    this.remark,
+    this.rejectionReasons,
   });
 }

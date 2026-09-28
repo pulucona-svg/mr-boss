@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dotted_border/dotted_border.dart';
+import '../models/material_model.dart';
 import '../providers/upload_provider.dart';
 import '../providers/service_providers.dart';
 
 class UploadBottomSheet extends ConsumerStatefulWidget {
-  const UploadBottomSheet({super.key});
+  final Resource? modifyingMaterial;
+  final bool isModerationModify;
+  const UploadBottomSheet({super.key, this.modifyingMaterial, this.isModerationModify = false});
 
   @override
   ConsumerState<UploadBottomSheet> createState() => _UploadBottomSheetState();
@@ -22,6 +25,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
   final _materialProgramController = TextEditingController();
   final _materialLecturerController = TextEditingController();
   final _materialYearOfPubController = TextEditingController();
+  final _adminRemarkController = TextEditingController();
 
   // Isolated Controllers for Timetables Tab
   final _timetableProgramController = TextEditingController();
@@ -30,9 +34,23 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
   @override
   void initState() {
     super.initState();
+    if (widget.modifyingMaterial != null) {
+      _activeTab = widget.modifyingMaterial!.type.contains('Timetable') ? 'timetable' : 'material';
+      _materialYearOfPubController.text = widget.modifyingMaterial!.publicationYear;
+      if (widget.isModerationModify && widget.modifyingMaterial!.adminRemark != null) {
+        _adminRemarkController.text = widget.modifyingMaterial!.adminRemark!;
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.invalidate(materialUploadProvider);
-      ref.invalidate(timetableUploadProvider);
+      if (widget.modifyingMaterial != null) {
+        ref.read(materialUploadProvider.notifier).initForModify(
+          widget.modifyingMaterial!,
+          isModeration: widget.isModerationModify,
+        );
+      } else {
+        ref.invalidate(materialUploadProvider);
+        ref.invalidate(timetableUploadProvider);
+      }
     });
   }
 
@@ -43,6 +61,7 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     _materialProgramController.dispose();
     _materialLecturerController.dispose();
     _materialYearOfPubController.dispose();
+    _adminRemarkController.dispose();
 
     _timetableProgramController.dispose();
     _timetableProgramCodeController.dispose();
@@ -122,9 +141,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Upload Menu',
-                          style: TextStyle(
+                        Text(
+                          widget.modifyingMaterial != null ? 'Modify Material' : 'Upload Menu',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -136,8 +155,10 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
-                    _buildModeToggle(),
+                    if (widget.modifyingMaterial == null) ...[
+                      const SizedBox(height: 20),
+                      _buildModeToggle(),
+                    ],
                   ],
                 ),
               ),
@@ -315,6 +336,8 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         _buildFilePicker(
                           label: 'Timetable Image',
                           file: uploadState.material.file,
+                          existingFileUrl: uploadState.material.existingFileUrl,
+                          existingFileName: uploadState.material.existingFileName,
                           isImage: true,
                           icon: Icons.calendar_month_outlined,
                           onTap: notifier.pickTimetableImage,
@@ -324,6 +347,8 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                           label: 'Material File',
                           file: uploadState.material.file,
                           files: uploadState.material.files,
+                          existingFileUrl: uploadState.material.existingFileUrl,
+                          existingFileName: uploadState.material.existingFileName,
                           isImage: uploadState.material.fileFormat == 'Images',
                           icon: Icons.picture_as_pdf_outlined,
                           onTap: () async {
@@ -343,12 +368,36 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                           },
                         ),
 
+                      if (uploadState.isModifyMode) ...[
+                        const SizedBox(height: 24),
+                        _buildThumbnailSection(uploadState, notifier),
+                      ],
+
+                      if (widget.isModerationModify) ...[
+                        const SizedBox(height: 24),
+                        _sectionTitle('Admin Moderation'),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          label: 'Admin Remark (Optional)',
+                          hint: 'Add an optional remark for uploader...',
+                          controller: _adminRemarkController,
+                          onChanged: (val) {
+                            notifier.setAdminRemark(val);
+                          },
+                        ),
+                      ],
+
                       const SizedBox(height: 32),
                       
                       // Auto-filled info
-                      _buildInfoRow('Uploaded By', ref.watch(userProfileProvider).username),
+                      _buildInfoRow(
+                        'Uploaded By',
+                        uploadState.isModifyMode
+                            ? (uploadState.material.isAnonymous ? 'Anonymous (${uploadState.material.uploadedBy})' : uploadState.material.uploadedBy)
+                            : ref.watch(userProfileProvider).username,
+                      ),
                       
-                      if (isMaterialMode) ...[
+                      if (isMaterialMode && !uploadState.isModifyMode) ...[
                         const SizedBox(height: 12),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -378,7 +427,10 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         ),
                       ],
                       const SizedBox(height: 8),
-                      _buildInfoRow('Upload Year', uploadState.material.yearOfUpload.toString()),
+                      _buildInfoRow(
+                        uploadState.isModifyMode ? 'Original Upload Year' : 'Upload Year',
+                        uploadState.material.yearOfUpload.toString(),
+                      ),
                       
                       const SizedBox(height: 40),
                       
@@ -659,11 +711,14 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
     required String label,
     File? file,
     List<File> files = const [],
+    String? existingFileUrl,
+    String? existingFileName,
     bool isImage = false,
     required IconData icon,
     required VoidCallback onTap,
   }) {
     final bool hasSelection = file != null || files.isNotEmpty;
+    final bool hasExisting = existingFileUrl != null && existingFileUrl.isNotEmpty;
     final File? firstFile = files.isNotEmpty ? files.first : file;
 
     return Column(
@@ -745,21 +800,139 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
                         ),
                       ],
                     )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icon, color: Colors.white24, size: 32),
-                        const SizedBox(height: 8),
-                        const Text('Tap to select', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text(
-                          isImage ? '(Images only)' : '(PDF, Image, HTML)',
-                          style: const TextStyle(color: Colors.white10, fontSize: 10),
-                        ),
-                      ],
-                    ),
+                  : (hasExisting
+                      ? Stack(
+                          children: [
+                            Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(isImage ? Icons.image_rounded : Icons.picture_as_pdf_rounded, color: const Color(0xFF20C8FF), size: 32),
+                                  const SizedBox(height: 4),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Text(
+                                      existingFileName ?? 'Existing Document',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'Tap to replace file',
+                                    style: TextStyle(color: Colors.white38, fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                child: const Icon(Icons.edit, color: Colors.white, size: 12),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(icon, color: Colors.white24, size: 32),
+                            const SizedBox(height: 8),
+                            const Text('Tap to select', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text(
+                              isImage ? '(Images only)' : '(PDF, Image, HTML)',
+                              style: const TextStyle(color: Colors.white10, fontSize: 10),
+                            ),
+                          ],
+                        )),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThumbnailSection(UploadState uploadState, UploadNotifier notifier) {
+    final hasNewThumb = uploadState.material.thumbnail != null;
+    final hasExistingThumb = uploadState.material.existingThumbnailUrl != null && uploadState.material.existingThumbnailUrl!.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Thumbnail'),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: hasNewThumb
+                    ? Image.file(uploadState.material.thumbnail!, fit: BoxFit.cover)
+                    : (hasExistingThumb
+                        ? Image.network(
+                            uploadState.material.existingThumbnailUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.white38),
+                          )
+                        : const Icon(Icons.image_outlined, color: Colors.white24, size: 30)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasNewThumb
+                        ? 'New thumbnail selected'
+                        : (hasExistingThumb ? 'Using existing thumbnail' : 'No thumbnail available'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: notifier.pickThumbnail,
+                        icon: const Icon(Icons.photo_library_outlined, size: 14),
+                        label: const Text('Change', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF20C8FF),
+                          side: const BorderSide(color: Color(0xFF20C8FF)),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: notifier.regenerateAiThumbnail,
+                        icon: const Icon(Icons.auto_awesome, size: 14),
+                        label: const Text('AI Auto', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF00A85A),
+                          side: const BorderSide(color: Color(0xFF00A85A)),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -823,9 +996,11 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  currentState.uploadMode == 'timetable' 
-                    ? 'Timetable uploaded successfully! 🎉' 
-                    : 'Material uploaded successfully! 🎉'
+                  currentState.isModifyMode
+                    ? (widget.isModerationModify ? 'Material modified & approved successfully! 🎉' : 'Material updated successfully! 🎉')
+                    : (currentState.uploadMode == 'timetable' 
+                        ? 'Timetable uploaded successfully! 🎉' 
+                        : 'Material uploaded successfully! 🎉')
                 ),
                 backgroundColor: const Color(0xFF00A85A),
                 behavior: SnackBarBehavior.floating,
@@ -854,7 +1029,9 @@ class _UploadBottomSheetState extends ConsumerState<UploadBottomSheet> {
           disabledBackgroundColor: Colors.white.withValues(alpha: 0.05),
         ),
         child: Text(
-          isMaterialMode ? 'Upload Material' : 'Upload Timetable',
+          state.isModifyMode
+              ? (widget.isModerationModify ? 'Modify' : 'Update Material')
+              : (isMaterialMode ? 'Upload Material' : 'Upload Timetable'),
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),

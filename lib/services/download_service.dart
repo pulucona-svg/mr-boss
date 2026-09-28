@@ -4,6 +4,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'persistence_service.dart';
 import 'subscription_service.dart';
 import 'connectivity_service.dart';
+import '../models/material_model.dart';
 
 class DownloadService extends ChangeNotifier {
   static DownloadService _instance = DownloadService._internal();
@@ -85,29 +86,40 @@ class DownloadService extends ChangeNotifier {
     }
   }
 
-  Map<String, String>? _findAndRemove(String title) {
-    int idx = _pinnedResources.indexWhere((r) => r['title'] == title);
+  bool _matchItem(Map item, String idOrTitle) {
+    final id = item['id'];
+    if (id != null && id.toString().isNotEmpty) {
+      return id == idOrTitle;
+    }
+    return item['title'] == idOrTitle;
+  }
+
+  Map<String, String>? _findAndRemove(String idOrTitle) {
+    int idx = _pinnedResources.indexWhere((r) => _matchItem(r, idOrTitle));
     if (idx != -1) {
       final res = _pinnedResources.removeAt(idx);
       _saveData();
       return res;
     }
     
-    idx = _unpinnedResources.indexWhere((r) => r['title'] == title);
+    idx = _unpinnedResources.indexWhere((r) => _matchItem(r, idOrTitle));
     if (idx != -1) {
       final res = _unpinnedResources.removeAt(idx);
       _saveData();
       return res;
     }
     
-    idx = _archivedResources.indexWhere((r) => r['title'] == title);
+    idx = _archivedResources.indexWhere((r) => _matchItem(r, idOrTitle));
     if (idx != -1) {
       final res = _archivedResources.removeAt(idx);
       _saveData();
       return res;
     }
 
-    idx = _trashedResources.indexWhere((r) => (r['resource'] as Map<String, dynamic>)['title'] == title);
+    idx = _trashedResources.indexWhere((r) {
+      final m = r['resource'] as Map;
+      return _matchItem(m, idOrTitle);
+    });
     if (idx != -1) {
       final res = Map<String, String>.from(_trashedResources.removeAt(idx)['resource'] as Map);
       _saveData();
@@ -118,12 +130,12 @@ class DownloadService extends ChangeNotifier {
   }
 
   /// Removes materials from local downloads/cache when detected as archived or trashed on the server.
-  void purgeArchivedOrTrashed(Set<String> titles) {
-    if (titles.isEmpty) return;
+  void purgeArchivedOrTrashed(Set<String> identifiers) {
+    if (identifiers.isEmpty) return;
     bool changed = false;
 
-    for (final title in titles) {
-      final res = _findAndRemove(title);
+    for (final identifier in identifiers) {
+      final res = _findAndRemove(identifier);
       if (res != null) {
         changed = true;
         final url = res['fileUrl'] ?? res['thumbnail'] ?? res['thumbnailUrl'];
@@ -135,6 +147,69 @@ class DownloadService extends ChangeNotifier {
           }
         }
       }
+    }
+
+    if (changed) {
+      _saveData();
+      notifyListeners();
+    }
+  }
+
+  /// Reconciles local downloads with updated server resources.
+  /// If a material's file has been replaced on the server, removes the old local file from cache
+  /// and updates the local metadata to point to the new file version.
+  void reconcileUpdatedResources(List<Resource> serverResources) {
+    if (serverResources.isEmpty) return;
+    bool changed = false;
+
+    for (final res in serverResources) {
+      void checkAndUpdate(List<Map<String, String>> list) {
+        for (int i = 0; i < list.length; i++) {
+          final item = list[i];
+          final itemId = item['id'];
+          final bool matches;
+          if (itemId != null && itemId.isNotEmpty) {
+            matches = itemId == res.id;
+          } else {
+            matches = item['title'] == res.title;
+          }
+          if (matches) {
+            final oldUrl = item['fileUrl'];
+            if (oldUrl != null && oldUrl.isNotEmpty && oldUrl != res.fileUrl) {
+              try {
+                DefaultCacheManager().removeFile(oldUrl);
+              } catch (e) {
+                debugPrint('DownloadService: [WARN] Failed to purge old file cache: $e');
+              }
+            }
+            final oldThumb = item['thumbnail'] ?? item['thumbnailUrl'];
+            if (oldThumb != null && oldThumb.isNotEmpty && oldThumb != res.thumbnailUrl) {
+              try {
+                DefaultCacheManager().removeFile(oldThumb);
+              } catch (e) {
+                debugPrint('DownloadService: [WARN] Failed to purge old thumb cache: $e');
+              }
+            }
+            final updated = Map<String, String>.from(item);
+            updated['id'] = res.id;
+            updated['title'] = res.title;
+            updated['fileUrl'] = res.fileUrl;
+            updated['fileId'] = res.fileId;
+            updated['thumbnail'] = res.thumbnailUrl;
+            updated['thumbnailUrl'] = res.thumbnailUrl;
+            updated['unitName'] = res.unitName;
+            updated['unitCode'] = res.unitCode;
+            updated['type'] = res.type;
+            updated['materialFormat'] = res.materialFormat;
+            updated['publicationYear'] = res.publicationYear;
+            list[i] = updated;
+            changed = true;
+          }
+        }
+      }
+
+      checkAndUpdate(_pinnedResources);
+      checkAndUpdate(_unpinnedResources);
     }
 
     if (changed) {

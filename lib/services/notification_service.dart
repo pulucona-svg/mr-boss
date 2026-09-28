@@ -28,6 +28,36 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addModerationNotification({
+    required NotificationType type,
+    required String resourceTitle,
+    String? id,
+    String? title,
+    String? message,
+    String? materialId,
+    String? remark,
+    List<String>? rejectionReasons,
+  }) {
+    // Prevent duplicate notification if id matches
+    if (id != null && _notifications.any((n) => n.id == id)) {
+      return;
+    }
+    final notification = AppNotification(
+      id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      type: type,
+      senderName: 'Admin',
+      resourceTitle: resourceTitle,
+      timestamp: DateTime.now(),
+      title: title,
+      message: message,
+      materialId: materialId,
+      remark: remark,
+      rejectionReasons: rejectionReasons,
+    );
+    _notifications.insert(0, notification);
+    notifyListeners();
+  }
+
   void markAsRead(String id) {
     final index = _notifications.indexWhere((n) => n.id == id);
     if (index != -1) {

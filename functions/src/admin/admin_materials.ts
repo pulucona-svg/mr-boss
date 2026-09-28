@@ -443,21 +443,29 @@ export const scheduledMaterialsTrashRetention = onSchedule("every 24 hours", asy
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const cutoffTimestamp = admin.firestore.Timestamp.fromDate(thirtyDaysAgo);
 
-  logger.info(`[MATERIALS_TRASH_RETENTION] Checking trashed materials deleted before ${thirtyDaysAgo.toISOString()}...`);
+  logger.info(`[MATERIALS_TRASH_RETENTION] Checking trashed/rejected materials deleted before ${thirtyDaysAgo.toISOString()}...`);
 
-  const snap = await db.collection("resources")
+  const trashSnap = await db.collection("resources")
     .where("status", "==", "trash")
     .where("deletedAt", "<=", cutoffTimestamp)
     .limit(100)
     .get();
 
-  if (snap.empty) {
-    logger.info("[MATERIALS_TRASH_RETENTION] No expired materials in Trash found.");
+  const rejectedSnap = await db.collection("resources")
+    .where("status", "==", "rejected")
+    .where("deletedAt", "<=", cutoffTimestamp)
+    .limit(100)
+    .get();
+
+  const expiredDocs = [...trashSnap.docs, ...rejectedSnap.docs];
+
+  if (expiredDocs.length === 0) {
+    logger.info("[MATERIALS_TRASH_RETENTION] No expired materials in Trash or Rejected found.");
     return;
   }
 
   let purgedCount = 0;
-  for (const doc of snap.docs) {
+  for (const doc of expiredDocs) {
     const data = doc.data() || {};
     const fileId = data.fileId as string | undefined;
     const thumbnailId = data.thumbnailId as string | undefined;
@@ -480,4 +488,367 @@ export const scheduledMaterialsTrashRetention = onSchedule("every 24 hours", asy
   }
 
   logger.info(`[MATERIALS_TRASH_RETENTION] Successfully purged ${purgedCount} expired materials.`);
+});
+
+/**
+ * CALLABLE FUNCTION: Modifies an existing material in-place.
+ * Enforces admin authorization, atomically updates metadata,
+ * and safely cleans up old PDF/thumbnail from ImageKit if replaced.
+ */
+export const modifyAdminMaterial = onCall(async (request) => {
+  requireAdmin(request);
+
+  const db = admin.firestore();
+  const {
+    materialId,
+    unitName,
+    unitCode,
+    title,
+    materialType,
+    catType,
+    yearOfPublication,
+    yearOfStudy,
+    semester,
+    targetPrograms,
+    programCodes,
+    lecturers,
+    fileUrl,
+    fileId,
+    fileName,
+    materialFormat,
+    thumbnailUrl,
+    thumbnailId,
+    thumbnailStatus,
+    isAnonymous,
+    yearOfUpload,
+    oldFileId,
+    oldThumbnailId,
+    status,
+    adminRemark,
+  } = request.data || {};
+
+  if (!materialId || typeof materialId !== "string" || !materialId.trim()) {
+    throw new HttpsError("invalid-argument", "Missing required materialId.");
+  }
+
+  const cleanId = materialId.trim();
+  const docRef = db.collection("resources").doc(cleanId);
+  const docSnap = await docRef.get();
+
+  if (!docSnap.exists) {
+    throw new HttpsError("not-found", `Material with ID "${cleanId}" not found.`);
+  }
+
+  const existingData = docSnap.data() || {};
+
+  // Build updated fields dictionary
+  const updateData: Record<string, any> = {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedByAdmin: true,
+  };
+
+  if (unitName !== undefined) updateData.unitName = unitName;
+  if (unitCode !== undefined) updateData.unitCode = unitCode;
+  if (title !== undefined) updateData.title = title;
+  if (materialType !== undefined) {
+    updateData.type = materialType;
+    updateData.materialType = materialType;
+  }
+  if (catType !== undefined) updateData.catType = catType;
+  if (yearOfPublication !== undefined) updateData.publicationYear = String(yearOfPublication);
+  if (yearOfStudy !== undefined) updateData.yearOfStudy = yearOfStudy;
+  if (semester !== undefined) updateData.semester = semester;
+  if (Array.isArray(targetPrograms)) updateData.targetPrograms = targetPrograms;
+  if (Array.isArray(programCodes)) updateData.programCodes = programCodes;
+  if (Array.isArray(lecturers)) updateData.lecturers = lecturers;
+  if (materialFormat !== undefined) updateData.materialFormat = materialFormat;
+  if (isAnonymous !== undefined) updateData.isAnonymous = isAnonymous;
+  if (yearOfUpload !== undefined) {
+    updateData.year = String(yearOfUpload);
+    updateData.uploadYear = String(yearOfUpload);
+  }
+
+  // Handle moderation modify
+  if (status === "modified") {
+    updateData.status = "modified";
+    updateData.modifiedAndApprovedAt = admin.firestore.FieldValue.serverTimestamp();
+    if (adminRemark !== undefined && adminRemark !== null && String(adminRemark).trim() !== "") {
+      updateData.adminRemark = String(adminRemark).trim();
+    }
+  }
+
+  // Handle PDF file replacement
+  let fileReplaced = false;
+  if (fileUrl && fileUrl !== existingData.fileUrl) {
+    updateData.fileUrl = fileUrl;
+    if (fileId) updateData.fileId = fileId;
+    if (fileName) updateData.fileName = fileName;
+    fileReplaced = true;
+  }
+
+  // Handle thumbnail replacement
+  let thumbReplaced = false;
+  if (thumbnailUrl && thumbnailUrl !== existingData.thumbnailUrl) {
+    updateData.thumbnailUrl = thumbnailUrl;
+    if (thumbnailId) updateData.thumbnailId = thumbnailId;
+    if (thumbnailStatus) updateData.thumbnailStatus = thumbnailStatus;
+    thumbReplaced = true;
+  }
+
+  // 1. Atomically update existing Firestore document in place (preserving same document ID)
+  await docRef.update(updateData);
+  logger.info(`[ADMIN_MODIFY_SUCCESS] Material "${cleanId}" modified in-place.`);
+
+  // If moderation modified, create idempotent notification to uploader
+  if (status === "modified") {
+    const uploaderId = existingData.uploaderId;
+    if (uploaderId && typeof uploaderId === "string") {
+      const notifId = `notif_modify_${cleanId}`;
+      const notifRef = db.collection("users").doc(uploaderId).collection("notifications").doc(notifId);
+      const notifSnap = await notifRef.get();
+      if (!notifSnap.exists) {
+        await notifRef.set({
+          id: notifId,
+          type: "materialModified",
+          title: "Material Modified & Approved",
+          message: `Your uploaded material "${updateData.title || existingData.title || "Material"}" was modified and approved by an admin. You can view the changes.`,
+          resourceTitle: updateData.title || existingData.title || "",
+          materialId: cleanId,
+          remark: updateData.adminRemark || null,
+          senderName: "Admin",
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          isRead: false,
+        });
+        logger.info(`[ADMIN_MODIFY_NOTIF] Created notification for uploader "${uploaderId}".`);
+      }
+    }
+  }
+
+  // 2. Only after successful update commit, permanently delete the old PDF/thumbnail
+  let ik: ImageKit | null = null;
+  try {
+    ik = getImageKit();
+  } catch (e) {
+    logger.warn("[IMAGEKIT_INIT_WARN] ImageKit credentials missing during modify cleanup:", e);
+  }
+
+  if (ik) {
+    const toDeleteFileId = oldFileId || (fileReplaced ? existingData.fileId : null);
+    if (fileReplaced && toDeleteFileId && toDeleteFileId !== fileId) {
+      try {
+        await ik.deleteFile(toDeleteFileId);
+        logger.info(`[ADMIN_MODIFY_CLEANUP] Deleted old PDF fileId="${toDeleteFileId}"`);
+      } catch (e) {
+        logger.warn(`[ADMIN_MODIFY_CLEANUP_WARN] Failed to delete old PDF fileId="${toDeleteFileId}":`, e);
+      }
+    }
+
+    const toDeleteThumbId = oldThumbnailId || (thumbReplaced ? existingData.thumbnailId : null);
+    if (thumbReplaced && toDeleteThumbId && toDeleteThumbId !== thumbnailId) {
+      try {
+        await ik.deleteFile(toDeleteThumbId);
+        logger.info(`[ADMIN_MODIFY_CLEANUP] Deleted old thumbnail thumbnailId="${toDeleteThumbId}"`);
+      } catch (e) {
+        logger.warn(`[ADMIN_MODIFY_CLEANUP_WARN] Failed to delete old thumbnailId="${toDeleteThumbId}":`, e);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    materialId: cleanId,
+    message: "Material modified successfully.",
+  };
+});
+
+/**
+ * CALLABLE FUNCTION: Approves a pending material.
+ * Enforces admin authorization, transitions status: pending -> approved,
+ * records approval timestamp & optional admin remark, and sends an idempotent
+ * approval notification to the uploader.
+ */
+export const approveAdminMaterial = onCall(async (request) => {
+  requireAdmin(request);
+
+  const db = admin.firestore();
+  const { materialId, adminRemark } = request.data || {};
+
+  if (!materialId || typeof materialId !== "string" || !materialId.trim()) {
+    throw new HttpsError("invalid-argument", "Missing required materialId.");
+  }
+
+  const cleanId = materialId.trim();
+  const docRef = db.collection("resources").doc(cleanId);
+  const docSnap = await docRef.get();
+
+  if (!docSnap.exists) {
+    throw new HttpsError("not-found", `Material with ID "${cleanId}" not found.`);
+  }
+
+  const existingData = docSnap.data() || {};
+  const uploaderId = existingData.uploaderId;
+  const title = existingData.title || "Material";
+
+  const updateData: Record<string, any> = {
+    status: "approved",
+    approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    approvedByAdmin: true,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (adminRemark !== undefined && adminRemark !== null && String(adminRemark).trim() !== "") {
+    updateData.adminRemark = String(adminRemark).trim();
+  }
+
+  await docRef.update(updateData);
+  logger.info(`[ADMIN_APPROVE_SUCCESS] Material "${cleanId}" approved in-place.`);
+
+  // Idempotent notification to uploader
+  if (uploaderId && typeof uploaderId === "string") {
+    const notifId = `notif_approve_${cleanId}`;
+    const notifRef = db.collection("users").doc(uploaderId).collection("notifications").doc(notifId);
+    const notifSnap = await notifRef.get();
+    if (!notifSnap.exists) {
+      await notifRef.set({
+        id: notifId,
+        type: "materialApproved",
+        title: "Material Approved",
+        message: `Your uploaded material "${title}" was approved! Thank you for contributing to the platform.`,
+        resourceTitle: title,
+        materialId: cleanId,
+        remark: updateData.adminRemark || null,
+        senderName: "Admin",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        isRead: false,
+      });
+      logger.info(`[ADMIN_APPROVE_NOTIF] Created notification for uploader "${uploaderId}".`);
+    }
+  }
+
+  return {
+    success: true,
+    materialId: cleanId,
+    message: "Material approved successfully.",
+  };
+});
+
+/**
+ * CALLABLE FUNCTION: Rejects a pending material.
+ * Enforces admin authorization, transitions status: pending -> rejected,
+ * records 30-day retention timestamps (rejectedAt, deletedAt), selected rejection reasons,
+ * optional admin remark, and sends an idempotent rejection notification to the uploader.
+ */
+export const rejectAdminMaterial = onCall(async (request) => {
+  requireAdmin(request);
+
+  const db = admin.firestore();
+  const { materialId, rejectionReasons, adminRemark } = request.data || {};
+
+  if (!materialId || typeof materialId !== "string" || !materialId.trim()) {
+    throw new HttpsError("invalid-argument", "Missing required materialId.");
+  }
+
+  if (!Array.isArray(rejectionReasons) || rejectionReasons.length === 0) {
+    throw new HttpsError("invalid-argument", "At least one rejection reason must be selected.");
+  }
+
+  const cleanId = materialId.trim();
+  const docRef = db.collection("resources").doc(cleanId);
+  const docSnap = await docRef.get();
+
+  if (!docSnap.exists) {
+    throw new HttpsError("not-found", `Material with ID "${cleanId}" not found.`);
+  }
+
+  const existingData = docSnap.data() || {};
+  const uploaderId = existingData.uploaderId;
+  const title = existingData.title || "Material";
+
+  const now = admin.firestore.Timestamp.now();
+  const updateData: Record<string, any> = {
+    status: "rejected",
+    rejectedAt: now,
+    deletedAt: now, // Triggers 30-day retention cleanup
+    rejectionReasons: rejectionReasons,
+    rejectedByAdmin: true,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (adminRemark !== undefined && adminRemark !== null && String(adminRemark).trim() !== "") {
+    updateData.adminRemark = String(adminRemark).trim();
+  }
+
+  await docRef.update(updateData);
+  logger.info(`[ADMIN_REJECT_SUCCESS] Material "${cleanId}" rejected.`);
+
+  // Idempotent notification to uploader
+  if (uploaderId && typeof uploaderId === "string") {
+    const notifId = `notif_reject_${cleanId}`;
+    const notifRef = db.collection("users").doc(uploaderId).collection("notifications").doc(notifId);
+    const notifSnap = await notifRef.get();
+    if (!notifSnap.exists) {
+      await notifRef.set({
+        id: notifId,
+        type: "materialRejected",
+        title: "Material Rejected",
+        message: `Your uploaded material "${title}" was not approved.`,
+        resourceTitle: title,
+        materialId: cleanId,
+        rejectionReasons: rejectionReasons,
+        remark: updateData.adminRemark || null,
+        senderName: "Admin",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        isRead: false,
+      });
+      logger.info(`[ADMIN_REJECT_NOTIF] Created rejection notification for uploader "${uploaderId}".`);
+    }
+  }
+
+  return {
+    success: true,
+    materialId: cleanId,
+    message: "Material rejected successfully.",
+  };
+});
+
+/**
+ * CALLABLE FUNCTION: Reconsiders a previously rejected material.
+ * Enforces admin authorization, removes the rejected state, returns status to "pending",
+ * clears rejection metadata, and allows fresh vetting without auto-approving.
+ */
+export const reconsiderAdminMaterial = onCall(async (request) => {
+  requireAdmin(request);
+
+  const db = admin.firestore();
+  const { materialId } = request.data || {};
+
+  if (!materialId || typeof materialId !== "string" || !materialId.trim()) {
+    throw new HttpsError("invalid-argument", "Missing required materialId.");
+  }
+
+  const cleanId = materialId.trim();
+  const docRef = db.collection("resources").doc(cleanId);
+  const docSnap = await docRef.get();
+
+  if (!docSnap.exists) {
+    throw new HttpsError("not-found", `Material with ID "${cleanId}" not found.`);
+  }
+
+  await docRef.update({
+    status: "pending",
+    reconsideredAt: admin.firestore.FieldValue.serverTimestamp(),
+    rejectedAt: null,
+    deletedAt: null,
+    rejectionReasons: null,
+    adminRemark: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  logger.info(`[ADMIN_RECONSIDER_SUCCESS] Material "${cleanId}" returned to pending.`);
+
+  return {
+    success: true,
+    materialId: cleanId,
+    message: "Material returned to Pending for reconsideration.",
+  };
 });

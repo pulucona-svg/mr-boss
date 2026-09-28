@@ -960,6 +960,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           uploaderProfilePic: matchedResource.uploaderProfilePic,
           showDownload: true,
           isAnonymous: matchedResource.isAnonymous,
+          updatedByAdmin: matchedResource.updatedByAdmin,
         ),
       );
     } else {
