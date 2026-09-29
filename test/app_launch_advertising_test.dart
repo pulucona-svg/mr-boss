@@ -1344,5 +1344,84 @@ void main() {
       expect(presentationCount, 1);
       expect(continueCount, 2); // 1st completed, 2nd skipped immediately to onContinue
     });
+
+    testWidgets('App Launch Ad Header: Static ad has countdown/X on top-right and no mute icon', (tester) async {
+      const staticAdData = {
+        'id': 'static_launch_test',
+        'title': 'Static Launch Ad',
+        'subtitle': 'Static subtitle',
+        'url': 'assets/ad_cyber.jpeg',
+        'type': 'image',
+        'placement': 'app_launch',
+      };
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ManualInterstitialAdDialog(
+              adData: staticAdData,
+              isAppLaunch: true,
+              onDismissed: () {},
+            ),
+          ),
+        ),
+      );
+
+      final sponsoredFinder = find.byKey(const ValueKey('launch_sponsored_badge'));
+      final countdownFinder = find.byKey(const ValueKey('launch_countdown_badge'));
+      final muteFinder = find.byKey(const ValueKey('launch_mute_button'));
+
+      expect(sponsoredFinder, findsOneWidget);
+      expect(countdownFinder, findsOneWidget);
+      expect(muteFinder, findsNothing);
+
+      // Verify countdown is to the right of sponsored badge
+      final sponsoredOffset = tester.getTopLeft(sponsoredFinder);
+      final countdownOffset = tester.getTopLeft(countdownFinder);
+      expect(countdownOffset.dx, greaterThan(sponsoredOffset.dx));
+    });
+
+    testWidgets('App Launch Ad Header: Video ad has mute icon immediately to the left of countdown/X', (tester) async {
+      const videoAdData = {
+        'id': 'video_launch_test',
+        'title': 'Video Launch Ad',
+        'subtitle': 'Video subtitle',
+        'url': 'https://example.com/test_video.mp4',
+        'type': 'video',
+        'placement': 'app_launch',
+      };
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ManualInterstitialAdDialog(
+              adData: videoAdData,
+              isAppLaunch: true,
+              onDismissed: () {},
+            ),
+          ),
+        ),
+      );
+
+      final sponsoredFinder = find.byKey(const ValueKey('launch_sponsored_badge'));
+      final countdownFinder = find.byKey(const ValueKey('launch_countdown_badge'));
+      final muteFinder = find.byKey(const ValueKey('launch_mute_button'));
+
+      expect(sponsoredFinder, findsOneWidget);
+      expect(countdownFinder, findsOneWidget);
+      expect(muteFinder, findsOneWidget);
+
+      final sponsoredOffset = tester.getTopLeft(sponsoredFinder);
+      final muteOffset = tester.getTopLeft(muteFinder);
+      final countdownOffset = tester.getTopLeft(countdownFinder);
+
+      // Verify ordering: sponsored on left, then mute, then countdown/X on right
+      expect(muteOffset.dx, greaterThan(sponsoredOffset.dx));
+      expect(countdownOffset.dx, greaterThan(muteOffset.dx));
+
+      // Tapping mute icon toggles without error
+      await tester.tap(muteFinder);
+      await tester.pump();
+    });
   });
 }

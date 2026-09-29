@@ -295,10 +295,11 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
   }
 
   void _toggleMute() {
-    if (_videoController == null || !_videoController!.value.isInitialized) return;
     setState(() {
       _isMuted = !_isMuted;
-      _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+      if (_videoController != null && _videoController!.value.isInitialized) {
+        _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+      }
     });
   }
 
@@ -680,29 +681,52 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                     children: [
                       // Header elements
                       if (_isAppLaunch) ...[
-                        // App Launch Header: Strictly "Sponsored" + ONE SINGLE counter/X control
+                        // Left: Sponsored badge
+                        Container(
+                          key: const ValueKey('launch_sponsored_badge'),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: const Text(
+                            'Sponsored',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                        // Right: [mute (if video)] + [countdown/X control]
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Container(
-                              key: const ValueKey('launch_sponsored_badge'),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: const Text(
-                                'Sponsored',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.8,
+                            if (_isVideo) ...[
+                              IconButton(
+                                key: const ValueKey('launch_mute_button'),
+                                onPressed: _toggleMute,
+                                tooltip: _isMuted ? 'Unmute' : 'Mute',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    border: Border.all(color: Colors.white24),
+                                  ),
+                                  child: Icon(
+                                    _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
+                            ],
                             GestureDetector(
                               key: _isXState
                                   ? const ValueKey('launch_x_button')
@@ -734,8 +758,6 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                             ),
                           ],
                         ),
-                        // Right side for App Launch: empty (no separate top-right close X button)
-                        const SizedBox.shrink(),
                       ] else ...[
                         // Normal Interstitial Header: Completely unchanged
                         Row(
