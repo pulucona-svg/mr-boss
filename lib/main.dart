@@ -22,16 +22,22 @@ import 'services/persistence_service.dart';
 import 'services/subscription_service.dart';
 import 'services/usage_service.dart';
 import 'services/download_service.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'services/device_id_manager.dart';
 import 'services/top_notification_service.dart';
 import 'services/user_service.dart';
 import 'services/offline_upload_queue_service.dart';
 import 'services/interstitial_ad_service.dart';
+import 'services/launch_ad_service.dart';
+import 'services/app_open_ad_manager.dart';
 import 'services/paystack_service.dart';
 import 'providers/providers.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  try {
+    FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  } catch (_) {}
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -39,9 +45,21 @@ void main() async {
 
   await PersistenceService().init();
 
+  try {
+    await MobileAds.instance.initialize();
+    AppOpenAdManager().markSdkInitialized();
+    AppOpenAdManager().initialize();
+    LaunchAdService().initialize();
+  } catch (e) {
+    debugPrint('Error initializing MobileAds or Ad services: $e');
+  }
+
   _initServices();
 
   final bool isLoggedIn = PersistenceService().getSessionUserId() != null;
+  if (isLoggedIn) {
+    LaunchAdService().startParallelPreload();
+  }
 
   runApp(
     ProviderScope(
@@ -54,7 +72,6 @@ Future<void> _initServices() async {
   try {
     ConnectivityService().initialize();
     await Future.wait([
-      MobileAds.instance.initialize(),
       CourseService().init(),
       SubscriptionService().init(),
       UsageService().init(),
@@ -66,7 +83,6 @@ Future<void> _initServices() async {
     
     DownloadService().performRetentionCleanup();
 
-    
     debugPrint('All services initialized successfully');
   } catch (e) {
     debugPrint('Error during service initialization: $e');
@@ -84,6 +100,9 @@ class MirrorApp extends ConsumerStatefulWidget {
 class _MirrorAppState extends ConsumerState<MirrorApp> {
   Widget _getInitialScreen() {
     if (!widget.isLoggedIn) {
+      try {
+        FlutterNativeSplash.remove();
+      } catch (_) {}
       return const SignupScreen();
     }
     
@@ -136,13 +155,36 @@ class InitialSessionCheck extends ConsumerStatefulWidget {
 }
 
 class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
+  late final DateTime _splashStartTime;
+  bool _isNavigating = false;
+
   @override
   void initState() {
     super.initState();
+    _splashStartTime = DateTime.now();
     // Use a post-frame callback to navigate immediately without blocking build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkSession();
     });
+  }
+
+  Future<void> _proceedToHome() async {
+    if (_isNavigating) {
+      debugPrint('InitialSessionCheck: [GUARD] Already proceeding/navigating to home.');
+      return;
+    }
+    _isNavigating = true;
+
+    await LaunchAdService().handleAppLaunch(
+      context: context,
+      splashStartTime: _splashStartTime,
+      onContinue: () {
+        if (mounted) {
+          debugPrint('InitialSessionCheck: [NAVIGATE] Navigating to /home');
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+    );
   }
 
   void _checkSession() {
@@ -157,8 +199,8 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
         debugPrint('InitialSessionCheck: [DEBUG] Local profile found. onboardingComplete=${profile.onboardingComplete}');
         
         if (profile.onboardingComplete) {
-          debugPrint('InitialSessionCheck: [DEBUG] Navigating to /home (Immediate)');
-          Navigator.pushReplacementNamed(context, '/home');
+          debugPrint('InitialSessionCheck: [DEBUG] Proceeding to home via LaunchAdService...');
+          _proceedToHome();
           return;
         }
       }
@@ -169,6 +211,9 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
       _performFullCheck(uid);
     } else {
       debugPrint('InitialSessionCheck: [DEBUG] No session found. Navigating to /login');
+      try {
+        FlutterNativeSplash.remove();
+      } catch (_) {}
       Navigator.pushReplacementNamed(context, '/login');
     }
   }
@@ -182,8 +227,11 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
 
       if (mounted) {
         if (profile.onboardingComplete) {
-          Navigator.pushReplacementNamed(context, '/home');
+          _proceedToHome();
         } else {
+          try {
+            FlutterNativeSplash.remove();
+          } catch (_) {}
           if (user != null && !user.emailVerified && user.providerData.any((p) => p.providerId == 'password')) {
             Navigator.pushReplacement(
               context,
@@ -208,15 +256,40 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
       debugPrint('InitialSessionCheck: [ERROR] Full check failed: $e');
       // If offline and check fails, we might be stuck, but if we have ANY profile data, 
       // let's try to let them in or show login
+      try {
+        FlutterNativeSplash.remove();
+      } catch (_) {}
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(color: Color(0xFF20C8FF)),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          Center(
+            child: Image.asset(
+              'assets/splash_logo.png',
+              width: 160,
+              height: 160,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const CircularProgressIndicator(color: Color(0xFF20C8FF)),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 32,
+            child: Image.asset(
+              'assets/splash_branding.png',
+              height: 38,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -243,6 +316,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _deviceId = await DeviceIdManager.getPersistentDeviceId();
+      PersistenceService().setBool(LaunchAdService.kHasLaunchedAppKey, true);
       
       final userProfile = ref.read(userProfileProvider);
       final courseService = ref.read(courseServiceProvider);

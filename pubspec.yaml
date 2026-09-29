@@ -68,6 +68,7 @@ dependencies:
   open_filex: ^4.7.0
   uuid: ^4.3.3
   flutter_tts: ^4.2.5
+  flutter_native_splash: ^2.4.4
 
 dev_dependencies:
   flutter_test:
@@ -81,7 +82,6 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.4.4
 
 flutter_launcher_icons:
   android: true

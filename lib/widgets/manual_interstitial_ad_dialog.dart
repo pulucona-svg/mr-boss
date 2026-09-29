@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,11 +14,13 @@ import '../services/interstitial_ad_service.dart';
 class ManualInterstitialAdDialog extends StatefulWidget {
   final VoidCallback onDismissed;
   final Map<String, dynamic>? adData;
+  final bool isAppLaunch;
 
   const ManualInterstitialAdDialog({
     super.key,
     required this.onDismissed,
     this.adData,
+    this.isAppLaunch = false,
   });
 
   @override
@@ -36,6 +39,17 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
   Timer? _creativeTimer;
   int _currentIdleStage = 0;
 
+  bool get _isAppLaunch =>
+      widget.isAppLaunch ||
+      (_ad['isAppLaunch'] == true) ||
+      (_ad['placement'] == 'app_launch') ||
+      (_ad['placement'] == 'app_launch_interstitial');
+
+  int _countdownSeconds = 5;
+  bool _isXState = false;
+  Timer? _countdownTimer;
+  Timer? _autoCloseTimer;
+
   @override
   void initState() {
     super.initState();
@@ -43,8 +57,44 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
 
     if (widget.adData != null && widget.adData!.isNotEmpty) {
       _ad = Map<String, dynamic>.from(widget.adData!);
+    } else if (widget.isAppLaunch) {
+      final launchAd = InterstitialAdService().getNextAppLaunchAd();
+      _ad = (launchAd ?? InterstitialAdService().getNextManualAd()).toDialogData();
     } else {
       _ad = InterstitialAdService().getNextManualAd().toDialogData();
+    }
+
+    if (_isAppLaunch) {
+      _countdownSeconds = 5;
+      _isXState = false;
+      if (kDebugMode) debugPrint('[AppLaunchOffline] counter=5');
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted || _isDismissed) {
+          timer.cancel();
+          return;
+        }
+        if (_countdownSeconds > 0) {
+          setState(() {
+            _countdownSeconds--;
+          });
+          if (kDebugMode) debugPrint('[AppLaunchOffline] counter=$_countdownSeconds');
+        } else {
+          timer.cancel();
+          setState(() {
+            _isXState = true;
+          });
+          if (kDebugMode) debugPrint('[AppLaunchOffline] state=X');
+          _autoCloseTimer = Timer(const Duration(seconds: 2), () {
+            if (!mounted || _isDismissed) return;
+            if (kDebugMode) {
+              debugPrint('[AppLaunchOffline] state=X');
+              debugPrint('[AppLaunchOffline] xTimeout=true');
+              debugPrint('[AppLaunchOffline] completed=true');
+            }
+            _dismiss();
+          });
+        }
+      });
     }
 
     _setupCurrentMedia();
@@ -62,8 +112,11 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
     if (_isVideo && url.isNotEmpty) {
       _initVideo(url);
     } else {
-      // Image creative: start 10-second creative timer
-      _startCreativeTimer();
+      // Normal interstitial images rotate according to idle schedule.
+      // App launch ads are governed strictly by the 5-second countdown timer.
+      if (!_isAppLaunch) {
+        _startCreativeTimer();
+      }
     }
   }
 
@@ -134,6 +187,7 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
   }
 
   void _onVideoProgress() {
+    if (_isAppLaunch) return; // App launch ad duration is controlled by the 5-second countdown
     if (!mounted || _isDismissed || _videoController == null) return;
     final val = _videoController!.value;
     if (!val.isInitialized) return;
@@ -209,7 +263,9 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
         setState(() {
           _isVideoLoading = false;
         });
-        _startCreativeTimer();
+        if (!_isAppLaunch) {
+          _startCreativeTimer();
+        }
       }
     } catch (e) {
       debugPrint('ManualInterstitialAdDialog: [VIDEO_INIT_ERROR] Failed to initialize video: $e');
@@ -220,7 +276,9 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
           _videoErrorMessage = 'Video playback unavailable.';
         });
         // Fallback 10s timer so error screen advances naturally
-        _startCreativeTimer();
+        if (!_isAppLaunch) {
+          _startCreativeTimer();
+        }
       }
     }
   }
@@ -253,6 +311,10 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _autoCloseTimer?.cancel();
+    _autoCloseTimer = null;
     _creativeTimer?.cancel();
     _creativeTimer = null;
     InterstitialAdService().removeListener(_onAdServiceUpdated);
@@ -260,17 +322,46 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
     super.dispose();
   }
 
+  bool _completedLogged = false;
+
+  void _onXTapped() {
+    if (_isDismissed) return;
+    _autoCloseTimer?.cancel();
+    _autoCloseTimer = null;
+    if (kDebugMode) {
+      debugPrint('[AppLaunchOffline] xTapped=true');
+      if (!_completedLogged) {
+        _completedLogged = true;
+        debugPrint('[AppLaunchOffline] completed=true');
+      }
+    }
+    _dismiss();
+  }
+
   void _dismiss() {
     if (_isDismissed) return;
     _isDismissed = true;
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _autoCloseTimer?.cancel();
+    _autoCloseTimer = null;
     _creativeTimer?.cancel();
     _creativeTimer = null;
     InterstitialAdService().removeListener(_onAdServiceUpdated);
     _disposeVideoController();
-    widget.onDismissed();
+
+    if (_isAppLaunch && kDebugMode && !_completedLogged) {
+      _completedLogged = true;
+      debugPrint('[AppLaunchOffline] completed=true');
+    }
+
+    // 1. Pop dialog route first so that it is cleanly removed from the Navigator stack
     if (mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
+
+    // 2. Complete dismissal callback
+    widget.onDismissed();
   }
 
   Future<void> _launchContact(String? urlStr) async {
@@ -560,9 +651,9 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                               ),
                             if (contactUrl != null) const SizedBox(width: 10),
                             TextButton(
-                              onPressed: _dismiss,
+                              onPressed: _isAppLaunch ? (_isXState ? _onXTapped : null) : _dismiss,
                               style: TextButton.styleFrom(
-                                foregroundColor: Colors.white70,
+                                foregroundColor: (_isAppLaunch && !_isXState) ? Colors.white30 : Colors.white70,
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                               ),
                               child: const Text('Return to App', style: TextStyle(fontSize: 13)),
@@ -587,43 +678,125 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: Row(
+                      // Header elements
+                      if (_isAppLaunch) ...[
+                        // App Launch Header: Strictly "Sponsored" + ONE SINGLE counter/X control
+                        Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              _isVideo ? Icons.videocam_rounded : Icons.campaign_outlined,
-                              size: 14,
-                              color: const Color(0xFF20C8FF),
+                            Container(
+                              key: const ValueKey('launch_sponsored_badge'),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: const Text(
+                                'Sponsored',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
                             ),
-                            const SizedBox(width: 5),
-                            Text(
-                              _isVideo ? 'VIDEO AD' : 'SPONSORED',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.8,
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              key: _isXState
+                                  ? const ValueKey('launch_x_button')
+                                  : const ValueKey('launch_countdown_badge'),
+                              onTap: _isXState ? _onXTapped : null,
+                              child: Container(
+                                key: _isXState
+                                    ? const ValueKey('launch_x_badge')
+                                    : const ValueKey('launch_counter_control'),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: _isXState
+                                        ? Colors.white70
+                                        : const Color(0xFF20C8FF).withValues(alpha: 0.6),
+                                  ),
+                                ),
+                                child: Text(
+                                  _isXState ? 'X' : '$_countdownSeconds',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      // Controls: Mute/Unmute (for video) and Close (X)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isVideo && _videoController != null && _videoController!.value.isInitialized)
+                        // Right side for App Launch: empty (no separate top-right close X button)
+                        const SizedBox.shrink(),
+                      ] else ...[
+                        // Normal Interstitial Header: Completely unchanged
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _isVideo ? Icons.videocam_rounded : Icons.campaign_outlined,
+                                    size: 14,
+                                    color: const Color(0xFF20C8FF),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _isVideo ? 'VIDEO AD' : 'SPONSORED',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isVideo && _videoController != null && _videoController!.value.isInitialized)
+                              IconButton(
+                                onPressed: _toggleMute,
+                                tooltip: _isMuted ? 'Unmute' : 'Mute',
+                                icon: Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    border: Border.all(color: Colors.white24),
+                                  ),
+                                  child: Icon(
+                                    _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 4),
                             IconButton(
-                              onPressed: _toggleMute,
-                              tooltip: _isMuted ? 'Unmute' : 'Mute',
+                              key: const ValueKey('normal_interstitial_close_button'),
+                              tooltip: 'Close Ad',
+                              onPressed: _dismiss,
                               icon: Container(
                                 padding: const EdgeInsets.all(7),
                                 decoration: BoxDecoration(
@@ -631,29 +804,12 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                                   color: Colors.black.withValues(alpha: 0.5),
                                   border: Border.all(color: Colors.white24),
                                 ),
-                                child: Icon(
-                                  _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                                  size: 18,
-                                  color: Colors.white,
-                                ),
+                                child: const Icon(Icons.close_rounded, size: 20, color: Colors.white),
                               ),
                             ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            tooltip: 'Close Ad',
-                            onPressed: _dismiss,
-                            icon: Container(
-                              padding: const EdgeInsets.all(7),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.black.withValues(alpha: 0.5),
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: const Icon(Icons.close_rounded, size: 20, color: Colors.white),
-                            ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

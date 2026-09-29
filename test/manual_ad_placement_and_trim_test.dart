@@ -32,7 +32,7 @@ void main() {
     });
 
     test('3. toMap, toJson, and toDialogData include placement', () {
-      const ad = ManualAd(
+      final ad = ManualAd(
         id: 'ad_test',
         title: 'Test Ad',
         subtitle: 'Placement test',
@@ -61,7 +61,7 @@ void main() {
     });
 
     test('4. Carousel ads appear ONLY in activeCarouselAds, never in interstitial slots', () {
-      const carouselAd = ManualAd(
+      final carouselAd = ManualAd(
         id: 'ad_car_1',
         title: 'Only Carousel',
         subtitle: 'For banner only',
@@ -71,7 +71,7 @@ void main() {
         placement: 'carousel',
       );
 
-      const interstitialAd = ManualAd(
+      final interstitialAd = ManualAd(
         id: 'ad_int_1',
         title: 'Only Interstitial',
         subtitle: 'For full screen only',
@@ -100,7 +100,7 @@ void main() {
     });
 
     test('5. Toggling ad placement between Interstitial and Carousel updates pools immediately without restart', () {
-      final adA = const ManualAd(
+      final adA = ManualAd(
         id: 'ad_mutable',
         title: 'Mutable Ad',
         subtitle: 'Changes placement',
@@ -131,7 +131,7 @@ void main() {
     });
 
     test('6. Inactive ads do not appear in either carousel or interstitial pools', () {
-      const inactiveCarousel = ManualAd(
+      final inactiveCarousel = ManualAd(
         id: 'ad_car_off',
         title: 'Off Carousel',
         subtitle: 'Disabled',
@@ -141,7 +141,7 @@ void main() {
         placement: 'carousel',
       );
 
-      const inactiveInterstitial = ManualAd(
+      final inactiveInterstitial = ManualAd(
         id: 'ad_int_off',
         title: 'Off Interstitial',
         subtitle: 'Disabled',

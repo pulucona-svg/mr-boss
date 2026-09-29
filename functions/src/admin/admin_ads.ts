@@ -29,6 +29,13 @@ export const getAdminManualAds = onCall(async (request) => {
 
     const ads = snap.docs.map((doc) => {
       const data = doc.data();
+      const rawPlacement = (data.placement || "interstitial").toString().toLowerCase().trim();
+      const normalizedPlacement = rawPlacement === "carousel"
+        ? "carousel"
+        : (rawPlacement === "app_launch" || rawPlacement === "app_launch_interstitial" || rawPlacement === "applaunch" || rawPlacement === "app launch" || rawPlacement === "app launch ads")
+          ? "app_launch"
+          : "interstitial";
+
       return {
         id: doc.id,
         title: data.title || "",
@@ -39,7 +46,7 @@ export const getAdminManualAds = onCall(async (request) => {
         isActive: data.isActive !== undefined ? data.isActive : true,
         isAsset: data.isAsset !== undefined ? data.isAsset : false,
         type: data.type || "image",
-        placement: data.placement || "interstitial",
+        placement: normalizedPlacement,
         mediaFileId: data.mediaFileId || data.fileId || null,
         createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : null,
         updatedAt: data.updatedAt ? data.updatedAt.toDate().toISOString() : null,
@@ -89,7 +96,11 @@ export const saveAdminManualAd = onCall(async (request) => {
   }
 
   const rawPlacement = (placement || "interstitial").toString().toLowerCase().trim();
-  const validPlacement = rawPlacement === "carousel" ? "carousel" : "interstitial";
+  const validPlacement = rawPlacement === "carousel"
+    ? "carousel"
+    : (rawPlacement === "app_launch" || rawPlacement === "app_launch_interstitial" || rawPlacement === "applaunch" || rawPlacement === "app launch" || rawPlacement === "app launch ads")
+      ? "app_launch"
+      : "interstitial";
 
   try {
     const db = admin.firestore();

@@ -17,7 +17,7 @@ class ManualAd {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  const ManualAd({
+  ManualAd({
     required this.id,
     required this.title,
     required this.subtitle,
@@ -27,13 +27,20 @@ class ManualAd {
     this.isActive = true,
     this.isAsset = false,
     this.type = 'image',
-    this.placement = 'interstitial',
+    String placement = 'interstitial',
     this.mediaFileId,
     this.createdAt,
     this.updatedAt,
-  });
+  }) : placement = (placement.toLowerCase().trim() == 'app_launch' ||
+            placement.toLowerCase().trim() == 'app_launch_interstitial' ||
+            placement.toLowerCase().trim() == 'applaunch' ||
+            placement.toLowerCase().trim() == 'app launch' ||
+            placement.toLowerCase().trim() == 'app launch ads')
+        ? 'app_launch'
+        : (placement.toLowerCase().trim() == 'carousel' ? 'carousel' : 'interstitial');
 
   Color get color => Color(colorValue);
+  bool get isAppLaunch => placement == 'app_launch' || placement == 'app_launch_interstitial';
 
   ManualAd copyWith({
     String? id,
@@ -79,7 +86,7 @@ class ManualAd {
       'isActive': isActive,
       'isAsset': isAsset,
       'type': type,
-      'placement': placement,
+      'placement': isAppLaunch ? 'app_launch' : placement,
       if (mediaFileId != null) 'mediaFileId': mediaFileId,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -98,7 +105,7 @@ class ManualAd {
       'isActive': isActive,
       'isAsset': isAsset,
       'type': type,
-      'placement': placement,
+      'placement': isAppLaunch ? 'app_launch' : placement,
       if (mediaFileId != null) 'mediaFileId': mediaFileId,
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
@@ -115,8 +122,9 @@ class ManualAd {
       'contactUrl': contactUrl,
       'color': color,
       'type': type,
-      'placement': placement,
+      'placement': isAppLaunch ? 'app_launch' : placement,
       'isAsset': isAsset,
+      'isAppLaunch': isAppLaunch,
     };
   }
 
@@ -147,7 +155,18 @@ class ManualAd {
     }
 
     final rawPlacement = (map['placement'] as String?)?.toLowerCase().trim();
-    final placement = (rawPlacement == 'carousel') ? 'carousel' : 'interstitial';
+    final String placement;
+    if (rawPlacement == 'carousel') {
+      placement = 'carousel';
+    } else if (rawPlacement == 'app_launch' ||
+        rawPlacement == 'app_launch_interstitial' ||
+        rawPlacement == 'applaunch' ||
+        rawPlacement == 'app launch' ||
+        rawPlacement == 'app launch ads') {
+      placement = 'app_launch';
+    } else {
+      placement = 'interstitial';
+    }
 
     return ManualAd(
       id: id,
@@ -168,7 +187,7 @@ class ManualAd {
 
   /// Isolated emergency bootstrap fallback used ONLY if local cache is completely empty
   /// on first launch before any server synchronization has ever occurred.
-  static ManualAd get emergencyBootstrapAd => const ManualAd(
+  static ManualAd get emergencyBootstrapAd => ManualAd(
     id: 'emergency_bootstrap_cyber',
     title: 'Davy Cybers 💻',
     subtitle: 'Professional cyber services for all your document and technical needs.',

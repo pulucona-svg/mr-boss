@@ -283,6 +283,10 @@ class AdminService extends ChangeNotifier {
     if (result.data is Map && result.data['id'] != null) {
       final targetId = result.data['id'].toString();
       debugPrint('AdminService: [ADS] Successfully saved ad $targetId via callable function.');
+      if (result.data['ad'] is Map) {
+        final adMap = Map<String, dynamic>.from(result.data['ad'] as Map);
+        return ManualAd.fromMap(targetId, adMap);
+      }
       return ad.copyWith(id: targetId);
     }
     throw Exception('Failed to save ad: Invalid response from backend.');

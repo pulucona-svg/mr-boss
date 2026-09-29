@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../models/manual_ad.dart';
 import 'connectivity_service.dart';
+import 'persistence_service.dart';
 import 'subscription_service.dart';
 import '../widgets/manual_interstitial_ad_dialog.dart';
 
@@ -140,6 +142,10 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
   List<Map<String, dynamic>> get activeInterstitialAds =>
       _runtimePool.where((a) => a.isActive && a.placement == 'interstitial').map((a) => a.toDialogData()).toList();
 
+  /// Active offline app launch ads (mutually exclusive placement: 'app_launch')
+  List<ManualAd> get activeAppLaunchAds =>
+      _runtimePool.where((a) => a.isActive && a.isAppLaunch).toList();
+
   /// Backwards-compatible getter returning raw maps for existing consumers and tests.
   List<Map<String, dynamic>> get activeManualAds =>
       _runtimePool.where((a) => a.isActive).map((a) => a.toDialogData()).toList();
@@ -233,6 +239,67 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
 
     debugPrint('InterstitialAdService: [ROTATION] Selected manual interstitial ad "${nextAd.title}" (${nextAd.id}). Previous: "${_previousManualAd?.title}" (${_previousManualAd?.id}). Interstitial pool: ${activePool.length}');
     return nextAd;
+  }
+
+  /// Key used to persist the last displayed app launch ad ID in local storage
+  static const String _kLastAppLaunchAdIdKey = 'last_app_launch_ad_id';
+  String? _lastAppLaunchAdId;
+
+  @visibleForTesting
+  String? get lastAppLaunchAdIdForTesting => _lastAppLaunchAdId;
+
+  @visibleForTesting
+  set lastAppLaunchAdIdForTesting(String? id) => _lastAppLaunchAdId = id;
+
+  /// Selects the next active offline app launch ad from the runtime pool,
+  /// maintaining deterministic non-repeating rotation (A -> B -> C -> A),
+  /// or returns null if no app launch ads are currently configured or active.
+  ManualAd? getNextAppLaunchAd({String? currentlyShowingId}) {
+    final activePool = activeAppLaunchAds;
+    if (activePool.isEmpty) return null;
+    if (activePool.length == 1) {
+      final singleAd = activePool.first;
+      _lastAppLaunchAdId = singleAd.id;
+      PersistenceService().setString(_kLastAppLaunchAdIdKey, singleAd.id);
+      if (kDebugMode) {
+        debugPrint('[AppLaunchRotation] pool=[${singleAd.id}]');
+        debugPrint('[AppLaunchRotation] lastShown=${singleAd.id}');
+        debugPrint('[AppLaunchRotation] selected=${singleAd.id}');
+      }
+      return singleAd;
+    }
+
+    final poolIds = activePool.map((a) => a.id).toList();
+    final lastId = currentlyShowingId ??
+        _lastAppLaunchAdId ??
+        PersistenceService().getString(_kLastAppLaunchAdIdKey);
+
+    if (kDebugMode) {
+      debugPrint('[AppLaunchRotation] pool=$poolIds');
+      debugPrint('[AppLaunchRotation] lastShown=$lastId');
+    }
+
+    int nextIndex;
+    if (lastId != null) {
+      final lastIndex = activePool.indexWhere((ad) => ad.id == lastId);
+      if (lastIndex != -1) {
+        nextIndex = (lastIndex + 1) % activePool.length;
+      } else {
+        // Previously selected ad became inactive/deleted, pick first valid ad
+        nextIndex = 0;
+      }
+    } else {
+      nextIndex = 0;
+    }
+
+    final selectedAd = activePool[nextIndex];
+    _lastAppLaunchAdId = selectedAd.id;
+    PersistenceService().setString(_kLastAppLaunchAdIdKey, selectedAd.id);
+
+    if (kDebugMode) {
+      debugPrint('[AppLaunchRotation] selected=${selectedAd.id}');
+    }
+    return selectedAd;
   }
 
   /// Reconciles the manual rotation state when the runtime pool changes
@@ -439,6 +506,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
 
     // 1. Initial pool from bundled defaults
     _rebuildRuntimePool();
+    _lastAppLaunchAdId = PersistenceService().getString(_kLastAppLaunchAdIdKey);
 
     // 2. Load cached server ads from local storage, then sync online
     _loadCachedServerAds().then((_) {
@@ -475,6 +543,15 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
         maybeShow(trigger: 'timer_interval_reached');
       }
     });
+  }
+
+  /// Resets the active session timer and eligibility flag.
+  /// Called after an app launch advertisement completes so that the normal 5-minute
+  /// active session interval starts strictly from zero inside the app.
+  void resetSessionTimer() {
+    _activeSecondsInCurrentInterval = 0;
+    _isEligible = false;
+    debugPrint('InterstitialAdService: [SESSION_RESET] Session timer reset to 0s (isEligible=false).');
   }
 
   /// Pauses the active session timer when app is in background.
@@ -832,6 +909,10 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     _currentManualAd = null;
     _previousManualAd = null;
     _manualRotationIndex = 0;
+    _lastAppLaunchAdId = null;
+    try {
+      PersistenceService().remove(_kLastAppLaunchAdIdKey);
+    } catch (_) {}
     currentManualIdleStage = 0;
     isSubscribedOverrideForTesting = null;
     isOfflineOverrideForTesting = null;

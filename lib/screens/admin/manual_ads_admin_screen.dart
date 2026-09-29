@@ -590,24 +590,28 @@ class _ManualAdsAdminScreenState extends State<ManualAdsAdminScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: (ad.placement == 'carousel')
-                            ? const Color(0xFFFF8A00).withValues(alpha: 0.90)
-                            : const Color(0xFF20C8FF).withValues(alpha: 0.90),
+                        color: ad.isAppLaunch
+                            ? const Color(0xFF7C4DFF).withValues(alpha: 0.90)
+                            : (ad.placement == 'carousel')
+                                ? const Color(0xFFFF8A00).withValues(alpha: 0.90)
+                                : const Color(0xFF20C8FF).withValues(alpha: 0.90),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            ad.placement == 'carousel' ? Icons.view_carousel_rounded : Icons.fullscreen_rounded,
-                            color: Colors.black,
+                            ad.isAppLaunch
+                                ? Icons.rocket_launch_rounded
+                                : (ad.placement == 'carousel' ? Icons.view_carousel_rounded : Icons.fullscreen_rounded),
+                            color: ad.isAppLaunch ? Colors.white : Colors.black,
                             size: 13,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            ad.placement.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.black,
+                            ad.isAppLaunch ? 'APP LAUNCH ADS' : ad.placement.toUpperCase(),
+                            style: TextStyle(
+                              color: ad.isAppLaunch ? Colors.white : Colors.black,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 0.8,
@@ -835,7 +839,7 @@ class _AdEditorModalState extends State<_AdEditorModal> {
     _existingMediaUrl = ad?.imageUrl;
     _mediaFileId = ad?.mediaFileId;
     _mediaType = ad?.type ?? 'image';
-    _selectedPlacement = ad?.placement;
+    _selectedPlacement = (ad?.isAppLaunch == true) ? 'app_launch' : ad?.placement;
     _selectedColorValue = ad?.colorValue ?? 0xFF20C8FF;
     _isActive = ad?.isActive ?? true;
     _isAsset = ad?.isAsset ?? false;
@@ -1041,7 +1045,7 @@ class _AdEditorModalState extends State<_AdEditorModal> {
     if (_selectedPlacement == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select an ad placement (Interstitial or Carousel).'),
+          content: Text('Please select an ad placement (Interstitial, Carousel, or App Launch Ads).'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.redAccent,
         ),
@@ -1806,6 +1810,69 @@ class _AdEditorModalState extends State<_AdEditorModal> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 10),
+
+                            // Option 3: App Launch Ads
+                            InkWell(
+                              onTap: _isSaving
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _selectedPlacement =
+                                            (_selectedPlacement == 'app_launch') ? null : 'app_launch';
+                                      });
+                                    },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: _selectedPlacement == 'app_launch'
+                                      ? const Color(0xFF7C4DFF).withValues(alpha: 0.15)
+                                      : Colors.white.withValues(alpha: 0.02),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: _selectedPlacement == 'app_launch'
+                                        ? const Color(0xFF7C4DFF)
+                                        : Colors.white12,
+                                    width: _selectedPlacement == 'app_launch' ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      _selectedPlacement == 'app_launch'
+                                          ? Icons.check_box_rounded
+                                          : Icons.check_box_outline_blank_rounded,
+                                      color: _selectedPlacement == 'app_launch'
+                                          ? const Color(0xFF7C4DFF)
+                                          : Colors.white38,
+                                      size: 22,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'App Launch Ads',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            'Full-screen launch ad shown at app startup for eligible offline users (5s auto-close)',
+                                            style: TextStyle(color: Colors.white54, fontSize: 11),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
 
                             if (_selectedPlacement == null) ...[
                               const SizedBox(height: 10),
@@ -1815,7 +1882,7 @@ class _AdEditorModalState extends State<_AdEditorModal> {
                                   SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      'Please select Interstitial or Carousel to enable saving.',
+                                      'Please select Interstitial, Carousel, or App Launch Ads to enable saving.',
                                       style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.w500),
                                     ),
                                   ),
