@@ -142,12 +142,11 @@ export const getAdminCapabilities = onCall(async (request) => {
         enabled: true,
       },
       {
-        id: "vouchers",
-        title: "Vouchers",
-        subtitle: "Coming Soon",
-        icon: "confirmation_number_outlined",
-        enabled: false,
-        badge: "Coming Soon",
+        id: "curriculum",
+        title: "Curriculum",
+        subtitle: "Manage academic curriculum data",
+        icon: "table_chart_outlined",
+        enabled: true,
       },
       {
         id: "notifications",

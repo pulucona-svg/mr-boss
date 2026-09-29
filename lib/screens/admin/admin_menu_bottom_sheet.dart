@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../services/admin_service.dart';
 import 'manual_ads_admin_screen.dart';
 import 'materials_admin_menu_bottom_sheet.dart';
+import 'admin_messages_screen.dart';
+import 'admin_notifications_screen.dart';
+import 'curriculum_admin_screen.dart';
 import '../explore_screen.dart';
 
 class AdminMenuBottomSheet extends StatelessWidget {
@@ -29,10 +32,10 @@ class AdminMenuBottomSheet extends StatelessWidget {
       case 'people':
       case 'group':
         return Icons.people_outline;
-      case 'confirmation_number_outlined':
-      case 'confirmation_number':
-      case 'local_activity':
-        return Icons.confirmation_number_outlined;
+      case 'table_chart_outlined':
+      case 'table_chart':
+      case 'curriculum':
+        return Icons.table_chart_outlined;
       case 'notifications_active_outlined':
       case 'notifications':
         return Icons.notifications_active_outlined;
@@ -55,8 +58,8 @@ class AdminMenuBottomSheet extends StatelessWidget {
         return '📚';
       case 'users':
         return '👥';
-      case 'vouchers':
-        return '🎟';
+      case 'curriculum':
+        return '📑';
       case 'notifications':
         return '🔔';
       case 'admin_messages':
@@ -91,7 +94,6 @@ class AdminMenuBottomSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-
             // Header Row
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -256,6 +258,24 @@ class AdminMenuBottomSheet extends StatelessWidget {
                                   backgroundColor: Colors.transparent,
                                   builder: (modalContext) => const MaterialsAdminMenuBottomSheet(),
                                 );
+                              } else if (item.id == 'curriculum') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const CurriculumAdminScreen(),
+                                  ),
+                                );
+                              } else if (item.id == 'admin_messages') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const AdminMessagesScreen(),
+                                  ),
+                                );
+                              } else if (item.id == 'notifications') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const AdminNotificationsScreen(),
+                                  ),
+                                );
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -278,7 +298,7 @@ class AdminMenuBottomSheet extends StatelessWidget {
                                 );
                               }
                             }
-                          : null, // Vouchers must remain visibly disabled and must not perform an action
+                          : null,
                     ),
                   );
                 },

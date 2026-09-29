@@ -82,8 +82,12 @@ class NotificationModal extends StatelessWidget {
                           color: n.isRead ? Colors.transparent : Colors.white.withAlpha(13),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: n.isRead ? Colors.white10 : const Color(0xFF20C8FF).withAlpha(77),
-                            width: 0.5,
+                            color: n.isRead
+                                ? Colors.white10
+                                : (n.type == NotificationType.adminAnnouncement
+                                    ? Colors.amber.withAlpha(150)
+                                    : const Color(0xFF20C8FF).withAlpha(77)),
+                            width: n.isRead ? 0.5 : 1.0,
                           ),
                           ),
                           child: Row(
@@ -125,8 +129,10 @@ class NotificationModal extends StatelessWidget {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF20C8FF),
+                                decoration: BoxDecoration(
+                                  color: n.type == NotificationType.adminAnnouncement
+                                      ? Colors.amber
+                                      : const Color(0xFF20C8FF),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -156,6 +162,8 @@ class NotificationModal extends StatelessWidget {
         return const Color(0xFF20C8FF).withAlpha(51);
       case NotificationType.materialRejected:
         return const Color(0xFFFF5252).withAlpha(51);
+      case NotificationType.adminAnnouncement:
+        return Colors.amber.withAlpha(51);
     }
   }
 
@@ -171,6 +179,8 @@ class NotificationModal extends StatelessWidget {
         return Icons.edit_note_rounded;
       case NotificationType.materialRejected:
         return Icons.cancel_rounded;
+      case NotificationType.adminAnnouncement:
+        return Icons.campaign_rounded;
     }
   }
 
@@ -186,10 +196,65 @@ class NotificationModal extends StatelessWidget {
         return const Color(0xFF20C8FF);
       case NotificationType.materialRejected:
         return const Color(0xFFFF5252);
+      case NotificationType.adminAnnouncement:
+        return Colors.amber;
     }
   }
 
   Widget _buildNotificationText(AppNotification n) {
+    if (n.type == NotificationType.adminAnnouncement) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withAlpha(40),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.amber.withAlpha(160), width: 0.8),
+                ),
+                child: const Text(
+                  'ADMIN',
+                  style: TextStyle(
+                    color: Colors.amber,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  n.title ?? n.resourceTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          if (n.message != null && n.message!.trim().isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              n.message!,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
     if (n.type == NotificationType.materialApproved) {
       return RichText(
         text: TextSpan(

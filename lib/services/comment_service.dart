@@ -9,8 +9,16 @@ class CommentService extends ChangeNotifier {
   CommentService._internal();
 
   @visibleForTesting
+  CommentService.forTesting();
+
+  @visibleForTesting
   static void resetInstance() {
     _instance = CommentService._internal();
+  }
+
+  @visibleForTesting
+  static void setMockInstance(CommentService mock) {
+    _instance = mock;
   }
 
   @override
@@ -19,7 +27,7 @@ class CommentService extends ChangeNotifier {
     // Prevent singleton disposal from destroying persistent instance
   }
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   Stream<List<Comment>> streamComments(String resourceId) {
     final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
@@ -38,9 +46,13 @@ class CommentService extends ChangeNotifier {
           final topLevel = allComments.where((c) => c.parentId == null).toList();
           
           for (var parent in topLevel) {
-            parent.replies = allComments.where((c) => c.parentId == parent.id).toList();
-            // Sort replies chronological (ascending)
-            parent.replies.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            if (parent.isModerated) {
+              parent.replies = [];
+            } else {
+              parent.replies = allComments.where((c) => c.parentId == parent.id).toList();
+              // Sort replies chronological (ascending)
+              parent.replies.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            }
           }
 
           // Top level comments are sorted descending (latest first)
@@ -73,6 +85,7 @@ class CommentService extends ChangeNotifier {
       'likedBy': [],
       'parentId': replyingTo?.id,
       'reactions': {},
+      'isModerated': false,
     };
 
     final resourceDocRef = _firestore.collection('resources').doc(resourceId);
@@ -89,6 +102,8 @@ class CommentService extends ChangeNotifier {
     }
   }
 
+  /// Deletes a comment and all of its replies, preventing orphaned reply documents
+  /// and synchronizing the resource comment counter.
   Future<void> deleteComment(String resourceId, String commentId) async {
     final commentDocRef = _firestore
         .collection('resources')
@@ -99,14 +114,97 @@ class CommentService extends ChangeNotifier {
     final resourceDocRef = _firestore.collection('resources').doc(resourceId);
 
     try {
+      // Find all child replies belonging to this comment
+      final repliesSnap = await _firestore
+          .collection('resources')
+          .doc(resourceId)
+          .collection('comments')
+          .where('parentId', isEqualTo: commentId)
+          .get();
+
+      final int totalToDelete = 1 + repliesSnap.docs.length;
+
+      final batch = _firestore.batch();
+      batch.delete(commentDocRef);
+      for (final reply in repliesSnap.docs) {
+        batch.delete(reply.reference);
+      }
+      await batch.commit();
+
+      // Accurately decrement resource comments counter clamped to >= 0
       await _firestore.runTransaction((transaction) async {
-        transaction.delete(commentDocRef);
-        transaction.update(resourceDocRef, {
-          'comments': FieldValue.increment(-1),
-        });
+        final resSnap = await transaction.get(resourceDocRef);
+        if (resSnap.exists) {
+          final currentCount = (resSnap.data()?['comments'] as num?)?.toInt() ?? 0;
+          final newCount = (currentCount - totalToDelete).clamp(0, 999999);
+          transaction.update(resourceDocRef, {'comments': newCount});
+        }
       });
     } catch (e) {
       debugPrint('CommentService: [ERROR] Failed to delete comment: $e');
+    }
+  }
+
+  /// Moderates a comment by replacing its content with "This comment was reported to admin",
+  /// removing its replies, resetting reactions/likes, and updating the resource comment count.
+  Future<void> moderateComment(
+    String resourceId,
+    String commentId, {
+    String? reason,
+    String? adminUid,
+  }) async {
+    final commentDocRef = _firestore
+        .collection('resources')
+        .doc(resourceId)
+        .collection('comments')
+        .doc(commentId);
+
+    final resourceDocRef = _firestore.collection('resources').doc(resourceId);
+
+    try {
+      // 1. Query all replies belonging to this comment
+      final repliesSnap = await _firestore
+          .collection('resources')
+          .doc(resourceId)
+          .collection('comments')
+          .where('parentId', isEqualTo: commentId)
+          .get();
+
+      // Total affected comments removed from active comment pool (parent + replies)
+      final int totalAffected = 1 + repliesSnap.docs.length;
+
+      final batch = _firestore.batch();
+
+      // Soft-moderate parent comment with placeholder
+      batch.update(commentDocRef, {
+        'isModerated': true,
+        'text': 'This comment was reported to admin',
+        'moderationReason': reason ?? 'Reported to admin',
+        'moderatedAt': FieldValue.serverTimestamp(),
+        'moderatedBy': adminUid ?? 'admin',
+        'likes': 0,
+        'likedBy': [],
+        'reactions': {},
+      });
+
+      // Remove replies so no orphaned active content remains under moderated comment
+      for (final reply in repliesSnap.docs) {
+        batch.delete(reply.reference);
+      }
+      await batch.commit();
+
+      // 2. Decrement resource active comment count safely clamped to >= 0
+      await _firestore.runTransaction((transaction) async {
+        final resSnap = await transaction.get(resourceDocRef);
+        if (resSnap.exists) {
+          final currentCount = (resSnap.data()?['comments'] as num?)?.toInt() ?? 0;
+          final newCount = (currentCount - totalAffected).clamp(0, 999999);
+          transaction.update(resourceDocRef, {'comments': newCount});
+        }
+      });
+    } catch (e) {
+      debugPrint('CommentService: [ERROR] Failed to moderate comment: $e');
+      rethrow;
     }
   }
 

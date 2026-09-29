@@ -460,6 +460,14 @@ export {
   rejectAdminMaterial,
   reconsiderAdminMaterial,
 } from "./admin/admin_materials";
+export {
+  getAdminCurriculum,
+  createCurriculumRecord,
+  updateCurriculumRecord,
+  toggleCurriculumActive,
+  deleteCurriculumRecord,
+  migrateCurriculumData,
+} from "./admin/admin_curriculum";
 
 /**
  * PAYSTACK SUBSCRIPTION INTEGRATION ENDPOINTS

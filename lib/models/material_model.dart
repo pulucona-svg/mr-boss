@@ -51,6 +51,8 @@ class Resource {
   int comments;
   bool isLiked;
 
+  DateTime get effectiveReleaseDate => approvedAt ?? uploadDate;
+
   Resource({
     this.id = '',
     required this.title,

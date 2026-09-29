@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../models/curriculum_model.dart';
 
 // Riverpod Provider is now consolidated in lib/providers/service_providers.dart
 
 class CourseUnit {
+  final String id;
   final String unitName;
   final String unitCode;
   final String programCode;
@@ -11,8 +14,10 @@ class CourseUnit {
   final String yearOfStudy;
   final String semester;
   final String lecturerName;
+  final bool isActive;
 
   CourseUnit({
+    this.id = '',
     required this.unitName,
     required this.unitCode,
     required this.programCode,
@@ -20,17 +25,34 @@ class CourseUnit {
     required this.yearOfStudy,
     required this.semester,
     required this.lecturerName,
+    this.isActive = true,
   });
 
-  factory CourseUnit.fromJson(Map<String, dynamic> json) {
+  factory CourseUnit.fromJson(Map<String, dynamic> json, [String? id]) {
     return CourseUnit(
-      unitName: json['Unit Name'] ?? json['unit Name'] ?? '',
-      unitCode: json['Unit Code'] ?? json['unit Code'] ?? '',
-      programCode: json['Program Code'] ?? json['program Code'] ?? '',
-      programName: json['Program Name'] ?? json['program Name'] ?? '',
-      yearOfStudy: json['Year of Study'] ?? json['Year of study'] ?? json['year of Study'] ?? '',
+      id: id ?? (json['id'] as String? ?? ''),
+      unitName: json['Unit Name'] ?? json['unit Name'] ?? json['unitName'] ?? '',
+      unitCode: json['Unit Code'] ?? json['unit Code'] ?? json['unitCode'] ?? '',
+      programCode: json['Program Code'] ?? json['program Code'] ?? json['programCode'] ?? '',
+      programName: json['Program Name'] ?? json['program Name'] ?? json['programName'] ?? '',
+      yearOfStudy: json['Year of Study'] ?? json['Year of study'] ?? json['year of Study'] ?? json['yearOfStudy'] ?? '',
       semester: json['Semester'] ?? json['semester'] ?? '',
-      lecturerName: json["Lecturer's Name"] ?? json["lecturer's Name"] ?? '',
+      lecturerName: json["Lecturer's Name"] ?? json["lecturer's Name"] ?? json['lecturerName'] ?? '',
+      isActive: json['isActive'] == null ? true : (json['isActive'] == true),
+    );
+  }
+
+  factory CourseUnit.fromCurriculumRecord(CurriculumRecord record) {
+    return CourseUnit(
+      id: record.id,
+      unitName: record.unitName,
+      unitCode: record.unitCode,
+      programCode: record.programCode,
+      programName: record.programName,
+      yearOfStudy: record.yearOfStudy,
+      semester: record.semester,
+      lecturerName: record.lecturerName,
+      isActive: record.isActive,
     );
   }
 }
@@ -66,30 +88,55 @@ class CourseService {
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
+  @visibleForTesting
+  void clearForTesting() {
+    _allUnits.clear();
+    _courseMap.clear();
+    _codeMap.clear();
+    _programCodeMap.clear();
+    _reverseProgramCodeMap.clear();
+    _isInitialized = false;
+  }
+
+  void syncFromCurriculumRecords(List<CurriculumRecord> records) {
+    _allUnits = records.map((r) => CourseUnit.fromCurriculumRecord(r)).toList();
+    _rebuildMaps();
+  }
+
+  void _rebuildMaps() {
+    _courseMap.clear();
+    _codeMap.clear();
+    _programCodeMap.clear();
+    _reverseProgramCodeMap.clear();
+
+    for (var unit in _allUnits) {
+      if (!unit.isActive || unit.unitName.isEmpty) continue; // ONLY active units!
+
+      _courseMap[unit.unitName] = unit.unitCode;
+      
+      final codes = _parseCodes(unit.unitCode);
+      for (var code in codes) {
+        _codeMap[code] = unit.unitName;
+      }
+      _codeMap[unit.unitCode] = unit.unitName;
+
+      if (unit.programName.isNotEmpty) {
+        _programCodeMap[unit.programName] = unit.programCode;
+        _reverseProgramCodeMap[unit.programCode] = unit.programName;
+      }
+    }
+  }
+
   Future<void> init() async {
     if (_isInitialized) return;
 
     try {
-      // Load Programs and Units
-      final String response = await rootBundle.loadString('assets/lessons.json');
-      final List<dynamic> data = json.decode(response);
-      _allUnits = data.map((json) => CourseUnit.fromJson(json)).toList();
-
-      for (var unit in _allUnits) {
-        if (unit.unitName.isEmpty) continue;
-
-        _courseMap[unit.unitName] = unit.unitCode;
-        
-        final codes = _parseCodes(unit.unitCode);
-        for (var code in codes) {
-          _codeMap[code] = unit.unitName;
-        }
-        _codeMap[unit.unitCode] = unit.unitName;
-
-        if (unit.programName.isNotEmpty) {
-          _programCodeMap[unit.programName] = unit.programCode;
-          _reverseProgramCodeMap[unit.programCode] = unit.programName;
-        }
+      // Load Programs and Units from bundled fallback if not already populated
+      if (_allUnits.isEmpty) {
+        final String response = await rootBundle.loadString('assets/lessons.json');
+        final List<dynamic> data = json.decode(response);
+        _allUnits = data.map((json) => CourseUnit.fromJson(json)).toList();
+        _rebuildMaps();
       }
 
       // Load Universities
@@ -99,7 +146,7 @@ class CourseService {
 
       _isInitialized = true;
     } catch (e) {
-      print('Error loading course data: $e');
+      debugPrint('Error loading course data: $e');
     }
   }
 
@@ -140,20 +187,25 @@ class CourseService {
   List<String> get programsList => _programCodeMap.keys.toList();
   List<String> get lecturersList {
     return _allUnits
+        .where((u) => u.isActive)
         .map((u) => u.lecturerName)
         .where((name) => name.isNotEmpty)
         .toSet()
         .toList();
   }
 
-  List<CourseUnit> get allUnits => _allUnits;
+  /// Returns only active units.
+  List<CourseUnit> get allUnits => _allUnits.where((u) => u.isActive).toList();
+
+  /// Returns raw units including inactive ones (e.g. for inspection).
+  List<CourseUnit> get allUnitsIncludingInactive => List.unmodifiable(_allUnits);
 
   List<CourseUnit> getUnitsByProgram(String programName) {
-    return _allUnits.where((u) => u.programName == programName).toList();
+    return _allUnits.where((u) => u.isActive && u.programName == programName).toList();
   }
 
   List<CourseUnit> getUnitsByCode(String code) {
-    return _allUnits.where((u) => u.unitCode == code || _parseCodes(u.unitCode).contains(code)).toList();
+    return _allUnits.where((u) => u.isActive && (u.unitCode == code || _parseCodes(u.unitCode).contains(code))).toList();
   }
 
   List<University> get universities => _allUniversities;

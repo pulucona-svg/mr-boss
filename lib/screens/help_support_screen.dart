@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -96,10 +95,18 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
   void initState() {
     super.initState();
     
-    // Mark messages as read when screen opens
+    // Initialize ChatService for the current user and mark messages as read
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userProfile = ref.read(userProfileProvider);
+      ref.read(chatServiceProvider.notifier).initForUser(
+        userId: userProfile.uid,
+        userName: userProfile.username,
+        userPhotoUrl: userProfile.photoURL,
+      );
       ref.read(chatServiceProvider.notifier).markAllAsRead();
     });
+
+    _messageController.addListener(_onTextChanged);
 
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
@@ -122,8 +129,15 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
     ]).animate(_bulgeController);
   }
 
+  void _onTextChanged() {
+    final text = _messageController.text;
+    ref.read(chatServiceProvider.notifier).setUserTyping(text.trim().isNotEmpty);
+  }
+
   @override
   void dispose() {
+    ref.read(chatServiceProvider.notifier).setUserTyping(false);
+    _messageController.removeListener(_onTextChanged);
     _focusNode.dispose();
     _messageController.dispose();
     _scrollController.dispose();
@@ -224,17 +238,16 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
             ],
           ),
         ),
-        if (canEditOrDelete)
-          const PopupMenuItem(
-            value: 'delete',
-            child: Row(
-              children: [
-                Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                SizedBox(width: 12),
-                Text('Delete', style: TextStyle(color: Colors.red)),
-              ],
-            ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, color: Colors.red, size: 20),
+              SizedBox(width: 12),
+              Text('Delete', style: TextStyle(color: Colors.red)),
+            ],
           ),
+        ),
       ],
     ).then((value) {
       if (value == 'edit') {
@@ -251,10 +264,49 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> with Sing
           const SnackBar(content: Text('Message copied to clipboard')),
         );
       } else if (value == 'delete') {
-        ref.read(chatServiceProvider.notifier).deleteMessage(_selectedMessage!.id);
+        final msg = _selectedMessage!;
         setState(() => _selectedMessage = null);
+        _showDeleteDialog(msg, canEditOrDelete);
       }
     });
+  }
+
+  void _showDeleteDialog(Message message, bool canDeleteForEveryone) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141232),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete message?', style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Text(
+          canDeleteForEveryone
+              ? 'You can delete this message for everyone or delete it for yourself.'
+              : 'Delete this message for yourself? Other participants will still be able to view it.',
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(chatServiceProvider.notifier).deleteMessageForMe(message.id);
+            },
+            child: const Text('Delete for me', style: TextStyle(color: Color(0xFF20C8FF))),
+          ),
+          if (canDeleteForEveryone)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                ref.read(chatServiceProvider.notifier).deleteMessageForEveryone(message.id);
+              },
+              child: const Text('Delete for everyone', style: TextStyle(color: Colors.redAccent)),
+            ),
+        ],
+      ),
+    );
   }
 
   void _onSwipeReply(Message message) {

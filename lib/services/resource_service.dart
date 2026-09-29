@@ -358,8 +358,12 @@ class ResourceService extends ChangeNotifier {
       return b.uploadDate.compareTo(a.uploadDate);
     });
 
-    // Unpinned: uploadDate descending
-    unpinned.sort((a, b) => b.uploadDate.compareTo(a.uploadDate));
+    // Unpinned: release date (approvedAt ?? uploadDate) descending
+    unpinned.sort((a, b) {
+      final cmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
+      if (cmp != 0) return cmp;
+      return b.uploadDate.compareTo(a.uploadDate);
+    });
 
     return [...pinned, ...unpinned];
   }

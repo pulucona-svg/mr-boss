@@ -5,6 +5,7 @@ import '../services/subscription_service.dart';
 import '../services/view_service.dart';
 import '../services/comment_service.dart';
 import '../services/course_service.dart';
+import '../services/curriculum_service.dart';
 import '../services/auth_service.dart';
 import '../services/file_service.dart';
 import '../services/upload_service.dart';
@@ -21,9 +22,9 @@ final viewServiceProvider = ChangeNotifierProvider((ref) => ViewService());
 final commentServiceProvider = ChangeNotifierProvider((ref) => CommentService());
 final subscriptionServiceProvider = ChangeNotifierProvider((ref) => SubscriptionService());
 final courseServiceProvider = Provider((ref) => CourseService());
+final curriculumServiceProvider = ChangeNotifierProvider((ref) => CurriculumService());
 final authServiceProvider = Provider((ref) => AuthService());
 final fileServiceProvider = Provider((ref) => FileService());
 final uploadServiceProvider = Provider((ref) => UploadService());
 final timetableUploadServiceProvider = Provider((ref) => TimetableUploadService());
 final adminServiceProvider = ChangeNotifierProvider((ref) => AdminService());
-

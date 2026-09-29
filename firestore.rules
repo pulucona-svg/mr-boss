@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        (request.auth.token.email_verified == true && request.auth.token.email in [
+          'pulucona@mail.com',
+          'pulucona@gmail.com',
+          'culucona@gmail.com',
+          'admin@mirrorlaikipia.ac.ke',
+          'testadmin@mirror.com',
+          'admin@mirror.com'
+        ]) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // ===============================================================
+    // Realtime User <-> Admin Messaging
+    // User A can NEVER access User B's conversation.
+    // ===============================================================
+    match /conversations/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) || isAdmin();
+        allow update: if isOwner(userId) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // User Profiles & Multi-device Sessions
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin() || isOwner(userId);
+
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // Subscriptions & Payment History
+    // ===============================================================
+    match /subscriptions/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+
+      match /history/{historyId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // Academic Resources & Materials Catalog
+    // ===============================================================
+    match /resources/{resourceId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.uploaderId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy', 'views', 'comments'])
+      );
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.uploaderId == request.auth.uid);
+
+      // Material Comments
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && (
+          !('isModerated' in request.resource.data) ||
+          request.resource.data.isModerated == false ||
+          isAdmin()
+        );
+        allow update: if isAuthenticated() && (
+          isAdmin() ||
+          (resource.data.authorId == request.auth.uid &&
+           (!('isModerated' in resource.data) || resource.data.isModerated != true) &&
+           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isModerated', 'moderatedAt', 'moderatedBy', 'moderationReason'])) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy', 'reactions']) &&
+           (!('isModerated' in resource.data) || resource.data.isModerated != true))
+        );
+        allow delete: if isAuthenticated() && (
+          resource.data.authorId == request.auth.uid ||
+          isAdmin()
+        );
+      }
+    }
+
+    // ===============================================================
+    // Manual Ads
+    // ===============================================================
+    match /manual_ads/{adId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Explore & News Feeds
+    // ===============================================================
+    match /explore_news/{articleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /categoryNews/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /topStories/{storyId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /latestNews/{newsId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /trendingTopics/{topicId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Admin Allowlist Registry
+    // ===============================================================
+    match /admins/{adminId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Global & System Notifications
+    // Read: Authenticated users
+    // Write: Authorized administrators only
+    // ===============================================================
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Curriculum Data Pool
+    // Read: Authenticated users (for Material Upload & Autocomplete)
+    // Write: Authorized administrators only
+    // ===============================================================
+    match /curriculum/{curriculumId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

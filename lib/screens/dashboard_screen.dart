@@ -31,6 +31,68 @@ class DashboardScreen extends ConsumerStatefulWidget {
     _DashboardScreenState._hasLoadedBefore = loaded;
   }
 
+  static List<Resource?> buildSerpentineGridSlots(List<Resource> filteredResources) {
+    final pinned = filteredResources.where((r) => r.isPinned).toList();
+    pinned.sort((a, b) {
+      if (a.pinnedAt != null && b.pinnedAt != null) {
+        return b.pinnedAt!.compareTo(a.pinnedAt!);
+      }
+      if (a.pinnedAt != null) return -1;
+      if (b.pinnedAt != null) return 1;
+      return (b.approvedAt ?? b.uploadDate).compareTo(a.approvedAt ?? a.uploadDate);
+    });
+
+    final unpinned = filteredResources.where((r) => !r.isPinned).toList();
+
+    // Sort unpinned materials newest release first (preferring approvedAt, falling back to uploadDate)
+    unpinned.sort((a, b) {
+      final cmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
+      if (cmp != 0) return cmp;
+      return b.uploadDate.compareTo(a.uploadDate);
+    });
+
+    final List<Resource?> gridSlots = [];
+
+    // 1. Pinned materials strictly at top in standard 2-column order
+    for (final p in pinned) {
+      gridSlots.add(p);
+    }
+    // Pad pinned row if odd count so unpinned releases always start on a fresh row
+    if (pinned.length % 2 != 0) {
+      gridSlots.add(null);
+    }
+
+    // 2. Unpinned releases in serpentine 2-column pattern
+    final int unpinnedCount = unpinned.length;
+    final int numRows = (unpinnedCount + 1) ~/ 2;
+
+    for (int r = 0; r < numRows; r++) {
+      final int idx1 = 2 * r;
+      final int idx2 = 2 * r + 1;
+
+      if (r % 2 == 0) {
+        // Even row (Row 0, 2, 4...): Left -> Right
+        // Left column gets idx1 (1st, 5th, 9th...)
+        gridSlots.add(unpinned[idx1]);
+        // Right column gets idx2 (2nd, 6th, 10th...) if present, else blank
+        gridSlots.add(idx2 < unpinnedCount ? unpinned[idx2] : null);
+      } else {
+        // Odd row (Row 1, 3, 5...): Right -> Left
+        // If both exist: Left = idx2 (4th, 8th, 12th...), Right = idx1 (3rd, 7th, 11th...)
+        // If only 1 exists: Left = null, Right = idx1 (3rd, 7th, 11th...)
+        if (idx2 < unpinnedCount) {
+          gridSlots.add(unpinned[idx2]);
+          gridSlots.add(unpinned[idx1]);
+        } else {
+          gridSlots.add(null);
+          gridSlots.add(unpinned[idx1]);
+        }
+      }
+    }
+
+    return gridSlots;
+  }
+
   @override
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
@@ -46,7 +108,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String? _lastCorrectedOriginal;
   String? _lastCorrectedResult;
   String _lastSearchValue = '';
-  List<Resource> _shuffledResources = [];
 
   // Admin Materials Selection State
   bool _isSelectionMode = false;
@@ -70,8 +131,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _isLoading = !_hasLoadedBefore;
     if (_isLoading) {
       _simulateLoading();
-    } else {
-      _shuffledResources = List.from(ResourceService().allResources);
     }
     _searchFocusNode.addListener(_onSearchFocusChange);
   }
@@ -144,7 +203,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (mounted) {
       setState(() {
         _isLoading = false;
-        _shuffledResources = List.from(ResourceService().allResources);
       });
     }
   }
@@ -344,9 +402,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     await ResourceService().refresh(userId);
 
     if (mounted) {
-      setState(() {
-        _shuffledResources = List.from(ResourceService().allResources)..shuffle();
-      });
+      setState(() {});
     }
   }
 
@@ -768,17 +824,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       builder: (context, child) {
         final allResources = ResourceService().allResources;
 
-        // Pinned materials strictly at the top in their server pin order
-        final pinnedResources = allResources.where((r) => r.isPinned).toList();
-        final unpinnedActiveIds = allResources.where((r) => !r.isPinned).map((r) => r.id).toSet();
-        final validShuffled = _shuffledResources
-            .where((r) => unpinnedActiveIds.contains(r.id))
-            .toList();
-
-        final sourceResources = [
-          ...pinnedResources,
-          ...(validShuffled.isEmpty ? allResources.where((r) => !r.isPinned) : validShuffled),
-        ];
+        // Pinned materials are already strictly at the top, and unpinned are ordered newest release first
+        final sourceResources = allResources;
 
         final filteredResources = sourceResources.where((res) {
           // 1. Filter out pinned non-timetable items (personal downloads only; never hide server-pinned items)
@@ -1205,52 +1252,62 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ];
     }
 
+    final gridSlots = DashboardScreen.buildSerpentineGridSlots(filteredResources);
+
     List<Widget> slivers = [];
     const int itemsPerRow = 2;
     const int rowsPerAd = 4;
     const int itemsPerAd = itemsPerRow * rowsPerAd;
 
-    for (int i = 0; i < filteredResources.length; i += itemsPerAd) {
-      final end = (i + itemsPerAd < filteredResources.length) ? i + itemsPerAd : filteredResources.length;
-      final chunk = filteredResources.sublist(i, end);
+    for (int i = 0; i < gridSlots.length; i += itemsPerAd) {
+      final end = (i + itemsPerAd < gridSlots.length) ? i + itemsPerAd : gridSlots.length;
+      final chunk = gridSlots.sublist(i, end);
 
       slivers.add(
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 0.72),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.72,
+            ),
             delegate: SliverChildBuilderDelegate(
-               (context, index) {
-                 final res = chunk[index];
-                 return ResourceCard(
-                   key: ValueKey('${res.id}_${res.thumbnailStatus}_${res.thumbnailUrl}'),
-                   resource: res,
-                   onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
-                   onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
-                   showPin: false,
-                   isSelectionMode: isAdmin && _isSelectionMode,
-                   isSelected: isAdmin && _selectedMaterialIds.contains(res.id),
-                   onLongPress: isAdmin
-                       ? () {
-                           if (!_isSelectionMode) {
-                             _enterSelectionMode(res.id);
-                           }
-                         }
-                       : null,
-                   onTap: () {
-                     if (isAdmin && _isSelectionMode) {
-                       _toggleSelection(res.id);
-                     }
-                   },
-                 );
-               },
-               childCount: chunk.length,
-             ),
+              (context, index) {
+                final res = chunk[index];
+                if (res == null) {
+                  return const SizedBox.shrink();
+                }
+                return ResourceCard(
+                  key: ValueKey('${res.id}_${res.thumbnailStatus}_${res.thumbnailUrl}'),
+                  resource: res,
+                  onLikeToggle: () => ref.read(resourceServiceProvider).toggleLike(res.id, res.isLiked),
+                  onViewIncrement: () => ref.read(resourceServiceProvider).incrementViews(res.id),
+                  showPin: false,
+                  isSelectionMode: isAdmin && _isSelectionMode,
+                  isSelected: isAdmin && _selectedMaterialIds.contains(res.id),
+                  onLongPress: isAdmin
+                      ? () {
+                          if (!_isSelectionMode) {
+                            _enterSelectionMode(res.id);
+                          }
+                        }
+                      : null,
+                  onTap: () {
+                    if (isAdmin && _isSelectionMode) {
+                      _toggleSelection(res.id);
+                    }
+                  },
+                );
+              },
+              childCount: chunk.length,
+            ),
           ),
         ),
       );
 
-      if (end < filteredResources.length && !SubscriptionService().isSubscribed) {
+      if (end < gridSlots.length && !SubscriptionService().isSubscribed) {
         slivers.add(
           SliverToBoxAdapter(
             child: Padding(
