@@ -8,7 +8,6 @@ import 'login_screen.dart';
 import '../services/top_notification_service.dart';
 import '../providers/providers.dart';
 import '../services/persistence_service.dart';
-import '../services/user_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -284,7 +283,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: _buildSocialButton(
-                      icon: const FaIcon(FontAwesomeIcons.apple, size: 24),
+                      icon: const FaIcon(FontAwesomeIcons.apple, size: 24, color: Colors.white),
                       label: "Continue with Apple",
                       onPressed: () {
                         TopNotificationService().showNotification(context, "Apple Sign-In coming soon");
@@ -295,7 +294,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: _buildSocialButton(
-                      icon: const Icon(Icons.email_outlined, size: 24),
+                      icon: const Icon(Icons.mail_outline_rounded, size: 24, color: Colors.white),
                       label: "Continue with Email",
                       onPressed: _showEmailModal,
                     ),
@@ -370,11 +369,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     return SizedBox(
       width: double.infinity,
       height: 56,
-      child: ElevatedButton(
+      child: OutlinedButton(
         onPressed: _isLoading ? null : _handleGoogleSignup,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: const Color(0xFF20C8FF).withValues(alpha: 0.08),
+          foregroundColor: Colors.white,
+          side: BorderSide(
+            color: const Color(0xFF20C8FF).withValues(alpha: 0.35),
+            width: 1.2,
+          ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(horizontal: 16),
         ),
@@ -390,7 +393,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             const Flexible(
               child: Text(
                 "Continue with Google",
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -408,17 +414,25 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     return SizedBox(
       width: double.infinity,
       height: 56,
-      child: ElevatedButton.icon(
+      child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: icon,
         label: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: const Color(0xFF20C8FF).withValues(alpha: 0.08),
+          foregroundColor: Colors.white,
+          side: BorderSide(
+            color: const Color(0xFF20C8FF).withValues(alpha: 0.35),
+            width: 1.2,
+          ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
         ),
       ),
     );

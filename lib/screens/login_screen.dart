@@ -7,8 +7,6 @@ import 'signup_screen.dart';
 import 'reset_password_screen.dart';
 import 'academic_personalization_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/auth_service.dart';
-import '../services/user_service.dart';
 import '../providers/providers.dart';
 import '../services/persistence_service.dart';
 import '../services/top_notification_service.dart';
@@ -665,10 +663,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     onPressed: _isLoading ? null : _handleGoogleLogin,
                                     style: OutlinedButton.styleFrom(
                                       backgroundColor:
-                                          Colors.white.withValues(alpha: 0.05),
+                                          const Color(0xFF20C8FF).withValues(alpha: 0.08),
                                       side: BorderSide(
-                                        color: Colors.white.withValues(alpha: 0.20),
-                                        width: 1,
+                                        color: const Color(0xFF20C8FF).withValues(alpha: 0.35),
+                                        width: 1.2,
                                       ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),
@@ -713,10 +711,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     },
                                     style: OutlinedButton.styleFrom(
                                       backgroundColor:
-                                          Colors.white.withValues(alpha: 0.05),
+                                          const Color(0xFF20C8FF).withValues(alpha: 0.08),
                                       side: BorderSide(
-                                        color: Colors.white.withValues(alpha: 0.20),
-                                        width: 1,
+                                        color: const Color(0xFF20C8FF).withValues(alpha: 0.35),
+                                        width: 1.2,
                                       ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),

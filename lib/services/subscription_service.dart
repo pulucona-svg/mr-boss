@@ -14,7 +14,7 @@ class SubscriptionService extends ChangeNotifier {
   factory SubscriptionService() => _instance;
   SubscriptionService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   List<SubscriptionHistory> _history = [];
   final Set<String> _unlockedResources = {}; 
   bool _isInitialized = false;

@@ -421,7 +421,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               final isSubscribed = SubscriptionService().isSubscribed;
                               return _buildStatusBadge(
                                 'Subscription', 
-                                isSubscribed ? 'ACTIVE' : 'INACTIVE', 
+                                isSubscribed ? 'Active' : 'Inactive', 
                                 Icons.workspace_premium, 
                                 Colors.orange, 
                                 isDark,
@@ -724,7 +724,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildStatusBadge(String title, String status, IconData icon, Color color, bool isDark, {VoidCallback? onTap}) {
-    bool isActive = status == 'ACTIVE';
+    bool isActive = status.toUpperCase() == 'ACTIVE';
     final textColor = isDark ? Colors.white : Colors.black87;
     return GestureDetector(
       onTap: onTap,
