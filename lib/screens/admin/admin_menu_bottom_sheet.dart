@@ -5,6 +5,7 @@ import 'materials_admin_menu_bottom_sheet.dart';
 import 'admin_messages_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'curriculum_admin_screen.dart';
+import 'admin_users_screen.dart';
 import '../explore_screen.dart';
 
 class AdminMenuBottomSheet extends StatelessWidget {
@@ -274,6 +275,12 @@ class AdminMenuBottomSheet extends StatelessWidget {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (context) => const AdminNotificationsScreen(),
+                                  ),
+                                );
+                              } else if (item.id == 'users') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const AdminUsersScreen(),
                                   ),
                                 );
                               } else {

@@ -468,6 +468,11 @@ export {
   deleteCurriculumRecord,
   migrateCurriculumData,
 } from "./admin/admin_curriculum";
+export {
+  getAdminUsersList,
+  getAdminUserDetail,
+  toggleAdminUserDisabled,
+} from "./admin/admin_users";
 
 /**
  * PAYSTACK SUBSCRIPTION INTEGRATION ENDPOINTS
