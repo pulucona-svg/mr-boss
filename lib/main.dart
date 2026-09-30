@@ -14,6 +14,8 @@ import 'screens/login_screen.dart';
 import 'screens/academic_personalization_screen.dart';
 import 'screens/email_verification_screen.dart';
 import 'screens/signup_screen.dart';
+import 'screens/terms_and_conditions_screen.dart';
+import 'screens/privacy_policy_screen.dart';
 
 import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
@@ -137,6 +139,8 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
       routes: {
         '/home': (context) => const MainNavigation(),
         '/login': (context) => const LoginScreen(),
+        '/terms': (context) => const TermsAndConditionsScreen(),
+        '/privacy': (context) => const PrivacyPolicyScreen(),
         '/personalization': (context) {
           final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
           return AcademicPersonalizationScreen(

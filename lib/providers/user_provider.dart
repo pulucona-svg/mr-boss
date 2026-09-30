@@ -22,6 +22,10 @@ class UserProfile {
   final DateTime? joinDate;
   final bool onboardingComplete;
   final String? sessionId;
+  final String? termsVersionAccepted;
+  final DateTime? termsAcceptedAt;
+  final String? privacyPolicyVersionAccepted;
+  final DateTime? privacyPolicyAcceptedAt;
 
   UserProfile({
     required this.uid,
@@ -39,6 +43,10 @@ class UserProfile {
     this.joinDate,
     this.onboardingComplete = false,
     this.sessionId,
+    this.termsVersionAccepted,
+    this.termsAcceptedAt,
+    this.privacyPolicyVersionAccepted,
+    this.privacyPolicyAcceptedAt,
   });
 
   UserProfile copyWith({
@@ -57,6 +65,10 @@ class UserProfile {
     DateTime? joinDate,
     bool? onboardingComplete,
     String? sessionId,
+    String? termsVersionAccepted,
+    DateTime? termsAcceptedAt,
+    String? privacyPolicyVersionAccepted,
+    DateTime? privacyPolicyAcceptedAt,
     bool clearImagePath = false,
   }) {
     return UserProfile(
@@ -75,6 +87,10 @@ class UserProfile {
       joinDate: joinDate ?? this.joinDate,
       onboardingComplete: onboardingComplete ?? this.onboardingComplete,
       sessionId: sessionId ?? this.sessionId,
+      termsVersionAccepted: termsVersionAccepted ?? this.termsVersionAccepted,
+      termsAcceptedAt: termsAcceptedAt ?? this.termsAcceptedAt,
+      privacyPolicyVersionAccepted: privacyPolicyVersionAccepted ?? this.privacyPolicyVersionAccepted,
+      privacyPolicyAcceptedAt: privacyPolicyAcceptedAt ?? this.privacyPolicyAcceptedAt,
     );
   }
 
@@ -95,7 +111,21 @@ class UserProfile {
       'joinDate': joinDate?.toIso8601String(),
       'onboardingComplete': onboardingComplete,
       'sessionId': sessionId,
+      'termsVersionAccepted': termsVersionAccepted,
+      'termsAcceptedAt': termsAcceptedAt?.toIso8601String(),
+      'privacyPolicyVersionAccepted': privacyPolicyVersionAccepted,
+      'privacyPolicyAcceptedAt': privacyPolicyAcceptedAt?.toIso8601String(),
     };
+  }
+
+  static DateTime? _parseDate(dynamic val) {
+    if (val == null) return null;
+    if (val is String) return DateTime.tryParse(val);
+    try {
+      return (val as dynamic).toDate();
+    } catch (_) {
+      return null;
+    }
   }
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -112,11 +142,13 @@ class UserProfile {
       semester: json['semester'] ?? 'Sem 1',
       phone: json['phone'] ?? '',
       email: json['email'] ?? '',
-      joinDate: json['joinDate'] != null 
-          ? (json['joinDate'] is String ? DateTime.parse(json['joinDate']) : (json['joinDate'] as dynamic).toDate()) 
-          : null,
+      joinDate: _parseDate(json['joinDate']),
       onboardingComplete: json['onboardingComplete'] ?? false,
       sessionId: json['sessionId'],
+      termsVersionAccepted: json['termsVersionAccepted'] as String?,
+      termsAcceptedAt: _parseDate(json['termsAcceptedAt']),
+      privacyPolicyVersionAccepted: json['privacyPolicyVersionAccepted'] as String?,
+      privacyPolicyAcceptedAt: _parseDate(json['privacyPolicyAcceptedAt']),
     );
   }
 }

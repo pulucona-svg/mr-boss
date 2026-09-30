@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/theme_provider.dart';
+import 'privacy_policy_screen.dart';
+import 'terms_and_conditions_screen.dart';
 
 class MoreOptionsScreen extends ConsumerWidget {
   const MoreOptionsScreen({super.key});
@@ -81,15 +83,15 @@ class MoreOptionsScreen extends ConsumerWidget {
               _buildSectionTitle('MORE ABOUT MIRROR LAIKIPIA', textColor),
               const SizedBox(height: 16),
               _buildGridMenu([
-                _buildMenuItem('About Us', textColor),
-                _buildMenuItem('Privacy Policy', textColor),
-                _buildMenuItem('Contact Us', textColor),
-                _buildMenuItem('Terms and Conditions', textColor),
-                _buildMenuItem('Community Guidelines', textColor),
-                _buildMenuItem('Copyright Policy', textColor),
-                _buildMenuItem('Advertise With Us', textColor),
-                _buildMenuItem('Become a Contributor', textColor),
-                _buildMenuItem('Help & Support', textColor),
+                _buildMenuItem(context, 'About Us', textColor),
+                _buildMenuItem(context, 'Privacy Policy', textColor),
+                _buildMenuItem(context, 'Contact Us', textColor),
+                _buildMenuItem(context, 'Terms and Conditions', textColor),
+                _buildMenuItem(context, 'Community Guidelines', textColor),
+                _buildMenuItem(context, 'Copyright Policy', textColor),
+                _buildMenuItem(context, 'Advertise With Us', textColor),
+                _buildMenuItem(context, 'Become a Contributor', textColor),
+                _buildMenuItem(context, 'Help & Support', textColor),
               ]),
               const SizedBox(height: 40),
 
@@ -171,10 +173,20 @@ class MoreOptionsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildMenuItem(String label, Color textColor) {
+  Widget _buildMenuItem(BuildContext context, String label, Color textColor) {
     return GestureDetector(
       onTap: () {
-        // Placeholder for future content
+        if (label == 'Privacy Policy') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+          );
+        } else if (label == 'Terms and Conditions') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()),
+          );
+        }
       },
       child: Container(
         alignment: Alignment.centerLeft,

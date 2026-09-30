@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:convert';
+import '../constants/legal_constants.dart';
 
 class UserService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -105,6 +106,10 @@ class UserService {
           'phone': '',
           'authProvider': authProvider,
           'emailVerified': user.emailVerified,
+          'termsVersionAccepted': LegalConstants.termsVersion,
+          'termsAcceptedAt': FieldValue.serverTimestamp(),
+          'privacyPolicyVersionAccepted': LegalConstants.privacyPolicyVersion,
+          'privacyPolicyAcceptedAt': FieldValue.serverTimestamp(),
         };
         
         try {
@@ -118,11 +123,41 @@ class UserService {
         return userData;
       } else {
         debugPrint('FIRESTORE DEBUG: existing user document found for ${user.uid}');
-        return docSnap.data() as Map<String, dynamic>?;
+        final existingData = docSnap.data() as Map<String, dynamic>?;
+        if (existingData != null && existingData['termsVersionAccepted'] == null) {
+          try {
+            await docRef.set({
+              'termsVersionAccepted': LegalConstants.termsVersion,
+              'termsAcceptedAt': FieldValue.serverTimestamp(),
+              'privacyPolicyVersionAccepted': LegalConstants.privacyPolicyVersion,
+              'privacyPolicyAcceptedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            debugPrint('FIRESTORE DEBUG: recorded legal acceptance for existing user ${user.uid}');
+          } catch (e) {
+            debugPrint('FIRESTORE WARNING: failed to record legal acceptance on existing user (non-blocking): $e');
+          }
+        }
+        return existingData;
       }
     } catch (e) {
       debugPrint('UserService: [FATAL ERROR] syncUser failed: $e');
       rethrow;
+    }
+  }
+
+  // Record acceptance of terms & conditions and privacy policy
+  Future<void> recordLegalAcceptance(String uid, {String? termsVersion, String? privacyVersion}) async {
+    try {
+      final docRef = _firestore.collection('users').doc(uid);
+      await docRef.set({
+        'termsVersionAccepted': termsVersion ?? LegalConstants.termsVersion,
+        'termsAcceptedAt': FieldValue.serverTimestamp(),
+        'privacyPolicyVersionAccepted': privacyVersion ?? LegalConstants.privacyPolicyVersion,
+        'privacyPolicyAcceptedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('UserService: [DEBUG] Legal acceptance recorded for UID: $uid');
+    } catch (e) {
+      debugPrint('UserService: [WARNING] Failed to record legal acceptance: $e');
     }
   }
 
