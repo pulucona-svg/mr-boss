@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:video_player/video_player.dart';
 import '../services/interstitial_ad_service.dart';
+import '../services/manual_ad_view_tracker.dart';
 
 /// Full-screen offline manual interstitial ad dialog.
 /// Displays server-synchronized ads with full adaptive image fitting and video playback support.
@@ -15,12 +16,14 @@ class ManualInterstitialAdDialog extends StatefulWidget {
   final VoidCallback onDismissed;
   final Map<String, dynamic>? adData;
   final bool isAppLaunch;
+  final bool isPreview;
 
   const ManualInterstitialAdDialog({
     super.key,
     required this.onDismissed,
     this.adData,
     this.isAppLaunch = false,
+    this.isPreview = false,
   });
 
   @override
@@ -62,6 +65,17 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
       _ad = (launchAd ?? InterstitialAdService().getNextManualAd()).toDialogData();
     } else {
       _ad = InterstitialAdService().getNextManualAd().toDialogData();
+    }
+
+    if (!widget.isPreview) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isDismissed) {
+          final id = _ad['id'] as String?;
+          if (id != null && id.isNotEmpty) {
+            ManualAdViewTracker().recordDisplay(id);
+          }
+        }
+      });
     }
 
     if (_isAppLaunch) {
@@ -168,6 +182,13 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
       _videoErrorMessage = null;
       _setupCurrentMedia();
     });
+
+    if (!widget.isPreview) {
+      final id = nextAd.id;
+      if (id.isNotEmpty) {
+        ManualAdViewTracker().recordDisplay(id);
+      }
+    }
 
     debugPrint('ManualInterstitialAdDialog: [IDLE_ADVANCE] Advanced in-place to next manual ad: "${_ad['title']}" (Stage $_currentIdleStage).');
   }

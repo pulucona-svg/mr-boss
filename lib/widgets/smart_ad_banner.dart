@@ -59,7 +59,7 @@ class _SmartAdBannerState extends State<SmartAdBanner> {
 
     try {
       _bannerAd = BannerAd(
-        adUnitId: 'ca-app-pub-3940256099942544/6300978111', // Test ID
+        adUnitId: 'ca-app-pub-6360381092649351/4257197329', // Production ID
         size: adSize,
         request: const AdRequest(),
         listener: BannerAdListener(

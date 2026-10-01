@@ -59,8 +59,9 @@ class PaystackService {
   factory PaystackService() => _instance;
   PaystackService._internal();
 
-  /// Public test key only (Safe client-side key)
-  static const String testPublicKey = 'pk_test_6854f5e50203a2df50087baa6df27d0349d7da66';
+  /// Live public key (Safe client-side key)
+  static const String livePublicKey = 'pk_live_0cce763dfa92cfac595d0d78d954897a2fe9b036';
+  static const String testPublicKey = livePublicKey;
 
   /// Minimum transaction threshold for card payments in Kenya on Paystack
   static const double minCardAmount = 100.0;

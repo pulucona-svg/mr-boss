@@ -48,6 +48,7 @@ export const getAdminManualAds = onCall(async (request) => {
         type: data.type || "image",
         placement: normalizedPlacement,
         mediaFileId: data.mediaFileId || data.fileId || null,
+        views: typeof data.views === "number" ? data.views : 0,
         createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : null,
         updatedAt: data.updatedAt ? data.updatedAt.toDate().toISOString() : null,
       };
@@ -129,6 +130,7 @@ export const saveAdminManualAd = onCall(async (request) => {
       await db.collection("manual_ads").doc(targetId).set(docData, {merge: true});
       logger.info(`[ADMIN_ADS_UPDATE] Admin "${request.auth?.uid}" updated ad "${targetId}".`);
     } else {
+      docData.views = 0;
       docData.createdAt = admin.firestore.FieldValue.serverTimestamp();
       const newDocRef = await db.collection("manual_ads").add(docData);
       targetId = newDocRef.id;
@@ -260,6 +262,7 @@ export const seedDefaultManualAds = onCall(async (request) => {
         colorValue: 0xFF20C8FF,
         isActive: true,
         isAsset: false,
+        views: 0,
         type: "image",
         placement: "interstitial",
       },
@@ -275,6 +278,7 @@ export const seedDefaultManualAds = onCall(async (request) => {
         colorValue: 0xFF00A85A,
         isActive: true,
         isAsset: false,
+        views: 0,
         type: "image",
         placement: "interstitial",
       },
@@ -290,6 +294,7 @@ export const seedDefaultManualAds = onCall(async (request) => {
         colorValue: 0xFFFF8A00,
         isActive: true,
         isAsset: false,
+        views: 0,
         type: "image",
         placement: "interstitial",
       },
@@ -317,5 +322,126 @@ export const seedDefaultManualAds = onCall(async (request) => {
     const message = err instanceof Error ? err.message : String(err);
     logger.error("[ADMIN_ADS_SEED_ERROR] Failed to seed default ads:", err);
     throw new HttpsError("internal", message || "Failed to seed default ads.");
+  }
+});
+
+/**
+ * CALLABLE FUNCTION: Synchronizes offline-recorded manual ad views to Firestore.
+ * 
+ * - Idempotency: Stores processed batch tokens in `ad_view_sync_batches/{batchId}`.
+ * - Atomic: Uses FieldValue.increment() on each valid `manual_ads/{adId}` document.
+ * - Validation: Enforces positive integer increments bounded between 1 and 50 per ad.
+ * - Resilience: Gracefully ignores missing or deleted ads without aborting the batch.
+ */
+export const syncManualAdViews = onCall(async (request) => {
+  const { batchId, deltas } = request.data || {};
+
+  if (!batchId || typeof batchId !== "string" || !batchId.trim()) {
+    throw new HttpsError("invalid-argument", "Missing or invalid batchId.");
+  }
+
+  if (!deltas || typeof deltas !== "object" || Array.isArray(deltas)) {
+    throw new HttpsError("invalid-argument", "deltas must be a valid key-value object of { adId: count }.");
+  }
+
+  const cleanBatchId = batchId.trim();
+  const db = admin.firestore();
+
+  // Validate deltas
+  const validatedDeltas: Record<string, number> = {};
+  for (const [adId, count] of Object.entries(deltas)) {
+    if (typeof adId !== "string" || !adId.trim()) continue;
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 1) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Invalid increment count for ad "${adId}". Must be a positive integer.`
+      );
+    }
+    if (count > 50) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Increment count for ad "${adId}" exceeds max batch threshold of 50.`
+      );
+    }
+    validatedDeltas[adId.trim()] = count;
+  }
+
+  const adIds = Object.keys(validatedDeltas);
+  if (adIds.length === 0) {
+    return { success: true, processedCount: 0, message: "No valid ad increments in batch." };
+  }
+
+  try {
+    const batchDocRef = db.collection("ad_view_sync_batches").doc(cleanBatchId);
+
+    // Atomically verify idempotency and apply increments
+    const result = await db.runTransaction(async (transaction) => {
+      const batchDoc = await transaction.get(batchDocRef);
+      if (batchDoc.exists) {
+        logger.info(`[SYNC_MANUAL_AD_VIEWS_DUPLICATE] Batch "${cleanBatchId}" was already processed.`);
+        return { duplicate: true, appliedIncrements: {}, skippedAds: [] };
+      }
+
+      // Check existence of ad documents to gracefully ignore deleted/non-existent ads
+      const adRefs = adIds.map((id) => db.collection("manual_ads").doc(id));
+      const adSnaps = await Promise.all(adRefs.map((ref) => transaction.get(ref)));
+
+      const appliedIncrements: Record<string, number> = {};
+      const skippedAds: string[] = [];
+
+      for (let i = 0; i < adRefs.length; i++) {
+        const ref = adRefs[i];
+        const snap = adSnaps[i];
+        const id = adIds[i];
+        const count = validatedDeltas[id];
+
+        if (snap.exists) {
+          transaction.update(ref, {
+            views: admin.firestore.FieldValue.increment(count),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          appliedIncrements[id] = count;
+        } else {
+          logger.warn(`[SYNC_MANUAL_AD_VIEWS_SKIP] Ad "${id}" not found in manual_ads collection. Skipping.`);
+          skippedAds.push(id);
+        }
+      }
+
+      // Mark batch as processed
+      transaction.set(batchDocRef, {
+        batchId: cleanBatchId,
+        callerUid: request.auth?.uid || "unauthenticated",
+        appliedIncrements,
+        skippedAds,
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { duplicate: false, appliedIncrements, skippedAds };
+    });
+
+    if (result.duplicate) {
+      return {
+        success: true,
+        duplicate: true,
+        message: "Batch already processed.",
+      };
+    }
+
+    logger.info(
+      `[SYNC_MANUAL_AD_VIEWS_SUCCESS] Processed batch "${cleanBatchId}". Incremented ${Object.keys(result.appliedIncrements).length} ads.`
+    );
+
+    return {
+      success: true,
+      duplicate: false,
+      batchId: cleanBatchId,
+      applied: result.appliedIncrements,
+      skipped: result.skippedAds,
+    };
+  } catch (err: unknown) {
+    if (err instanceof HttpsError) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(`[SYNC_MANUAL_AD_VIEWS_ERROR] Failed batch "${cleanBatchId}":`, err);
+    throw new HttpsError("internal", message || "Failed to synchronize ad views.");
   }
 });

@@ -117,6 +117,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /ad_view_sync_batches/{batchId} {
+      allow read, write: if false; // Only accessible via server Firebase Admin SDK
+    }
+
     // ===============================================================
     // Explore & News Feeds
     // ===============================================================

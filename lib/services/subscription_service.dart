@@ -304,7 +304,7 @@ class SubscriptionService extends ChangeNotifier {
     _isAdLoading = true;
 
     RewardedAd.load(
-      adUnitId: 'ca-app-pub-3940256099942544/5224354917', // Test ID
+      adUnitId: 'ca-app-pub-6360381092649351/9633647084', // Production ID
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {

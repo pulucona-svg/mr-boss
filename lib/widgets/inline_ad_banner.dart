@@ -24,7 +24,7 @@ class _InlineAdBannerState extends State<InlineAdBanner> {
     // Only load AdMob if online and NOT subscribed
     if (!ConnectivityService().isOffline && !SubscriptionService().isSubscribed) {
       _bannerAd = BannerAd(
-        adUnitId: 'ca-app-pub-3940256099942544/6300978111', // Test ID
+        adUnitId: 'ca-app-pub-6360381092649351/4257197329', // Production ID
         size: AdSize.banner,
         request: const AdRequest(),
         listener: BannerAdListener(

@@ -24,8 +24,17 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
   /// (e.g. offline manual ads) from any active screen in the app.
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-  /// Official Google Mobile Ads test interstitial ad unit ID for Android.
+  /// Official Google Mobile Ads test interstitial ad unit ID for Android (retained for test fixture compatibility).
   static const String testAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
+
+  /// Official Google Mobile Ads production interstitial ad unit ID for Android.
+  static const String productionAdUnitId = 'ca-app-pub-6360381092649351/6324209033';
+
+  /// Active runtime ad unit ID (defaults strictly to production).
+  String _adUnitId = productionAdUnitId;
+  String get adUnitId => _adUnitId;
+  @visibleForTesting
+  set adUnitIdForTesting(String value) => _adUnitId = value;
 
   /// Default active session interval: exactly 5 minutes (reduced from 15 minutes).
   static const Duration defaultSessionInterval = Duration(minutes: 5);
@@ -520,7 +529,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     _startTimer();
     _loadInterstitialAd();
 
-    debugPrint('InterstitialAdService: [INTERSTITIAL_SESSION_STARTED] Active session timer started. Interval: ${_sessionInterval.inMinutes} minutes (${_sessionInterval.inSeconds}s). Ad Unit: $testAdUnitId');
+    debugPrint('InterstitialAdService: [INTERSTITIAL_SESSION_STARTED] Active session timer started. Interval: ${_sessionInterval.inMinutes} minutes (${_sessionInterval.inSeconds}s). Ad Unit: $_adUnitId');
   }
 
   /// Starts or resumes the active foreground session timer.
@@ -579,16 +588,16 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     if (_isLoading || _interstitialAd != null) return;
     _isLoading = true;
 
-    debugPrint('InterstitialAdService: [INTERSTITIAL_LOADING] Preloading Google test interstitial ad ($testAdUnitId)...');
+    debugPrint('InterstitialAdService: [INTERSTITIAL_LOADING] Preloading Google interstitial ad ($_adUnitId)...');
 
     InterstitialAd.load(
-      adUnitId: testAdUnitId,
+      adUnitId: _adUnitId,
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _interstitialAd = ad;
           _isLoading = false;
-          debugPrint('InterstitialAdService: [INTERSTITIAL_LOADED] AdMob test interstitial ad loaded successfully. Unit ID: $testAdUnitId');
+          debugPrint('InterstitialAdService: [INTERSTITIAL_LOADED] AdMob interstitial ad loaded successfully. Unit ID: $_adUnitId');
 
           // If session became eligible while waiting for ad to load, show it now
           if (_isEligible && !isFullScreenAdShowing) {
@@ -598,7 +607,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
         onAdFailedToLoad: (error) {
           _interstitialAd = null;
           _isLoading = false;
-          debugPrint('InterstitialAdService: [INTERSTITIAL_LOAD_FAILED] AdMob test interstitial failed to load: ${error.message} (code: ${error.code})');
+          debugPrint('InterstitialAdService: [INTERSTITIAL_LOAD_FAILED] AdMob interstitial failed to load: ${error.message} (code: ${error.code})');
           // Retry after a safe non-aggressive delay
           Future.delayed(const Duration(seconds: 30), () {
             if (_interstitialAd == null && !_isLoading) {
@@ -617,7 +626,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     _isLoadingNextAd = true;
 
     InterstitialAd.load(
-      adUnitId: testAdUnitId,
+      adUnitId: _adUnitId,
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
@@ -921,5 +930,6 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     manualIdleDelayOverrideForTesting = null;
     onlineIdleDelayOverrideForTesting = null;
     offlineManualAdPresenterForTesting = null;
+    _adUnitId = productionAdUnitId;
   }
 }

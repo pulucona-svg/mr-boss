@@ -34,6 +34,7 @@ import 'services/launch_ad_service.dart';
 import 'services/app_open_ad_manager.dart';
 import 'services/paystack_service.dart';
 import 'services/notification_service.dart';
+import 'services/manual_ad_view_tracker.dart';
 import 'providers/providers.dart';
 
 void main() async {
@@ -81,6 +82,7 @@ Future<void> _initServices() async {
       OfflineUploadQueueService().initialize(),
       PaystackService().init(),
       NotificationService().init(),
+      ManualAdViewTracker().initialize(),
     ]);
 
     InterstitialAdService().initialize();

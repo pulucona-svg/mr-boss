@@ -6,6 +6,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/interstitial_ad_service.dart';
+import '../services/manual_ad_view_tracker.dart';
 
 class AdCarousel extends StatefulWidget {
   final List<Map<String, dynamic>>? ads;
@@ -31,6 +32,8 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
   Timer? _timer;
 
   late List<Map<String, dynamic>> _ads;
+  String? _lastRecordedAdId;
+  DateTime? _lastRecordedTime;
 
   @override
   void initState() {
@@ -51,8 +54,30 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
     _cometController.forward();
     _initVideo();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _preCacheAll();
+      if (mounted) {
+        _preCacheAll();
+        _recordCurrentAdView();
+      }
     });
+  }
+
+  void _recordCurrentAdView() {
+    if (_ads.isEmpty) return;
+    final safeIndex = _currentIndex % _ads.length;
+    final ad = _ads[safeIndex];
+    final adId = (ad['id'] as String?)?.trim();
+    if (adId == null || adId.isEmpty) return;
+
+    final now = DateTime.now();
+    if (_lastRecordedAdId == adId &&
+        _lastRecordedTime != null &&
+        now.difference(_lastRecordedTime!).inMilliseconds < 1500) {
+      return;
+    }
+
+    _lastRecordedAdId = adId;
+    _lastRecordedTime = now;
+    ManualAdViewTracker().recordDisplay(adId);
   }
 
   void _onAdServiceChanged() {
@@ -67,6 +92,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         _initVideo();
         _preCacheAll();
       });
+      _recordCurrentAdView();
     }
   }
 
@@ -108,6 +134,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
         _initVideo();
         _preCacheAll();
       });
+      _recordCurrentAdView();
     }
   }
 
@@ -246,6 +273,7 @@ class _AdCarouselState extends State<AdCarousel> with SingleTickerProviderStateM
               _initVideo();
               _cometController.forward(from: 0.0);
             });
+            _recordCurrentAdView();
           },
           itemBuilder: (context, index) {
             final ad = _ads[index % _ads.length];

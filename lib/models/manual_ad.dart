@@ -14,6 +14,7 @@ class ManualAd {
   final String type;
   final String placement; // 'interstitial' | 'carousel'
   final String? mediaFileId;
+  final int views;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -29,6 +30,7 @@ class ManualAd {
     this.type = 'image',
     String placement = 'interstitial',
     this.mediaFileId,
+    this.views = 0,
     this.createdAt,
     this.updatedAt,
   }) : placement = (placement.toLowerCase().trim() == 'app_launch' ||
@@ -54,6 +56,7 @@ class ManualAd {
     String? type,
     String? placement,
     String? mediaFileId,
+    int? views,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -69,6 +72,7 @@ class ManualAd {
       type: type ?? this.type,
       placement: placement ?? this.placement,
       mediaFileId: mediaFileId ?? this.mediaFileId,
+      views: views ?? this.views,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -87,6 +91,7 @@ class ManualAd {
       'isAsset': isAsset,
       'type': type,
       'placement': isAppLaunch ? 'app_launch' : placement,
+      'views': views,
       if (mediaFileId != null) 'mediaFileId': mediaFileId,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -106,6 +111,7 @@ class ManualAd {
       'isAsset': isAsset,
       'type': type,
       'placement': isAppLaunch ? 'app_launch' : placement,
+      'views': views,
       if (mediaFileId != null) 'mediaFileId': mediaFileId,
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
@@ -125,6 +131,7 @@ class ManualAd {
       'placement': isAppLaunch ? 'app_launch' : placement,
       'isAsset': isAsset,
       'isAppLaunch': isAppLaunch,
+      'views': views,
     };
   }
 
@@ -180,6 +187,7 @@ class ManualAd {
       type: map['type'] as String? ?? 'image',
       placement: placement,
       mediaFileId: (map['mediaFileId'] as String?) ?? (map['fileId'] as String?),
+      views: (map['views'] as num?)?.toInt() ?? 0,
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt']),
     );
@@ -196,6 +204,7 @@ class ManualAd {
     colorValue: 0xFF20C8FF,
     isActive: true,
     isAsset: true,
+    views: 0,
     type: 'image',
     placement: 'interstitial',
   );

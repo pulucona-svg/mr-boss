@@ -471,6 +471,7 @@ export {
   toggleAdminManualAdStatus,
   deleteAdminManualAd,
   seedDefaultManualAds,
+  syncManualAdViews,
 } from "./admin/admin_ads";
 export {
   createAdminArticle,

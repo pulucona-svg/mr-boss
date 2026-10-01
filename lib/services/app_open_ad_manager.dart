@@ -32,11 +32,14 @@ class AppOpenAdManager {
   /// Maximum number of preloaded App Open Ads held in the cache pool.
   static const int maxPoolSize = 3;
 
-  /// Official Google Mobile Ads test App Open ad unit ID for Android.
+  /// Official Google Mobile Ads test App Open ad unit ID for Android (retained for test isolation).
   static const String testAdUnitId = 'ca-app-pub-3940256099942544/9257395921';
 
-  /// Configurable ad unit ID for production transition without code refactoring.
-  String _adUnitId = testAdUnitId;
+  /// Official Google Mobile Ads production App Open ad unit ID for Android.
+  static const String productionAdUnitId = 'ca-app-pub-6360381092649351/3180928539';
+
+  /// Configurable ad unit ID for runtime operation (defaults strictly to production).
+  String _adUnitId = productionAdUnitId;
   String get adUnitId => _adUnitId;
   set adUnitId(String value) {
     if (value.isNotEmpty) _adUnitId = value;
@@ -433,7 +436,7 @@ class AppOpenAdManager {
     }
     _loadCompleter = null;
     _isShowingAd = false;
-    _adUnitId = testAdUnitId;
+    _adUnitId = productionAdUnitId;
     skipAdLoadingForTesting = false;
     showAdOverrideForTesting = null;
     waitForAdOverrideForTesting = null;

@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:video_player/video_player.dart';
 import '../../models/manual_ad.dart';
@@ -26,11 +29,49 @@ class _ManualAdsAdminScreenState extends State<ManualAdsAdminScreen> {
   List<ManualAd> _ads = [];
   bool _isLoading = true;
   String? _errorMessage;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _adsSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadAds();
+    _initLiveSnapshotListener();
+  }
+
+  void _initLiveSnapshotListener() {
+    _adsSubscription = FirebaseFirestore.instance.collection('manual_ads').snapshots().listen(
+      (snapshot) {
+        if (!mounted || _isLoading) return;
+        bool hasChanges = false;
+        final updatedList = List<ManualAd>.from(_ads);
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          final id = doc.id;
+          final idx = updatedList.indexWhere((a) => a.id == id);
+          if (idx != -1) {
+            final newViews = (data['views'] as num?)?.toInt() ?? 0;
+            if (updatedList[idx].views != newViews) {
+              updatedList[idx] = updatedList[idx].copyWith(views: newViews);
+              hasChanges = true;
+            }
+          }
+        }
+        if (hasChanges && mounted) {
+          setState(() {
+            _ads = updatedList;
+          });
+        }
+      },
+      onError: (e) {
+        debugPrint('ManualAdsAdminScreen: Snapshot listener notice: $e');
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _adsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadAds({bool forceRefresh = false}) async {
@@ -219,6 +260,7 @@ class _ManualAdsAdminScreenState extends State<ManualAdsAdminScreen> {
       pageBuilder: (dialogContext, anim1, anim2) {
         return ManualInterstitialAdDialog(
           adData: ad.toDialogData(),
+          isPreview: true,
           onDismissed: () {},
         );
       },
@@ -462,13 +504,19 @@ class _ManualAdsAdminScreenState extends State<ManualAdsAdminScreen> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: _ads.length,
-      itemBuilder: (context, index) {
-        final ad = _ads[index];
-        return _buildAdCard(ad);
-      },
+    return RefreshIndicator(
+      color: const Color(0xFF20C8FF),
+      backgroundColor: const Color(0xFF141228),
+      onRefresh: () => _loadAds(forceRefresh: true),
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        itemCount: _ads.length,
+        itemBuilder: (context, index) {
+          final ad = _ads[index];
+          return _buildAdCard(ad);
+        },
+      ),
     );
   }
 
@@ -723,52 +771,131 @@ class _ManualAdsAdminScreenState extends State<ManualAdsAdminScreen> {
 
                 // Actions Row
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Active/Inactive Toggle
-                    Row(
-                      children: [
-                        Transform.scale(
-                          scale: 0.8,
-                          child: Switch(
-                            value: isActive,
-                            activeThumbColor: const Color(0xFF00E676),
-                            activeTrackColor: const Color(0xFF00E676).withValues(alpha: 0.4),
-                            inactiveThumbColor: Colors.white38,
-                            inactiveTrackColor: Colors.white12,
-                            onChanged: (val) => _toggleStatus(ad, val),
+                    // Active/Inactive Toggle (Left Side)
+                    Flexible(
+                      flex: 3,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            height: 24,
+                            width: 34,
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: Switch(
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                value: isActive,
+                                activeThumbColor: const Color(0xFF00E676),
+                                activeTrackColor: const Color(0xFF00E676).withValues(alpha: 0.4),
+                                inactiveThumbColor: Colors.white38,
+                                inactiveTrackColor: Colors.white12,
+                                onChanged: (val) => _toggleStatus(ad, val),
+                              ),
+                            ),
                           ),
-                        ),
-                        Text(
-                          isActive ? 'Active' : 'Inactive',
-                          style: TextStyle(
-                            color: isActive ? Colors.white : Colors.white38,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                isActive ? 'Active' : 'Inactive',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-
-                    // Preview Button
-                    IconButton(
-                      icon: const Icon(Icons.remove_red_eye_outlined, color: Color(0xFF20C8FF), size: 20),
-                      tooltip: 'Live Preview',
-                      onPressed: () => _previewAd(ad),
+                        ],
+                      ),
                     ),
 
-                    // Edit Button
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 20),
-                      tooltip: 'Edit Ad',
-                      onPressed: () => _openAdEditor(ad),
-                    ),
+                    const SizedBox(width: 4),
 
-                    // Delete Button
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                      tooltip: 'Delete Ad',
-                      onPressed: () => _confirmDelete(ad),
+                    // Right Side: Views + Preview + Edit + Delete
+                    Flexible(
+                      flex: 7,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Views Count Control (Immediately to the LEFT of the Preview Button)
+                          Flexible(
+                            child: Tooltip(
+                              message: 'Total Views: ${NumberFormat.decimalPattern().format(ad.views)}',
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 3),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF20C8FF).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF20C8FF).withValues(alpha: 0.30)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.visibility_outlined, color: Color(0xFF20C8FF), size: 14),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'Views ${ad.views >= 100000 ? NumberFormat.compact().format(ad.views) : NumberFormat.decimalPattern().format(ad.views)}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Preview Button
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            icon: const Icon(Icons.remove_red_eye_outlined, color: Color(0xFF20C8FF), size: 18),
+                            tooltip: 'Live Preview',
+                            onPressed: () => _previewAd(ad),
+                          ),
+
+                          // Edit Button
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 18),
+                            tooltip: 'Edit Ad',
+                            onPressed: () => _openAdEditor(ad),
+                          ),
+
+                          // Delete Button
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
+                            tooltip: 'Delete Ad',
+                            onPressed: () => _confirmDelete(ad),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
