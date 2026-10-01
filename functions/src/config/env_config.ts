@@ -78,6 +78,11 @@ export class EnvConfig {
       const suffix = trimmed.slice(-4);
       return `${prefix}************${suffix}`;
     }
+    if (trimmed.startsWith("cfut_")) {
+      const prefix = trimmed.slice(0, 9);
+      const suffix = trimmed.slice(-4);
+      return `${prefix}************${suffix}`;
+    }
 
     return `${trimmed.slice(0, 4)}************${trimmed.slice(-4)}`;
   }
@@ -104,6 +109,80 @@ export class EnvConfig {
   }
 
   /**
+   * Retrieves the configured Cloudflare Account ID for Workers AI.
+   */
+  public static getCloudflareAccountId(): string {
+    return (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  }
+
+  /**
+   * Retrieves the configured Flux model name for Cloudflare Workers AI.
+   */
+  public static getFluxModel(): string {
+    return (process.env.FLUX_MODEL || "@cf/black-forest-labs/flux-2-dev").trim();
+  }
+
+  /**
+   * Retrieves configuration for all 4 Flux workers from environment variables.
+   * Backward-compatible with single-worker legacy env variables (CLOUDFLARE_ACCOUNT_ID, FLUX_API_KEY).
+   */
+  public static getFluxWorkerConfigs(): Array<{
+    workerId: string;
+    accountId: string;
+    apiKey: string;
+    model: string;
+  }> {
+    const defaultModel = this.getFluxModel();
+    const workers: Array<{
+      workerId: string;
+      accountId: string;
+      apiKey: string;
+      model: string;
+    }> = [];
+
+    // Worker 1: Supports FLUX_WORKER_1_* and falls back to legacy CLOUDFLARE_ACCOUNT_ID / FLUX_API_KEY
+    const w1Account = (process.env.FLUX_WORKER_1_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+    const w1Key = (process.env.FLUX_WORKER_1_API_KEY || process.env.FLUX_API_KEY || "").trim();
+    if (w1Account && w1Key) {
+      workers.push({
+        workerId: "flux-worker-1",
+        accountId: w1Account,
+        apiKey: w1Key,
+        model: defaultModel,
+      });
+    }
+
+    // Workers 2, 3, 4
+    for (let i = 2; i <= 4; i++) {
+      const acc = (process.env[`FLUX_WORKER_${i}_ACCOUNT_ID`] || "").trim();
+      const key = (process.env[`FLUX_WORKER_${i}_API_KEY`] || "").trim();
+      if (acc && key) {
+        workers.push({
+          workerId: `flux-worker-${i}`,
+          accountId: acc,
+          apiKey: key,
+          model: defaultModel,
+        });
+      }
+    }
+
+    return workers;
+  }
+
+  /**
+   * Retrieves specific Flux worker configuration by workerId (e.g. "flux-worker-2").
+   */
+  public static getFluxWorkerConfig(workerId: string): {
+    workerId: string;
+    accountId: string;
+    apiKey: string;
+    model: string;
+  } | null {
+    const all = this.getFluxWorkerConfigs();
+    return all.find((w) => w.workerId === workerId) || null;
+  }
+
+  /**
    * Generates a safe, non-sensitive identifier for an API key.
    * e.g. "gemini_key_01", "openai_key_02".
    */
@@ -126,6 +205,10 @@ export class EnvConfig {
   public static getApiKeys(providerName: string): string[] {
     const name = (providerName || "").toLowerCase().trim();
     switch (name) {
+      case "flux": {
+        const raw = process.env.FLUX_API_KEYS || process.env.FLUX_API_KEY || "";
+        return this.parseKeyPool(raw);
+      }
       case "kimi": {
         const raw = process.env.KIMI_API_KEYS || process.env.KIMI_API_KEY || "";
         const keys = this.parseKeyPool(raw);

@@ -118,7 +118,7 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
     final themeMode = ref.watch(themeProvider);
 
     return MaterialApp(
-      title: 'Mirror Laikipia',
+      title: 'Mirror Digital',
       debugShowCheckedModeBanner: false,
       navigatorKey: InterstitialAdService.navigatorKey,
       scaffoldMessengerKey: ConnectivityService().messengerKey,

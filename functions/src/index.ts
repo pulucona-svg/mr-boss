@@ -195,6 +195,7 @@ export const onMaterialCreatedSearchThumbnail = onDocumentCreated(
         db,
         ik,
         {
+          resourceId,
           title,
           description,
           courseCode,
@@ -207,8 +208,12 @@ export const onMaterialCreatedSearchThumbnail = onDocumentCreated(
       if (result.success && result.imageKitUrl) {
         await db.collection("resources").doc(resourceId).update({
           thumbnailUrl: result.imageKitUrl,
+          thumbnailId: result.imageKitFileId || "",
+          thumbnailStatus: "completed",
         });
         logger.info(`[THUMBNAIL_TRIGGER_SUCCESS] Resource "${resourceId}" attached thumbnail: ${result.imageKitUrl}`);
+      } else if (result.retryScheduled) {
+        logger.info(`[THUMBNAIL_TRIGGER_RETRY_SCHEDULED] Resource "${resourceId}" temporary Flux error. Retry scheduled for ${result.nextRetryAt?.toISOString()} (Attempt: ${result.attemptCount})`);
       } else {
         logger.warn(`[THUMBNAIL_TRIGGER_WARN] Failed thumbnail search for resource "${resourceId}": ${result.error}`);
       }
@@ -222,7 +227,7 @@ export const onMaterialCreatedSearchThumbnail = onDocumentCreated(
  * CALLABLE FUNCTION: Manually trigger thumbnail search for an existing resource
  */
 export const searchMaterialThumbnail = onCall(async (request) => {
-  const { resourceId } = request.data || {};
+  const { resourceId, forcedProvider } = request.data || {};
   if (!resourceId || typeof resourceId !== "string") {
     throw new HttpsError("invalid-argument", "Missing required parameter: resourceId");
   }
@@ -247,18 +252,22 @@ export const searchMaterialThumbnail = onCall(async (request) => {
       db,
       ik,
       {
+        resourceId,
         title,
         description,
         courseCode,
         materialType,
         topic,
         targetPrograms,
-      }
+      },
+      forcedProvider
     );
 
     if (result.success && result.imageKitUrl) {
       await docRef.update({
         thumbnailUrl: result.imageKitUrl,
+        thumbnailId: result.imageKitFileId || "",
+        thumbnailStatus: "completed",
       });
     }
 
@@ -270,7 +279,8 @@ export const searchMaterialThumbnail = onCall(async (request) => {
 });
 
 /**
- * CALLABLE FUNCTION: Directly generate a Gemini thumbnail from metadata for client uploads
+ * CALLABLE FUNCTION: Directly generate a thumbnail from metadata for client uploads
+ * Defaults to multi-provider sequence (Flux.2 Dev -> Gemini), or accepts optional forcedProvider.
  */
 export const searchThumbnailWithGemini = onCall(async (request) => {
   const data = request.data || {};
@@ -278,6 +288,7 @@ export const searchThumbnailWithGemini = onCall(async (request) => {
   const materialType = data.materialType || data.type || "Notes";
   const courseCode = data.unitCode || data.courseCode || data.catType || "";
   const topic = data.topic || data.description || data.catType || unitName;
+  const forcedProvider = data.forcedProvider as ("flux" | "gemini" | undefined);
 
   if (!unitName || typeof unitName !== "string") {
     throw new HttpsError("invalid-argument", "Missing required parameter: unitName");
@@ -294,7 +305,8 @@ export const searchThumbnailWithGemini = onCall(async (request) => {
         courseCode,
         topic,
         description: data.description || "",
-      }
+      },
+      forcedProvider
     );
 
     return {
@@ -303,10 +315,11 @@ export const searchThumbnailWithGemini = onCall(async (request) => {
       thumbnailId: result.imageKitFileId,
       imageHash: result.imageHash,
       modelUsed: result.modelUsed,
+      provider: result.provider,
       error: result.error,
     };
   } catch (err: any) {
-    logger.error("[CALLABLE_THUMBNAIL_ERROR] Failed to generate thumbnail with Gemini:", err);
+    logger.error("[CALLABLE_THUMBNAIL_ERROR] Failed to generate thumbnail:", err);
     throw new HttpsError("internal", err.message || "Failed to generate thumbnail.");
   }
 });
@@ -408,6 +421,25 @@ export const scheduledNewsCapacityCheck = onSchedule(
   async () => {
     const categories = await CanonicalExploreService.enabledCategories(db);
     await Promise.all(categories.map((category) => CanonicalExploreService.enforceRetention(db, category.categoryId, category.retentionLimit)));
+  }
+);
+
+/**
+ * SCHEDULED THUMBNAIL RETRY PROCESSOR:
+ * Runs every 5 minutes to scan for pending academic resource thumbnails that experienced
+ * transient Flux capacity/rate-limit errors and retry them with exponential backoff.
+ */
+export const scheduledThumbnailRetryProcessor = onSchedule(
+  { schedule: "every 5 minutes", region: "us-central1", timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    logger.info("[THUMBNAIL_RETRY_CRON] Executing scheduled thumbnail retry processor...");
+    try {
+      const ik = getImageKit();
+      const processedCount = await ThumbnailSearchService.processPendingRetries(db, ik);
+      logger.info(`[THUMBNAIL_RETRY_CRON] Completed pending retry cycle. Processed ${processedCount} resources.`);
+    } catch (err: any) {
+      logger.error("[THUMBNAIL_RETRY_CRON_ERROR] Failed during retry processor execution:", err);
+    }
   }
 );
 
