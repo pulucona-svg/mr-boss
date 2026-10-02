@@ -138,6 +138,7 @@ flutter:
     - assets/payment/mpesa.svg
     - assets/payment/airtel.svg
     - assets/payment/mastercard.svg
+    - shorebird.yaml
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
