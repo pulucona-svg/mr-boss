@@ -907,6 +907,52 @@ async function runTests() {
     assert(content.includes("timetable"), "Timetable service must remain dedicated to timetable documents");
   });
 
+  // Test 12: Natural Editorial Photographic Prompt Realism & Visual Variety
+  test("Pool Test 12: Photographic prompt realism & visual variety across similar courses", () => {
+    // 5 similar pairs
+    const pairs = [
+      {
+        unitA: { courseCode: "COMP 101", title: "Introduction to Programming in Python", materialType: "Notes", topic: "Control Structures and Functions" },
+        unitB: { courseCode: "COMP 102", title: "Object Oriented Programming in Java", materialType: "Notes", topic: "Classes, Objects and Polymorphism" }
+      },
+      {
+        unitA: { courseCode: "BICT 321", title: "Network Security and Cryptography", materialType: "Notes", topic: "Public Key Encryption and Firewalls" },
+        unitB: { courseCode: "COMP 325", title: "Wireless Networks and Telecommunications", materialType: "Notes", topic: "Cellular Systems and Antennas" }
+      },
+      {
+        unitA: { courseCode: "ECON 101", title: "Introduction to Microeconomics", materialType: "Notes", topic: "Supply, Demand and Market Equilibrium" },
+        unitB: { courseCode: "ECON 102", title: "Introduction to Macroeconomics", materialType: "Notes", topic: "GDP, Inflation and Monetary Policy" }
+      },
+      {
+        unitA: { courseCode: "MATH 211", title: "Linear Algebra", materialType: "Notes", topic: "Vector Spaces and Eigenvalues" },
+        unitB: { courseCode: "MATH 212", title: "Multivariable Calculus", materialType: "Notes", topic: "Multiple Integrals and Vector Fields" }
+      },
+      {
+        unitA: { courseCode: "NURS 201", title: "Fundamentals of Nursing Practice", materialType: "Notes", topic: "Patient Vital Signs and Bedside Care" },
+        unitB: { courseCode: "ANAT 202", title: "Human Anatomy and Physiology", materialType: "Notes", topic: "Musculoskeletal and Circulatory Systems" }
+      }
+    ];
+
+    for (const pair of pairs) {
+      const pA = ThumbnailSearchService.buildImagePrompt(pair.unitA);
+      const pB = ThumbnailSearchService.buildImagePrompt(pair.unitB);
+
+      // Verify photographic realism, absence of AI-art tropes
+      assert(pA.includes("Authentic professional editorial photography"), "Must specify editorial photography");
+      assert(pB.includes("Authentic professional editorial photography"), "Must specify editorial photography");
+      assert(!pA.includes("3D scientific visualization"), "Must not promote 3D scientific visualization");
+      assert(!pB.includes("3D scientific visualization"), "Must not promote 3D scientific visualization");
+      assert(!pA.includes("luminous data pathways"), "Must not contain luminous data pathways");
+      assert(!pB.includes("luminous data pathways"), "Must not contain luminous data pathways");
+
+      // Verify meaningful scene and prompt distinctness
+      const sceneA = pA.match(/\[VISUAL SCENE & OBJECTS\]:\s*([^\n]+)/)[1];
+      const sceneB = pB.match(/\[VISUAL SCENE & OBJECTS\]:\s*([^\n]+)/)[1];
+      assert.notStrictEqual(sceneA, sceneB, "Scenes must be visually distinct between similar units");
+      assert.notStrictEqual(pA, pB, "Full prompts must be distinct between similar units");
+    }
+  });
+
   console.log(`\n========================================`);
   console.log(`TEST SUMMARY: ${passed} passed, ${failed} failed`);
   console.log(`========================================\n`);
