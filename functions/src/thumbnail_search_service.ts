@@ -26,6 +26,7 @@ export interface MaterialMetadata {
   topic?: string;
   category?: string;
   targetPrograms?: string | string[];
+  isImportedDSpace?: boolean;
 }
 
 export interface ThumbnailSearchResult {
@@ -95,9 +96,10 @@ export class ThumbnailSearchService {
 
     const currentAttempt = meta.attemptCount || 1;
     const MAX_FLUX_ATTEMPTS = 4;
+    let isImportedDSpace = meta.isImportedDSpace === true;
 
     logger.info(
-      `[AI_THUMBNAIL_START] Generating metadata-driven thumbnail for Title="${cleanTitle}", Course="${cleanCode}", Type="${cleanType}", Topic="${cleanTopic.slice(0, 60)}" (Attempt ${currentAttempt})`
+      `[AI_THUMBNAIL_START] Generating metadata-driven thumbnail for Title="${cleanTitle}", Course="${cleanCode}", Type="${cleanType}", Topic="${cleanTopic.slice(0, 60)}" (Attempt ${currentAttempt}, isImportedDSpace=${isImportedDSpace})`
     );
 
     // Concurrency lease lock & Idempotency check if resourceId is provided
@@ -106,6 +108,9 @@ export class ThumbnailSearchService {
       const snap = await docRef.get();
       if (snap.exists) {
         const d = snap.data() || {};
+        if (d.isImportedDSpace === true) {
+          isImportedDSpace = true;
+        }
         if (d.thumbnailUrl && d.thumbnailUrl.trim().length > 0) {
           logger.info(`[THUMBNAIL_IDEMPOTENT_SKIP] Resource "${meta.resourceId}" already has a completed thumbnail. Skipping.`);
           return {
@@ -159,7 +164,7 @@ export class ThumbnailSearchService {
 
       let lastError: Error | null = null;
       let runFlux = forcedProvider !== "gemini";
-      let runGemini = forcedProvider !== "flux";
+      let runGemini = isImportedDSpace ? false : (forcedProvider !== "flux");
 
       // --- PRIMARY PROVIDER: FLUX.2 DEV (4-WORKER POOL) ---
       if (runFlux) {
@@ -271,25 +276,27 @@ export class ThumbnailSearchService {
             }
 
             // If still not generated and retryable, schedule retry without calling Gemini
+            const canRetry = isImportedDSpace
+              ? isRetryable
+              : (isRetryable && currentAttempt < MAX_FLUX_ATTEMPTS && forcedProvider !== "flux");
+
             if (
               !generated &&
-              isRetryable &&
-              currentAttempt < MAX_FLUX_ATTEMPTS &&
-              meta.resourceId &&
-              forcedProvider !== "flux"
+              canRetry &&
+              meta.resourceId
             ) {
               const backoffMs = this.calculateBackoffMs(currentAttempt);
               const nextRetryDate = new Date(Date.now() + backoffMs);
 
               logger.warn(
-                `[FLUX_CAPACITY_RETRY_SCHEDULED] Resource "${meta.resourceId}" scheduled for Flux retry attempt ${currentAttempt + 1} at ${nextRetryDate.toISOString()} due to worker error: ${err.message}`
+                `[FLUX_CAPACITY_RETRY_SCHEDULED] Resource "${meta.resourceId}" (isImportedDSpace=${isImportedDSpace}) scheduled for Flux retry attempt ${currentAttempt + 1} at ${nextRetryDate.toISOString()} due to worker error: ${err.message}`
               );
 
               await db.collection("resources").doc(meta.resourceId).update({
                 thumbnailStatus: "pending",
                 thumbnailGeneration: {
                   attemptCount: currentAttempt,
-                  maxAttempts: MAX_FLUX_ATTEMPTS,
+                  maxAttempts: isImportedDSpace ? 999999 : MAX_FLUX_ATTEMPTS,
                   provider: "flux",
                   workerId: reservedWorker.workerId,
                   lastError: err.message,
@@ -311,7 +318,7 @@ export class ThumbnailSearchService {
             }
 
             logger.info(
-              `[FLUX_EXHAUSTED_OR_FATAL] Flux attempt ${currentAttempt}/${MAX_FLUX_ATTEMPTS} failed (retryable=${isRetryable}). Falling back to secondary provider (Gemini)...`
+              `[FLUX_EXHAUSTED_OR_FATAL] Flux attempt ${currentAttempt}/${MAX_FLUX_ATTEMPTS} failed (retryable=${isRetryable}, isImportedDSpace=${isImportedDSpace}). Falling back to secondary provider (Gemini)...`
             );
           }
         } else {
@@ -325,7 +332,7 @@ export class ThumbnailSearchService {
             logger.error(
               `[FLUX_POOL_ALL_DISABLED] All Flux workers are disabled. Proceeding to Gemini fallback.`
             );
-          } else if (meta.resourceId && forcedProvider !== "flux") {
+          } else if (meta.resourceId && (isImportedDSpace || forcedProvider !== "flux")) {
             const retryDelayMs = poolStatus.earliestCooldown
               ? Math.max(30000, poolStatus.earliestCooldown.getTime() - Date.now())
               : 60000;
@@ -335,7 +342,7 @@ export class ThumbnailSearchService {
               thumbnailStatus: "pending",
               thumbnailGeneration: {
                 attemptCount: currentAttempt,
-                maxAttempts: MAX_FLUX_ATTEMPTS,
+                maxAttempts: isImportedDSpace ? 999999 : MAX_FLUX_ATTEMPTS,
                 provider: "flux",
                 lastError: "All 4 Flux workers are currently busy or in cooldown",
                 isRetryable: true,
@@ -383,12 +390,35 @@ export class ThumbnailSearchService {
       if (!generated) {
         logger.error(`[AI_THUMBNAIL_ALL_PROVIDERS_FAILED] All thumbnail providers failed for "${cleanTitle}".`);
         if (meta.resourceId) {
-          await db.collection("resources").doc(meta.resourceId).update({
-            thumbnailStatus: "pending",
-            "thumbnailGeneration.lockedUntil": null,
-            "thumbnailGeneration.lastError": lastError?.message || "All image thumbnail providers failed",
-            "thumbnailGeneration.isRetryable": false,
-          });
+          if (isImportedDSpace) {
+            // For DSpace resources, do NOT mark as permanently unretryable!
+            // Keep thumbnailStatus = "pending" and isRetryable = true for future quota cycles.
+            const backoffMs = this.calculateBackoffMs(currentAttempt);
+            const nextRetryDate = new Date(Date.now() + backoffMs);
+            await db.collection("resources").doc(meta.resourceId).update({
+              thumbnailStatus: "pending",
+              "thumbnailGeneration.lockedUntil": null,
+              "thumbnailGeneration.lastError": lastError?.message || "Flux quota/capacity limit reached. Awaiting next retry cycle.",
+              "thumbnailGeneration.isRetryable": true,
+              "thumbnailGeneration.provider": "flux",
+              "thumbnailGeneration.attemptCount": currentAttempt,
+              "thumbnailGeneration.nextRetryAt": admin.firestore.Timestamp.fromDate(nextRetryDate),
+            });
+            return {
+              success: false,
+              retryScheduled: true,
+              nextRetryAt: nextRetryDate,
+              attemptCount: currentAttempt,
+              error: `DSpace resource awaiting Flux quota: ${lastError?.message || "Capacity error"}`,
+            };
+          } else {
+            await db.collection("resources").doc(meta.resourceId).update({
+              thumbnailStatus: "pending",
+              "thumbnailGeneration.lockedUntil": null,
+              "thumbnailGeneration.lastError": lastError?.message || "All image thumbnail providers failed",
+              "thumbnailGeneration.isRetryable": false,
+            });
+          }
         }
         return {
           success: false,
@@ -544,6 +574,7 @@ export class ThumbnailSearchService {
               materialType: data.materialType || data.type || "Notes",
               topic: data.topic || data.category || data.title || "",
               targetPrograms: data.targetPrograms || [],
+              isImportedDSpace: data.isImportedDSpace === true,
             },
             undefined,
             undefined,

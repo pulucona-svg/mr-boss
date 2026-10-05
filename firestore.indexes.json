@@ -1,0 +1,23 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "resources",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "thumbnailGeneration.isRetryable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "thumbnailStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "thumbnailGeneration.nextRetryAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

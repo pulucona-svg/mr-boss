@@ -9,7 +9,14 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "set-admins": "node --experimental-strip-types scripts/set_admin_claims.ts"
+    "set-admins": "node --experimental-strip-types scripts/set_admin_claims.ts",
+    "provision:users": "node --experimental-strip-types scripts/provision_virtual_users.ts",
+    "provision:users:production": "node --experimental-strip-types scripts/provision_virtual_users.ts --production --confirm-provisioning",
+    "pilot:inspect": "node --experimental-strip-types scripts/run_dspace_pilot_20.ts",
+    "pilot:production": "node --experimental-strip-types scripts/run_dspace_pilot_20.ts --production --confirm-pilot",
+    "import:dry-run": "node --experimental-strip-types scripts/import_dspace_materials.ts --dry-run",
+    "import:full:inspect": "node --experimental-strip-types scripts/run_dspace_full_ingestion.ts",
+    "import:full:production": "node --experimental-strip-types scripts/run_dspace_full_ingestion.ts --production --confirm-full-import"
   },
   "engines": {
     "node": "24"

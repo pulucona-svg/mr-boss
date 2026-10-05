@@ -202,6 +202,7 @@ export const onMaterialCreatedSearchThumbnail = onDocumentCreated(
           materialType,
           topic,
           targetPrograms,
+          isImportedDSpace: data.isImportedDSpace === true,
         }
       );
 
