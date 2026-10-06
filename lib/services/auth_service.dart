@@ -8,6 +8,7 @@ import 'user_service.dart';
 import 'resource_service.dart';
 import 'subscription_service.dart';
 import 'device_id_manager.dart';
+import 'connectivity_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -94,6 +95,9 @@ class AuthService {
       return null;
     } catch (e) {
       debugPrint('AuthService: resolveEmailFromUsername error: $e');
+      if (ConnectivityService.isNetworkError(e)) {
+        rethrow;
+      }
       return null;
     }
   }

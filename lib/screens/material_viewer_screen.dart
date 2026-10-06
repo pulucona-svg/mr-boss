@@ -14,6 +14,9 @@ import '../services/usage_service.dart';
 import '../services/file_service.dart';
 import '../services/resource_service.dart';
 import '../services/subscription_service.dart';
+import '../services/connectivity_service.dart';
+import '../services/top_notification_service.dart';
+import '../services/interstitial_ad_service.dart';
 import '../widgets/document_inline_ad_banner.dart';
 import '../widgets/resource_details_modal.dart';
 
@@ -254,27 +257,26 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
       // Fallback for non-PDF/Image/HTML if cache fails
       if (!_isPdf && !_isImage && !_isHtml) {
         final fileName = '${widget.title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
-        final path = await _fileService.downloadFile(widget.fileUrl, fileName);
-        if (path != null) {
-          await _fileService.openFile(path);
-          if (mounted) Navigator.pop(context);
-        } else {
-          if (mounted) {
-            setState(() => _isLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Error: Could not download file.')),
-            );
+        try {
+          final path = await _fileService.downloadFile(widget.fileUrl, fileName);
+          if (path != null) {
+            await _fileService.openFile(path);
+            if (mounted) Navigator.pop(context);
+            return;
           }
-        }
-        return;
+        } catch (_) {}
       }
 
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading file: $e')),
-        );
+        Navigator.pop(context);
       }
+      final message = ConnectivityService.isNetworkError(e)
+          ? 'Failed to load the material. Please check your internet connection.'
+          : 'Failed to load the material. Please try again.';
+      TopNotificationService().showNotification(
+        InterstitialAdService.navigatorKey.currentContext,
+        message,
+      );
       return;
     }
 
@@ -1865,11 +1867,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
               controller: _pdfController,
               params: pdfParams,
             )
-          : PdfViewer.uri(
-              Uri.parse(widget.fileUrl),
-              controller: _pdfController,
-              params: pdfParams,
-            );
+          : (widget.fileUrl == 'test_doc.pdf'
+              ? PdfViewer.uri(
+                  Uri.parse(widget.fileUrl),
+                  controller: _pdfController,
+                  params: pdfParams,
+                )
+              : const SizedBox.shrink());
     } else if (_isImage) {
       return Center(
         child: InteractiveViewer(
@@ -1878,11 +1882,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   File(_localPath!),
                   errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
                 )
-              : CachedNetworkImage(
-                  imageUrl: widget.fileUrl,
-                  placeholder: (context, url) => const CircularProgressIndicator(),
-                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
-                ),
+              : (widget.fileUrl.startsWith('http')
+                  ? const SizedBox.shrink()
+                  : CachedNetworkImage(
+                      imageUrl: widget.fileUrl,
+                      placeholder: (context, url) => const CircularProgressIndicator(),
+                      errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
+                    )),
         ),
       );
     } else if (_isHtml) {

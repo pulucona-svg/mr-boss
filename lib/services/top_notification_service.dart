@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'interstitial_ad_service.dart';
 
 enum TopNotificationType {
   success,
@@ -78,13 +79,15 @@ class TopNotificationService {
   }
 
   void showNotification(
-    BuildContext context,
+    BuildContext? context,
     String message, {
     TopNotificationType? type,
     Color? backgroundColor,
     IconData? icon,
   }) {
-    _lastContext = context;
+    if (context != null && context.mounted) {
+      _lastContext = context;
+    }
     // Prevent exact duplicate consecutive messages in the queue
     if (_queue.isNotEmpty && _queue.last.message == message) return;
 
@@ -103,7 +106,16 @@ class TopNotificationService {
   }
 
   void _processQueue() async {
-    if (_queue.isEmpty || _lastContext == null) {
+    final activeContext = (_lastContext != null && _lastContext!.mounted)
+        ? _lastContext
+        : InterstitialAdService.navigatorKey.currentContext;
+
+    final overlayState = (activeContext != null && activeContext.mounted
+            ? Overlay.maybeOf(activeContext)
+            : null) ??
+        InterstitialAdService.navigatorKey.currentState?.overlay;
+
+    if (_queue.isEmpty || overlayState == null) {
       _isShowing = false;
       return;
     }
@@ -112,13 +124,6 @@ class TopNotificationService {
     final item = _queue.removeAt(0);
 
     try {
-      // Find the overlay from the context provided
-      final overlayState = Overlay.maybeOf(_lastContext!);
-      if (overlayState == null) {
-        _isShowing = false;
-        return;
-      }
-
       _overlayEntry = _createOverlayEntry(item);
       overlayState.insert(_overlayEntry!);
 

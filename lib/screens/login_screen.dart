@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
 import '../services/persistence_service.dart';
 import '../services/top_notification_service.dart';
+import '../services/connectivity_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -76,9 +77,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       debugPrint('LoginScreen: [FATAL ERROR] Google Sign-In failed: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google Login failed: $e')),
-        );
+        final message = ConnectivityService.isNetworkError(e)
+            ? 'Login failed. Please check your internet connection and try again.'
+            : 'Google Login failed: $e';
+        TopNotificationService().showNotification(context, message);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -90,8 +92,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final password = _passwordController.text;
 
     if (identifier.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter both identifier and password')),
+      TopNotificationService().showNotification(
+        context,
+        'Please enter both identifier and password',
       );
       return;
     }
@@ -106,9 +109,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!identifier.contains('@')) {
         final resolvedEmail = await authService.resolveEmailFromUsername(identifier);
         if (resolvedEmail == null) {
+          if (ConnectivityService.isNetworkError(null)) {
+            if (mounted) {
+              TopNotificationService().showNotification(
+                context,
+                'Login failed. Please check your internet connection and try again.',
+              );
+            }
+            setState(() => _isLoading = false);
+            return;
+          }
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Username not found')),
+            TopNotificationService().showNotification(
+              context,
+              'Username not found',
             );
           }
           setState(() => _isLoading = false);
@@ -155,21 +169,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
-      if (e.code == 'user-not-found') {
+      if (ConnectivityService.isNetworkError(e)) {
+        message = 'Login failed. Please check your internet connection and try again.';
+      } else if (e.code == 'user-not-found') {
         message = 'No user found with this identifier';
       } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         message = 'Incorrect password';
       } else if (e.code == 'invalid-email') {
         message = 'Invalid email address';
+      } else if (e.code == 'user-disabled') {
+        message = 'This account has been disabled';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Too many attempts. Please try again later.';
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        TopNotificationService().showNotification(context, message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
+        final message = ConnectivityService.isNetworkError(e)
+            ? 'Login failed. Please check your internet connection and try again.'
+            : 'Error: ${e.toString()}';
+        TopNotificationService().showNotification(context, message);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -475,11 +496,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                           final identifier =
                                               _identifierController.text.trim();
                                           if (identifier.isEmpty) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                    'Please enter your email or username first'),
-                                              ),
+                                            TopNotificationService().showNotification(
+                                              context,
+                                              'Please enter your email or username first',
                                             );
                                             return;
                                           }
@@ -493,16 +512,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                               final resolvedEmail = await authService
                                                   .resolveEmailFromUsername(identifier);
                                               if (resolvedEmail == null) {
-                                                if (mounted) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(
-                                                    const SnackBar(
-                                                      content:
-                                                          Text('Username not found'),
-                                                    ),
+                                                if (ConnectivityService.isNetworkError(null)) {
+                                                  if (context.mounted) {
+                                                    TopNotificationService().showNotification(
+                                                      context,
+                                                      'Password reset failed. Please check your internet connection and try again.',
+                                                    );
+                                                  }
+                                                  if (mounted) setState(() => _isLoading = false);
+                                                  return;
+                                                }
+                                                if (context.mounted) {
+                                                  TopNotificationService().showNotification(
+                                                    context,
+                                                    'Username not found',
                                                   );
                                                 }
-                                                setState(() => _isLoading = false);
+                                                if (mounted) setState(() => _isLoading = false);
                                                 return;
                                               }
                                               email = resolvedEmail;
@@ -511,7 +537,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                             await authService
                                                 .sendPasswordResetEmail(email);
 
-                                            if (mounted) {
+                                            if (context.mounted) {
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
@@ -523,14 +549,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                                 ),
                                               );
                                             }
+                                          } on FirebaseAuthException catch (e) {
+                                            String message = 'Password reset failed';
+                                            if (ConnectivityService.isNetworkError(e)) {
+                                              message =
+                                                  'Password reset failed. Please check your internet connection and try again.';
+                                            } else if (e.code == 'user-not-found') {
+                                              message = 'No user found with this email';
+                                            } else if (e.code == 'invalid-email') {
+                                              message = 'Invalid email address';
+                                            } else if (e.code == 'too-many-requests') {
+                                              message = 'Too many attempts. Please try again later.';
+                                            } else {
+                                              message = e.message ?? 'Password reset failed';
+                                            }
+                                            if (context.mounted) {
+                                              TopNotificationService().showNotification(context, message);
+                                            }
                                           } catch (e) {
-                                            if (mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content:
-                                                        Text('Error: ${e.toString()}')),
-                                              );
+                                            if (context.mounted) {
+                                              final message = ConnectivityService.isNetworkError(e)
+                                                  ? 'Password reset failed. Please check your internet connection and try again.'
+                                                  : 'Error: ${e.toString()}';
+                                              TopNotificationService().showNotification(context, message);
                                             }
                                           } finally {
                                             if (mounted) {

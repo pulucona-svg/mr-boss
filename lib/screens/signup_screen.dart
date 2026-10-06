@@ -8,6 +8,7 @@ import 'email_verification_screen.dart';
 import 'login_screen.dart';
 import 'terms_and_conditions_screen.dart';
 import '../services/top_notification_service.dart';
+import '../services/connectivity_service.dart';
 import '../providers/providers.dart';
 import '../services/persistence_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -104,7 +105,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     } catch (e) {
       debugPrint('SignupScreen: [FATAL ERROR] Google Sign-In failed: $e');
       if (mounted) {
-        TopNotificationService().showNotification(context, "Google Sign-In failed: $e");
+        final message = ConnectivityService.isNetworkError(e)
+            ? 'Sign up failed. Please check your internet connection and try again.'
+            : 'Google Sign-In failed: $e';
+        TopNotificationService().showNotification(context, message);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -116,9 +120,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (sheetContext) => Container(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 32,
           left: 24,
           right: 24,
           top: 32,
@@ -186,8 +190,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     debugPrint('SignupScreen: [DEBUG] Calling sendEmailVerification...');
                     await authService.sendEmailVerification();
 
+                    if (sheetContext.mounted) {
+                      Navigator.pop(sheetContext);
+                    }
                     if (mounted) {
-                      Navigator.pop(context);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -200,8 +206,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   } on FirebaseAuthException catch (e) {
                     debugPrint('SignupScreen: [DEBUG] FirebaseAuthException: Code=${e.code}');
                     String message = e.message ?? 'An error occurred during signup';
-                    if (e.code == 'email-already-in-use') {
+                    if (ConnectivityService.isNetworkError(e)) {
+                      message = 'Sign up failed. Please check your internet connection and try again.';
+                    } else if (e.code == 'email-already-in-use') {
                       message = 'This email is already registered. Please login instead.';
+                    } else if (e.code == 'invalid-email') {
+                      message = 'Please enter a valid email';
+                    } else if (e.code == 'weak-password') {
+                      message = 'The password provided is too weak.';
                     }
                     if (mounted) {
                       TopNotificationService().showNotification(context, message);
@@ -209,7 +221,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   } catch (e) {
                     debugPrint('SignupScreen: [DEBUG] Unknown error: $e');
                     if (mounted) {
-                      TopNotificationService().showNotification(context, "Signup failed: ${e.toString()}");
+                      final message = ConnectivityService.isNetworkError(e)
+                          ? 'Sign up failed. Please check your internet connection and try again.'
+                          : 'Signup failed: ${e.toString()}';
+                      TopNotificationService().showNotification(context, message);
                     }
                   } finally {
                     if (mounted) setState(() => _isLoading = false);
