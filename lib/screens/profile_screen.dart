@@ -20,6 +20,7 @@ import '../services/usage_service.dart';
 import '../services/persistence_service.dart';
 import '../services/admin_service.dart';
 import 'admin/admin_menu_bottom_sheet.dart';
+import 'account_deletion_screen.dart';
 
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -152,17 +153,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       builder: (context, ref, child) {
                         final adminService = ref.watch(adminServiceProvider);
                         final isAdmin = adminService.isAdmin;
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                isAdmin ? Icons.emoji_events_rounded : Icons.emoji_events_outlined,
-                                color: Colors.amber,
+                        if (isAdmin) {
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.emoji_events_rounded,
+                                  color: Colors.amber,
+                                ),
+                                onPressed: () => _openAdminConsole(adminService),
                               ),
-                              onPressed: () => _openAdminConsole(adminService),
-                            ),
-                            if (isAdmin)
                               Positioned(
                                 right: 8,
                                 top: 8,
@@ -175,6 +176,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   ),
                                 ),
                               ),
+                            ],
+                          );
+                        }
+                        return PopupMenuButton<String>(
+                          icon: Icon(
+                            Icons.more_vert,
+                            color: textColor,
+                          ),
+                          tooltip: 'More options',
+                          color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: isDark ? Colors.white12 : Colors.black12,
+                            ),
+                          ),
+                          onSelected: (value) {
+                            if (value == 'delete_account') {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const AccountDeletionScreen(),
+                                ),
+                              );
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem<String>(
+                              value: 'delete_account',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_forever_outlined, color: Colors.redAccent, size: 20),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Delete Account',
+                                    style: TextStyle(
+                                      color: Colors.redAccent,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         );
                       },

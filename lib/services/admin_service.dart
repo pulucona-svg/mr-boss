@@ -86,6 +86,14 @@ class AdminService extends ChangeNotifier {
 
   bool _isAdmin = false;
   bool get isAdmin => _isAdmin;
+  bool _testingAdminOverride = false;
+
+  @visibleForTesting
+  void setIsAdminForTesting(bool value) {
+    _isAdmin = value;
+    _testingAdminOverride = true;
+    notifyListeners();
+  }
 
   AdminCapabilities? _cachedCapabilities;
   AdminCapabilities? get cachedCapabilities => _cachedCapabilities;
@@ -111,6 +119,9 @@ class AdminService extends ChangeNotifier {
   /// Inspects the Firebase Auth ID token claims for `admin: true`.
   /// Forces a token refresh if claims are not yet cached locally.
   Future<bool> isCurrentUserAdmin({bool forceRefresh = false}) async {
+    if (_testingAdminOverride) {
+      return _isAdmin;
+    }
     final user = _auth.currentUser;
     if (user == null) {
       _isAdmin = false;

@@ -123,7 +123,7 @@ export class EnvConfig {
   }
 
   /**
-   * Retrieves configuration for all 4 Flux workers from environment variables.
+   * Retrieves configuration for all 13 Flux workers from environment variables.
    * Backward-compatible with single-worker legacy env variables (CLOUDFLARE_ACCOUNT_ID, FLUX_API_KEY).
    */
   public static getFluxWorkerConfigs(): Array<{
@@ -152,8 +152,8 @@ export class EnvConfig {
       });
     }
 
-    // Workers 2, 3, 4
-    for (let i = 2; i <= 4; i++) {
+    // Workers 2 through 13
+    for (let i = 2; i <= 13; i++) {
       const acc = (process.env[`FLUX_WORKER_${i}_ACCOUNT_ID`] || "").trim();
       const key = (process.env[`FLUX_WORKER_${i}_API_KEY`] || "").trim();
       if (acc && key) {

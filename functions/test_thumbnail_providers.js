@@ -21,6 +21,7 @@ const { FluxThumbnailProvider, FluxProviderError } = require("./lib/providers/im
 const { FluxWorkerPool } = require("./lib/providers/image_generation/flux_worker_pool");
 const { GeminiThumbnailProvider } = require("./lib/providers/image_generation/gemini_thumbnail_provider");
 const { ThumbnailSearchService } = require("./lib/thumbnail_search_service");
+const { EnvConfig } = require("./lib/config/env_config");
 
 async function runTests() {
   console.log("=== MULTI-PROVIDER THUMBNAIL SYSTEM TEST SUITE ===\n");
@@ -549,7 +550,7 @@ async function runTests() {
   });
 
   // =========================================================================
-  // --- SECTION 19: FOUR-WORKER FLUX POOL INTEGRATION TEST SUITE ---
+  // --- SECTION 19: SEVEN-WORKER FLUX POOL INTEGRATION TEST SUITE ---
   // =========================================================================
 
   function createMockFirestore() {
@@ -650,54 +651,67 @@ async function runTests() {
     { workerId: "flux-worker-2", accountId: "acc_2", apiKey: "key_2", model: "@cf/black-forest-labs/flux-2-dev" },
     { workerId: "flux-worker-3", accountId: "acc_3", apiKey: "key_3", model: "@cf/black-forest-labs/flux-2-dev" },
     { workerId: "flux-worker-4", accountId: "acc_4", apiKey: "key_4", model: "@cf/black-forest-labs/flux-2-dev" },
+    { workerId: "flux-worker-5", accountId: "acc_5", apiKey: "key_5", model: "@cf/black-forest-labs/flux-2-dev" },
+    { workerId: "flux-worker-6", accountId: "acc_6", apiKey: "key_6", model: "@cf/black-forest-labs/flux-2-dev" },
+    { workerId: "flux-worker-7", accountId: "acc_7", apiKey: "key_7", model: "@cf/black-forest-labs/flux-2-dev" },
   ];
 
-  // Test 1: Four workers available -> Submit four jobs
-  await asyncTest("Pool Test 1: Four workers available -> Four jobs distributed concurrently to Worker 1, 2, 3, 4", async () => {
-    const db = createMockFirestore();
-
-    const w1 = await FluxWorkerPool.reserveAvailableWorker(db, "job-A", mockWorkers);
-    const w2 = await FluxWorkerPool.reserveAvailableWorker(db, "job-B", mockWorkers);
-    const w3 = await FluxWorkerPool.reserveAvailableWorker(db, "job-C", mockWorkers);
-    const w4 = await FluxWorkerPool.reserveAvailableWorker(db, "job-D", mockWorkers);
-
-    assert(w1, "Worker 1 should be reserved");
-    assert(w2, "Worker 2 should be reserved");
-    assert(w3, "Worker 3 should be reserved");
-    assert(w4, "Worker 4 should be reserved");
-
-    const reservedIds = new Set([w1.workerId, w2.workerId, w3.workerId, w4.workerId]);
-    assert.strictEqual(reservedIds.size, 4, "All 4 workers must be unique");
-    assert(reservedIds.has("flux-worker-1"));
-    assert(reservedIds.has("flux-worker-2"));
-    assert(reservedIds.has("flux-worker-3"));
-    assert(reservedIds.has("flux-worker-4"));
+  // Test 0: Configuration loader recognizes all 13 workers
+  test("Pool Config: Configuration loading recognizes all 13 workers and correct pool capacity", () => {
+    const loadedWorkers = EnvConfig.getFluxWorkerConfigs();
+    assert.strictEqual(loadedWorkers.length, 13, "Must load exactly 13 workers from environment");
+    const ids = loadedWorkers.map((w) => w.workerId);
+    for (let i = 1; i <= 13; i++) {
+      assert(ids.includes(`flux-worker-${i}`), `Must include flux-worker-${i}`);
+      const single = EnvConfig.getFluxWorkerConfig(`flux-worker-${i}`);
+      assert(single, `Must retrieve config for flux-worker-${i}`);
+      assert(single.accountId.length > 0, `Worker ${i} must have account ID`);
+      assert(single.apiKey.length > 0, `Worker ${i} must have API key`);
+      assert.strictEqual(single.model, "@cf/black-forest-labs/flux-2-dev");
+    }
   });
 
-  // Test 2: Fifth job -> All 4 busy -> Queued, then assigned when worker frees up
-  await asyncTest("Pool Test 2: Fifth job -> Blocked while 4 are busy, receives worker immediately once one frees up", async () => {
+  // Test 1: Seven workers available -> Submit seven jobs
+  await asyncTest("Pool Test 1: Seven workers available -> Seven jobs distributed concurrently to Workers 1-7", async () => {
     const db = createMockFirestore();
 
-    await FluxWorkerPool.reserveAvailableWorker(db, "job-1", mockWorkers);
-    await FluxWorkerPool.reserveAvailableWorker(db, "job-2", mockWorkers);
-    await FluxWorkerPool.reserveAvailableWorker(db, "job-3", mockWorkers);
-    await FluxWorkerPool.reserveAvailableWorker(db, "job-4", mockWorkers);
+    const reserved = [];
+    for (let i = 0; i < 7; i++) {
+      const w = await FluxWorkerPool.reserveAvailableWorker(db, `job-${String.fromCharCode(65 + i)}`, mockWorkers);
+      assert(w, `Worker for job-${String.fromCharCode(65 + i)} should be reserved`);
+      reserved.push(w);
+    }
 
-    // Job 5 attempted while all 4 busy
-    const w5Blocked = await FluxWorkerPool.reserveAvailableWorker(db, "job-5", mockWorkers);
-    assert.strictEqual(w5Blocked, null, "Fifth job must return null (remain queued) while all 4 workers are busy");
-
-    // Worker 2 finishes its job
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-2", { success: true, resourceId: "job-2" });
-
-    // Job 5 attempted again
-    const w5Assigned = await FluxWorkerPool.reserveAvailableWorker(db, "job-5", mockWorkers);
-    assert(w5Assigned, "Fifth job should now be reserved");
-    assert.strictEqual(w5Assigned.workerId, "flux-worker-2", "Fifth job should be assigned to the newly freed Worker 2");
+    const reservedIds = new Set(reserved.map((w) => w.workerId));
+    assert.strictEqual(reservedIds.size, 7, "All 7 workers must be uniquely reserved");
+    for (let i = 1; i <= 7; i++) {
+      assert(reservedIds.has(`flux-worker-${i}`), `Must have reserved flux-worker-${i}`);
+    }
   });
 
-  // Test 3: Worker 1 reaches limit -> Cooldown on Worker 1, Workers 2, 3, 4 remain available
-  await asyncTest("Pool Test 3: Worker 1 reaches 429 limit -> Worker 1 in cooldown, jobs continue through Workers 2, 3, 4", async () => {
+  // Test 2: Eighth job -> All 7 busy -> Queued, then assigned when worker frees up
+  await asyncTest("Pool Test 2: Eighth job -> Blocked while all 7 are busy, receives worker immediately once one frees up", async () => {
+    const db = createMockFirestore();
+
+    for (let i = 1; i <= 7; i++) {
+      await FluxWorkerPool.reserveAvailableWorker(db, `job-${i}`, mockWorkers);
+    }
+
+    // Job 8 attempted while all 7 busy
+    const w8Blocked = await FluxWorkerPool.reserveAvailableWorker(db, "job-8", mockWorkers);
+    assert.strictEqual(w8Blocked, null, "Eighth job must return null (remain queued) while all 7 workers are busy");
+
+    // Worker 3 finishes its job
+    await FluxWorkerPool.releaseWorker(db, "flux-worker-3", { success: true, resourceId: "job-3" });
+
+    // Job 8 attempted again
+    const w8Assigned = await FluxWorkerPool.reserveAvailableWorker(db, "job-8", mockWorkers);
+    assert(w8Assigned, "Eighth job should now be reserved");
+    assert.strictEqual(w8Assigned.workerId, "flux-worker-3", "Eighth job should be assigned to the newly freed Worker 3");
+  });
+
+  // Test 3: Worker 1 reaches limit -> Cooldown on Worker 1, Workers 2-7 remain available
+  await asyncTest("Pool Test 3: Worker 1 reaches 429 limit -> Worker 1 in cooldown, jobs continue through Workers 2-7", async () => {
     const db = createMockFirestore();
 
     const w1 = await FluxWorkerPool.reserveAvailableWorker(db, "job-fail-1", mockWorkers);
@@ -719,8 +733,8 @@ async function runTests() {
     assert.strictEqual(nextJob.workerId, "flux-worker-2");
   });
 
-  // Test 4: Worker 2 also reaches limit -> Workers 1 & 2 in cooldown, Workers 3 & 4 continue
-  await asyncTest("Pool Test 4: Worker 2 also reaches limit -> Workers 1 & 2 in cooldown, Workers 3 & 4 receive jobs", async () => {
+  // Test 4: Multiple workers in cooldown -> Workers 3-7 receive jobs
+  await asyncTest("Pool Test 4: Multiple workers in cooldown -> Failover to remaining active Workers 3-7", async () => {
     const db = createMockFirestore();
 
     // Mark Worker 1 in cooldown
@@ -743,34 +757,33 @@ async function runTests() {
     assert.strictEqual(jobB.workerId, "flux-worker-4");
   });
 
-  // Test 5: Three workers unavailable -> All new jobs go to Worker 4
-  await asyncTest("Pool Test 5: Three workers unavailable -> All new jobs go to remaining Worker 4", async () => {
+  // Test 5: Six workers unavailable -> All new jobs go to remaining Worker 7
+  await asyncTest("Pool Test 5: Six workers unavailable -> All new jobs failover to remaining Worker 7", async () => {
     const db = createMockFirestore();
 
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-1", { success: false, error: new FluxProviderError("429", true, 429) });
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-2", { success: false, error: new FluxProviderError("429", true, 429) });
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-3", { success: false, error: new FluxProviderError("429", true, 429) });
+    for (let i = 1; i <= 6; i++) {
+      await FluxWorkerPool.releaseWorker(db, `flux-worker-${i}`, { success: false, error: new FluxProviderError("429", true, 429) });
+    }
 
     const job = await FluxWorkerPool.reserveAvailableWorker(db, "job-solo", mockWorkers);
     assert(job, "Should find available worker");
-    assert.strictEqual(job.workerId, "flux-worker-4", "Must select Worker 4 as the sole available worker");
+    assert.strictEqual(job.workerId, "flux-worker-7", "Must select Worker 7 as the sole available worker");
   });
 
-  // Test 6: All four unavailable -> Queue protects Flux, no hammering
-  await asyncTest("Pool Test 6: All four unavailable -> reservation returns null, pool reports allUnavailable, no hammering", async () => {
+  // Test 6: All seven unavailable -> Queue protects Flux, no hammering
+  await asyncTest("Pool Test 6: All seven unavailable -> reservation returns null, pool reports allUnavailable, no hammering", async () => {
     const db = createMockFirestore();
 
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-1", { success: false, error: new FluxProviderError("429", true, 429) });
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-2", { success: false, error: new FluxProviderError("429", true, 429) });
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-3", { success: false, error: new FluxProviderError("429", true, 429) });
-    await FluxWorkerPool.releaseWorker(db, "flux-worker-4", { success: false, error: new FluxProviderError("429", true, 429) });
+    for (let i = 1; i <= 7; i++) {
+      await FluxWorkerPool.releaseWorker(db, `flux-worker-${i}`, { success: false, error: new FluxProviderError("429", true, 429) });
+    }
 
     const job = await FluxWorkerPool.reserveAvailableWorker(db, "job-none", mockWorkers);
     assert.strictEqual(job, null, "Must return null when all workers are in cooldown");
 
     const status = await FluxWorkerPool.getPoolStatus(db, mockWorkers);
     assert.strictEqual(status.allUnavailable, true, "Pool status must be allUnavailable");
-    assert.strictEqual(status.coolingDown, 4, "All 4 workers must be cooling down");
+    assert.strictEqual(status.coolingDown, 7, "All 7 workers must be cooling down");
     assert(status.earliestCooldown, "Must report earliest cooldown time for queue timer");
   });
 
@@ -803,8 +816,89 @@ async function runTests() {
     assert.strictEqual(jobBWorker, null, "Worker 1 is busy holding lease for Job A, so Job B cannot reserve it");
   });
 
-  // Test 9: Duplicate resource protection / Idempotency
-  await asyncTest("Pool Test 9: Duplicate resource protection -> Resources with completed thumbnails are safely skipped", async () => {
+  // Test 9: LRU selection strategy across all 7 workers
+  await asyncTest("Pool Test 9: LRU selection strategy -> Selects the least recently used worker across all 7 workers", async () => {
+    const db = createMockFirestore();
+    const now = Date.now();
+
+    // Seed workers with different lastUsedAt timestamps:
+    // Worker 1: 10 mins ago (600s)
+    // Worker 2: 20 mins ago (1200s) -> LEAST RECENTLY USED
+    // Worker 3: 5 mins ago (300s)
+    // Worker 4: 2 mins ago (120s)
+    // Worker 5: 1 min ago (60s)
+    // Worker 6: 30 secs ago (30s)
+    // Worker 7: 10 secs ago (10s)
+    const offsets = [600, 1200, 300, 120, 60, 30, 10];
+    for (let i = 0; i < 7; i++) {
+      await db.collection("flux_workers").doc(mockWorkers[i].workerId).set({
+        workerId: mockWorkers[i].workerId,
+        status: "idle",
+        lastUsedAt: new Date(now - offsets[i] * 1000),
+      });
+    }
+
+    const picked = await FluxWorkerPool.reserveAvailableWorker(db, "job-lru-check", mockWorkers);
+    assert(picked, "Must select an available worker");
+    assert.strictEqual(picked.workerId, "flux-worker-2", "Worker 2 must be chosen because its lastUsedAt is the oldest (LRU)");
+  });
+
+  // Test 10: DSpace materials strictly remain Flux-only -> Gemini never invoked
+  await asyncTest("Pool Test 10: DSpace materials strictly Flux-only -> Never falls back to Gemini even when Flux workers fail", async () => {
+    const db = createMockFirestore();
+
+    // Mark all 7 workers in cooldown/disabled
+    for (const w of mockWorkers) {
+      await db.collection("flux_workers").doc(w.workerId).set({
+        workerId: w.workerId,
+        status: "cooling_down",
+        cooldownUntil: new Date(Date.now() + 60000),
+      });
+    }
+
+    // Spy on fetch to guarantee Gemini is NEVER called
+    let fetchCalled = false;
+    const originalFetch = global.fetch;
+    global.fetch = async function () {
+      fetchCalled = true;
+      return { ok: false, status: 500 };
+    };
+
+    const dummyIk = {};
+    try {
+      const result = await ThumbnailSearchService.searchAndUploadThumbnail(
+        db,
+        dummyIk,
+        {
+          resourceId: "dspace-imported-001",
+          title: "Introduction to Agricultural Economics",
+          courseCode: "AGEC 111",
+          isImportedDSpace: true,
+        },
+        undefined,
+        undefined,
+        "dummy_gemini_key",
+        undefined,
+        mockWorkers
+      );
+
+      assert.strictEqual(result.success, false, "Thumbnail generation should not succeed without Flux worker");
+      assert.strictEqual(result.retryScheduled, true, "Must schedule durable retry for DSpace material");
+      assert.strictEqual(fetchCalled, false, "CRITICAL: Gemini API must NEVER be called for DSpace materials!");
+      assert.notStrictEqual(result.provider, "gemini", "Provider must not be gemini");
+
+      // Verify Firestore resource doc remained pending and provider is flux
+      const doc = await db.collection("resources").doc("dspace-imported-001").get();
+      assert.strictEqual(doc.data().thumbnailStatus, "pending");
+      assert.strictEqual(doc.data().thumbnailGeneration.provider, "flux");
+      assert.strictEqual(doc.data().thumbnailGeneration.isRetryable, true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  // Test 11: Duplicate resource protection / Idempotency
+  await asyncTest("Pool Test 11: Duplicate resource protection -> Resources with completed thumbnails are safely skipped", async () => {
     const db = createMockFirestore();
     const existingUrl = "https://ik.imagekit.io/ubgbitinve/thumb_math.jpg";
 
@@ -836,11 +930,11 @@ async function runTests() {
     assert.strictEqual(result.imageKitUrl, existingUrl);
   });
 
-  // Test 10: Gemini fallback when all four Flux workers fail/disabled
-  await asyncTest("Pool Test 10: Gemini fallback -> Succeeded when all Flux workers are unavailable/disabled", async () => {
+  // Test 12: Gemini fallback when all seven Flux workers fail/disabled (NON-DSpace only)
+  await asyncTest("Pool Test 12: Gemini fallback -> Succeeded for non-DSpace when all 7 Flux workers are unavailable/disabled", async () => {
     const db = createMockFirestore();
 
-    // Mark all 4 workers permanently disabled
+    // Mark all 7 workers permanently disabled
     for (const w of mockWorkers) {
       await db.collection("flux_workers").doc(w.workerId).set({
         workerId: w.workerId,
@@ -876,6 +970,7 @@ async function runTests() {
           resourceId: "res-gemini-fallback",
           title: "Introduction to Law",
           courseCode: "LAWS 101",
+          isImportedDSpace: false,
         },
         undefined,
         undefined,
@@ -892,8 +987,8 @@ async function runTests() {
     }
   });
 
-  // Test 11: Timetable upload pipeline isolation
-  test("Pool Test 11: Timetable upload isolation -> Timetable uploads strictly never touch FluxWorkerPool or AI image generation", () => {
+  // Test 13: Timetable upload pipeline isolation
+  test("Pool Test 13: Timetable upload isolation -> Timetable uploads strictly never touch FluxWorkerPool or AI image generation", () => {
     const fs = require("fs");
     const path = require("path");
 
@@ -907,8 +1002,8 @@ async function runTests() {
     assert(content.includes("timetable"), "Timetable service must remain dedicated to timetable documents");
   });
 
-  // Test 12: Natural Editorial Photographic Prompt Realism & Visual Variety
-  test("Pool Test 12: Photographic prompt realism & visual variety across similar courses", () => {
+  // Test 14: Natural Editorial Photographic Prompt Realism & Visual Variety
+  test("Pool Test 14: Photographic prompt realism & visual variety across similar courses", () => {
     // 5 similar pairs
     const pairs = [
       {

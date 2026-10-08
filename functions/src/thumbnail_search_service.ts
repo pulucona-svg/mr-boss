@@ -151,7 +151,7 @@ export class ThumbnailSearchService {
         targetPrograms: targetProgram,
       });
 
-      // Step 2: Multi-provider failover execution (Primary: Flux.2 Dev 4-Worker Pool, Secondary: Gemini)
+      // Step 2: Multi-provider failover execution (Primary: Flux.2 Dev 7-Worker Pool, Secondary: Gemini)
       const geminiProvider = new GeminiThumbnailProvider(geminiApiKey);
 
       let generated: {
@@ -166,9 +166,9 @@ export class ThumbnailSearchService {
       let runFlux = forcedProvider !== "gemini";
       let runGemini = isImportedDSpace ? false : (forcedProvider !== "flux");
 
-      // --- PRIMARY PROVIDER: FLUX.2 DEV (4-WORKER POOL) ---
+      // --- PRIMARY PROVIDER: FLUX.2 DEV (7-WORKER POOL) ---
       if (runFlux) {
-        // Reserve an available worker atomically from the 4-worker pool using Firestore transaction
+        // Reserve an available worker atomically from the 7-worker pool using Firestore transaction
         const reservedWorker = await FluxWorkerPool.reserveAvailableWorker(
           db,
           meta.resourceId || `adhoc_${Date.now()}`,
@@ -322,9 +322,9 @@ export class ThumbnailSearchService {
             );
           }
         } else {
-          // No worker was available (all 4 are currently busy or in cooldown)
+          // No worker was available (all workers are currently busy or in cooldown)
           logger.warn(
-            `[FLUX_POOL_ALL_BUSY_OR_COOLDOWN] All 4 Flux workers are currently busy or cooling down for "${cleanTitle}".`
+            `[FLUX_POOL_ALL_BUSY_OR_COOLDOWN] All Flux workers are currently busy or cooling down for "${cleanTitle}".`
           );
           const poolStatus = await FluxWorkerPool.getPoolStatus(db, customWorkerConfigs);
 
@@ -344,7 +344,7 @@ export class ThumbnailSearchService {
                 attemptCount: currentAttempt,
                 maxAttempts: isImportedDSpace ? 999999 : MAX_FLUX_ATTEMPTS,
                 provider: "flux",
-                lastError: "All 4 Flux workers are currently busy or in cooldown",
+                lastError: "All Flux workers are currently busy or in cooldown",
                 isRetryable: true,
                 lastAttemptAt: admin.firestore.FieldValue.serverTimestamp(),
                 nextRetryAt: admin.firestore.Timestamp.fromDate(nextRetryDate),
@@ -357,7 +357,7 @@ export class ThumbnailSearchService {
               retryScheduled: true,
               nextRetryAt: nextRetryDate,
               attemptCount: currentAttempt,
-              error: `All 4 Flux workers busy/cooling down. Queued for retry at ${nextRetryDate.toISOString()}`,
+              error: `All Flux workers busy/cooling down. Queued for retry at ${nextRetryDate.toISOString()}`,
             };
           }
         }
@@ -537,7 +537,7 @@ export class ThumbnailSearchService {
       const poolStatus = await FluxWorkerPool.getPoolStatus(db, customWorkerConfigs);
       if (poolStatus.allUnavailable && !poolStatus.allDisabled) {
         logger.info(
-          `[THUMBNAIL_RETRY_PROCESSOR] All 4 Flux workers are currently busy or in cooldown (Cooling down: ${poolStatus.coolingDown}, Busy: ${poolStatus.busy}). Postponing batch until ${poolStatus.earliestCooldown?.toISOString() || "next cycle"}.`
+          `[THUMBNAIL_RETRY_PROCESSOR] All Flux workers are currently busy or in cooldown (Cooling down: ${poolStatus.coolingDown}, Busy: ${poolStatus.busy}). Postponing batch until ${poolStatus.earliestCooldown?.toISOString() || "next cycle"}.`
         );
         return 0;
       }

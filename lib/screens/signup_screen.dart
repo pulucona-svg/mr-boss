@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'academic_personalization_screen.dart';
 import 'email_verification_screen.dart';
 import 'login_screen.dart';
+import 'account_restore_screen.dart';
 import 'terms_and_conditions_screen.dart';
 import '../services/top_notification_service.dart';
 import '../services/connectivity_service.dart';
@@ -86,7 +87,30 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           photoURL: (profile.photoURL == null || profile.photoURL!.isEmpty) ? user.photoURL : profile.photoURL,
         );
 
-        if (profile.onboardingComplete) {
+        if (!mounted) return;
+
+        if (profile.isPermanentlyDeleted) {
+          debugPrint('SignupScreen: [GUARD] Google Sign-Up: Account permanently deleted. Signing out.');
+          await authService.signOut();
+          await PersistenceService().clearAll();
+          if (mounted) {
+            TopNotificationService().showNotification(
+              context,
+              'This account has been permanently deleted.',
+            );
+          }
+          return;
+        }
+
+        if (profile.isPendingDeletion) {
+          debugPrint('SignupScreen: [DEBUG] Account pending deletion. Navigating to AccountRestoreScreen');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AccountRestoreScreen(),
+            ),
+          );
+        } else if (profile.onboardingComplete) {
           debugPrint('SignupScreen: [DEBUG] Navigating to /home');
           Navigator.pushReplacementNamed(context, '/home');
         } else {

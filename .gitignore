@@ -50,6 +50,10 @@ app.*.map.json
 *.env*
 **/.env*
 functions/.env
+*credentials*
+.virtual_users_credentials.json
+*.credentials.json
+
 !*.env.example
 !**/*.env.example
 

@@ -11,3 +11,5 @@ node_modules/
 .env
 .env*
 .env.mirror-laikipia
+*credentials*
+.virtual_users_credentials.json

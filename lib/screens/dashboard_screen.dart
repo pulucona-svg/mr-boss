@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -108,6 +109,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String? _lastCorrectedOriginal;
   String? _lastCorrectedResult;
   String _lastSearchValue = '';
+  Timer? _searchDebounceTimer;
 
   // Admin Materials Selection State
   bool _isSelectionMode = false;
@@ -408,6 +410,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _hideOverlay();
@@ -441,6 +444,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _resetAllFilters() {
+    _searchDebounceTimer?.cancel();
     _searchController.clear();
     _lastSearchValue = '';
     ref.read(uiStateProvider.notifier).resetDashboardUI();
@@ -496,7 +500,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   void _revertAutocorrect() {
     if (_lastCorrectedOriginal == null || _lastCorrectedResult == null) return;
-    
+    _searchDebounceTimer?.cancel();
     final currentText = _searchController.text;
     // Replace the result back with original
     final revertedText = currentText.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
@@ -509,15 +513,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _lastCorrectedResult = null;
       ref.read(uiStateProvider.notifier).setDashboardSearch(revertedText);
     });
+    _showOverlay();
   }
 
   void _handleBack() {
     if (_searchController.text.isNotEmpty) {
+      _searchDebounceTimer?.cancel();
       setState(() {
         _searchController.clear();
         _lastSearchValue = '';
         ref.read(uiStateProvider.notifier).setDashboardSearch('');
       });
+      _hideOverlay();
       return;
     }
     if (_searchFocusNode.hasFocus) {
@@ -555,6 +562,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             query: query,
             width: size.width - 42,
             onSelected: (selection) {
+              _searchDebounceTimer?.cancel();
               setState(() {
                 _searchController.text = selection;
                 _lastSearchValue = selection;
@@ -1093,6 +1101,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                             if (value.length < _lastSearchValue.length) {
                                               // Backspaced the space -> Revert
                                               final revertedText = value.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
+                                              _searchDebounceTimer?.cancel();
                                               setState(() {
                                                 _searchController.text = revertedText;
                                                 _lastSearchValue = revertedText;
@@ -1111,10 +1120,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                               });
                                             }
                                           }
-                                          _handleAutocorrect(value);
-                                          setState(() => _lastSearchValue = value);
-                                          ref.read(uiStateProvider.notifier).setDashboardSearch(value);
-                                          _showOverlay();
+
+                                          _lastSearchValue = value;
+
+                                          if (value.endsWith(' ')) {
+                                            _searchDebounceTimer?.cancel();
+                                            _handleAutocorrect(value);
+                                            final effectiveValue = _lastSearchValue;
+                                            _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+                                              if (mounted) {
+                                                ref.read(uiStateProvider.notifier).setDashboardSearch(effectiveValue);
+                                                _showOverlay();
+                                              }
+                                            });
+                                            return;
+                                          }
+
+                                          if (value.isEmpty) {
+                                            // Clear / backspaced to empty: immediate clear, bypass debounce
+                                            _searchDebounceTimer?.cancel();
+                                            _hideOverlay();
+                                            ref.read(uiStateProvider.notifier).setDashboardSearch('');
+                                            return;
+                                          }
+
+                                          // Debounce expensive search filtering and suggestion scan by 200 ms
+                                          _searchDebounceTimer?.cancel();
+                                          _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+                                            if (mounted) {
+                                              ref.read(uiStateProvider.notifier).setDashboardSearch(value);
+                                              _showOverlay();
+                                            }
+                                          });
+                                        },
+                                        onSubmitted: (val) {
+                                          _searchDebounceTimer?.cancel();
+                                          _hideOverlay();
+                                          ref.read(uiStateProvider.notifier).setDashboardSearch(val);
                                         },
                                         onTap: _showOverlay,
                                         style: TextStyle(color: textColor),
@@ -1169,9 +1211,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   const SizedBox(width: 10),
                                   GestureDetector(
                                     onTap: () {
-                                      setState(() {});
+                                      _searchDebounceTimer?.cancel();
                                       _hideOverlay();
                                       _searchFocusNode.unfocus();
+                                      ref.read(uiStateProvider.notifier).setDashboardSearch(_searchController.text);
                                     },
                                     child: Container(
                                       height: 56,

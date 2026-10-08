@@ -16,6 +16,7 @@ import 'screens/email_verification_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/terms_and_conditions_screen.dart';
 import 'screens/privacy_policy_screen.dart';
+import 'screens/account_restore_screen.dart';
 
 import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
@@ -141,6 +142,7 @@ class _MirrorAppState extends ConsumerState<MirrorApp> {
       routes: {
         '/home': (context) => const MainNavigation(),
         '/login': (context) => const LoginScreen(),
+        '/restore': (context) => const AccountRestoreScreen(),
         '/terms': (context) => const TermsAndConditionsScreen(),
         '/privacy': (context) => const PrivacyPolicyScreen(),
         '/personalization': (context) {
@@ -204,8 +206,32 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
     if (uid != null) {
       if (localProfileJson != null) {
         final profile = UserProfile.fromJson(localProfileJson);
-        debugPrint('InitialSessionCheck: [DEBUG] Local profile found. onboardingComplete=${profile.onboardingComplete}');
+        debugPrint('InitialSessionCheck: [DEBUG] Local profile found. onboardingComplete=${profile.onboardingComplete}, deletionStatus=${profile.deletionStatus}');
         
+        if (profile.isPermanentlyDeleted) {
+          debugPrint('InitialSessionCheck: [GUARD] Local profile: Account permanently deleted. Signing out.');
+          FirebaseAuth.instance.signOut();
+          PersistenceService().clearAll();
+          try {
+            FlutterNativeSplash.remove();
+          } catch (_) {}
+          TopNotificationService().showNotification(
+            context,
+            'This account has been permanently deleted.',
+          );
+          Navigator.pushReplacementNamed(context, '/login');
+          return;
+        }
+
+        if (profile.isPendingDeletion) {
+          debugPrint('InitialSessionCheck: [DEBUG] Account pending deletion. Navigating to /restore');
+          try {
+            FlutterNativeSplash.remove();
+          } catch (_) {}
+          Navigator.pushReplacementNamed(context, '/restore');
+          return;
+        }
+
         if (profile.onboardingComplete) {
           debugPrint('InitialSessionCheck: [DEBUG] Proceeding to home via LaunchAdService...');
           _proceedToHome();
@@ -234,6 +260,29 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
       final profile = ref.read(userProfileProvider);
 
       if (mounted) {
+        if (profile.isPermanentlyDeleted) {
+          debugPrint('InitialSessionCheck: [GUARD] Full check: Account permanently deleted. Signing out.');
+          await FirebaseAuth.instance.signOut();
+          await PersistenceService().clearAll();
+          try {
+            FlutterNativeSplash.remove();
+          } catch (_) {}
+          TopNotificationService().showNotification(
+            context,
+            'This account has been permanently deleted.',
+          );
+          Navigator.pushReplacementNamed(context, '/login');
+          return;
+        }
+
+        if (profile.isPendingDeletion) {
+          debugPrint('InitialSessionCheck: [DEBUG] Full check found account pending deletion. Navigating to /restore');
+          try {
+            FlutterNativeSplash.remove();
+          } catch (_) {}
+          Navigator.pushReplacementNamed(context, '/restore');
+          return;
+        }
         if (profile.onboardingComplete) {
           _proceedToHome();
         } else {

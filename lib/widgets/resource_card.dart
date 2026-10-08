@@ -333,8 +333,6 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('UPLOAD CARD:\nid=${widget.resource.id}\n\nstatus=${widget.resource.thumbnailStatus}\n\nthumbnailUrl=${widget.resource.thumbnailUrl}');
-
     final resourceService = ref.watch(resourceServiceProvider);
     final downloadService = ref.watch(downloadServiceProvider);
     final viewService = ref.watch(viewServiceProvider);

@@ -79,6 +79,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   int _searchMatchesCount = 0;
   int _currentMatchIndex = -1;
   PdfTextSearcher? _textSearcher;
+  Timer? _pdfSearchDebounceTimer;
 
   // Annotation variables
   List<AnnotationStroke> _annotations = [];
@@ -364,6 +365,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _onSearchChanged(String text) {
+    _pdfSearchDebounceTimer?.cancel();
     if (_textSearcher == null) return;
     if (text.isEmpty) {
       _textSearcher!.resetTextSearch();
@@ -372,7 +374,11 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         _currentMatchIndex = -1;
       });
     } else {
-      _textSearcher!.startTextSearch(text, caseInsensitive: true);
+      _pdfSearchDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+        if (mounted && _textSearcher != null) {
+          _textSearcher!.startTextSearch(text, caseInsensitive: true);
+        }
+      });
     }
   }
 
@@ -385,6 +391,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _startSearchMode() {
+    _pdfSearchDebounceTimer?.cancel();
     _searchController.clear();
     if (_textSearcher == null) {
       try {
@@ -402,6 +409,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   }
 
   void _stopSearchMode() {
+    _pdfSearchDebounceTimer?.cancel();
     _searchController.clear();
     _textSearcher?.resetTextSearch();
     setState(() {
@@ -487,6 +495,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         _textSearcher!.dispose();
       }
     }
+    _pdfSearchDebounceTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _progressNotifier.dispose();

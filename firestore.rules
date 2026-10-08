@@ -52,12 +52,34 @@ service cloud.firestore {
     // ===============================================================
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin() || isOwner(userId);
+      allow create: if isAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.keys().hasAny([
+          'deletionStatus', 'deletionScheduledAt', 'deletionRequestedAt',
+          'deletionReason', 'deletionSurvey', 'restoredAt', 'isAnonymized',
+          'anonymizedAt', 'authDeletePending'
+        ])
+      );
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'deletionStatus', 'deletionScheduledAt', 'deletionRequestedAt',
+          'deletionReason', 'deletionSurvey', 'restoredAt', 'isAnonymized',
+          'anonymizedAt', 'authDeletePending'
+        ])
+      );
+      allow delete: if isAdmin();
 
       match /sessions/{sessionId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+    }
+
+    // ===============================================================
+    // Account Deletion Audits (Admin SDK & Authorized Admins only)
+    // ===============================================================
+    match /account_deletion_audits/{auditId} {
+      allow read, write: if isAdmin();
     }
 
     // ===============================================================

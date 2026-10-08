@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,10 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
   bool _isLoading = false;
   bool _isSuccess = false;
 
+  // Background verification tracking
+  String? _activeReference;
+  PaystackVerificationListener? _verificationListener;
+
   // Selected payment method (defaults to M-PESA)
   PaystackPaymentMethod _selectedMethod = PaystackPaymentMethod.mpesa;
 
@@ -51,6 +56,16 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
     super.initState();
     InterstitialAdService.isFullScreenAdShowing = true;
 
+    // Check if there is already an active background verification for this package
+    final activeRef = PaystackService().getActiveReferenceForPackage(widget.package.id);
+    if (activeRef != null) {
+      _isLoading = true;
+      _buttonText = 'Waiting';
+      _statusMessage = PaystackService().getLastStatusMessage(activeRef) ??
+          'Please complete the authorization on your phone.';
+      _attachToActiveVerification(activeRef);
+    }
+
     // Prefill phone: Prefer last successful M-PESA number if available,
     // otherwise format profile phone number to local Kenyan format (07XXXXXXXX / 01XXXXXXXX)
     final lastMpesa = PaystackService().getLastSuccessfulPhone(PaystackPaymentMethod.mpesa);
@@ -64,6 +79,49 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
 
     // Keep cursor at the end when the phone field receives focus
     _phoneFocusNode.addListener(_handlePhoneFocusChange);
+  }
+
+  void _attachToActiveVerification(String reference) {
+    _activeReference = reference;
+    _verificationListener = PaystackVerificationListener(
+      onStatusUpdate: (message) {
+        if (mounted) {
+          setState(() {
+            _statusMessage = message;
+          });
+        }
+      },
+      onSuccess: () async {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _isSuccess = true;
+            _buttonText = 'Successful';
+            _statusMessage = 'Payment confirmed! Activating subscription...';
+          });
+
+          await Future.delayed(const Duration(seconds: 1));
+          if (mounted) {
+            Navigator.pop(context);
+            widget.onSuccess();
+          }
+        }
+      },
+      onFailure: (errorMessage) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _buttonText = 'Purchase';
+            _statusMessage = null;
+          });
+          TopNotificationService().showNotification(
+            context,
+            errorMessage,
+          );
+        }
+      },
+    );
+    PaystackService().addVerificationListener(reference, _verificationListener!);
   }
 
   void _onPhoneChanged() {
@@ -83,6 +141,9 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
   @override
   void dispose() {
     InterstitialAdService.isFullScreenAdShowing = false;
+    if (_activeReference != null && _verificationListener != null) {
+      PaystackService().removeVerificationListener(_activeReference!, _verificationListener!);
+    }
     _phoneController.removeListener(_onPhoneChanged);
     _phoneFocusNode.removeListener(_handlePhoneFocusChange);
     _phoneFocusNode.dispose();
@@ -249,127 +310,16 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
         });
       }
 
-      // Safe verification polling loop (up to 180 seconds per Paystack Kenya mobile-money documentation)
-      const int maxPollSeconds = 180;
-      const int pollIntervalSeconds = 3;
-      final int maxAttempts = maxPollSeconds ~/ pollIntervalSeconds;
+      _attachToActiveVerification(reference);
 
-      for (int attempt = 0; attempt < maxAttempts; attempt++) {
-        if (!mounted) return;
-
-        await Future.delayed(const Duration(seconds: pollIntervalSeconds));
-        if (!mounted) return;
-
-        // Check if connection was lost while awaiting authorization
-        if (ConnectivityService().isOffline) {
-          if (mounted) {
-            setState(() {
-              _statusMessage = 'Payment confirmation is pending. We will verify your payment when connectivity returns.';
-            });
-          }
-          // Do not falsely report failure; continue waiting or allow background sync
-          continue;
-        }
-
-        final verifyResult = await PaystackService().verifyPayment(reference);
-
-        if (verifyResult.success || verifyResult.alreadyFulfilled) {
-          // Success confirmed! Save successful phone number locally and clean up unresolved reference
-          if (_selectedMethod == PaystackPaymentMethod.mpesa ||
-              _selectedMethod == PaystackPaymentMethod.airtelMoney) {
-            await PaystackService().saveLastSuccessfulPhone(_selectedMethod, phone);
-          } else if (_selectedMethod == PaystackPaymentMethod.mastercard) {
-            final cardNum = _cardNumberController.text.replaceAll(' ', '');
-            if (cardNum.length >= 4) {
-              await PaystackService().saveLastCardMetadata(
-                brand: 'Mastercard',
-                last4: cardNum.substring(cardNum.length - 4),
-              );
-            }
-          }
-
-          await PaystackService().removeUnresolvedPayment(reference);
-
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _isSuccess = true;
-              _buttonText = 'Successful';
-              _statusMessage = 'Payment confirmed! Activating subscription...';
-            });
-
-            await Future.delayed(const Duration(seconds: 1));
-            if (mounted) {
-              Navigator.pop(context);
-              widget.onSuccess();
-            }
-          }
-          return;
-        } else if (verifyResult.status == 'failed') {
-          // Terminal failure: Provider or PIN error
-          await PaystackService().removeUnresolvedPayment(reference);
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _buttonText = 'Purchase';
-              _statusMessage = null;
-            });
-            TopNotificationService().showNotification(
-              context,
-              verifyResult.message,
-            );
-          }
-          return;
-        } else if (verifyResult.status == 'abandoned') {
-          await PaystackService().removeUnresolvedPayment(reference);
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _buttonText = 'Purchase';
-              _statusMessage = null;
-            });
-            TopNotificationService().showNotification(
-              context,
-              'Payment was not completed or expired. Please try again.',
-            );
-          }
-          return;
-        } else if (verifyResult.status == 'reversed') {
-          await PaystackService().removeUnresolvedPayment(reference);
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _buttonText = 'Purchase';
-              _statusMessage = null;
-            });
-            TopNotificationService().showNotification(
-              context,
-              'Payment was reversed.',
-            );
-          }
-          return;
-        } else {
-          // Status is still pending, ongoing, or pay_offline
-          if (verifyResult.displayText != null && mounted) {
-            setState(() {
-              _statusMessage = verifyResult.displayText;
-            });
-          }
-        }
-      }
-
-      // Polling reached 180s without final resolution
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _buttonText = 'Purchase';
-          _statusMessage = null;
-        });
-        TopNotificationService().showNotification(
-          context,
-          'Payment confirmation timed out. If you already authorized on your phone, your subscription will activate automatically once confirmed.',
-        );
-      }
+      // Delegate background verification to PaystackService (unawaited so background continues independently of modal)
+      unawaited(PaystackService().startBackgroundVerification(
+        reference: reference,
+        packageId: widget.package.id,
+        method: _selectedMethod,
+        phoneNumber: phone,
+        cardNumber: _cardNumberController.text.trim(),
+      ));
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -393,7 +343,7 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
     final isFormValid = _isCurrentInputValid();
 
     return PopScope(
-      canPop: false,
+      canPop: true,
       child: Material(
         type: MaterialType.transparency,
         child: Center(
@@ -427,10 +377,12 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
                       ],
                     ),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Stack(
                     children: [
-                      const SizedBox(height: 22),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: 22),
                       const Text(
                         'CONFIRM PAYMENT',
                         style: TextStyle(
@@ -618,13 +570,32 @@ class _PurchaseModalState extends ConsumerState<PurchaseModal> {
                       ),
                     ],
                   ),
-                ),
+                  Positioned(
+                    top: 10,
+                    right: 12,
+                    child: IconButton(
+                      key: const Key('purchase_modal_close_button'),
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white70,
+                        size: 22,
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Close',
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _paymentMethodButton({

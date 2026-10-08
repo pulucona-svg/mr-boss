@@ -26,6 +26,9 @@ class UserProfile {
   final DateTime? termsAcceptedAt;
   final String? privacyPolicyVersionAccepted;
   final DateTime? privacyPolicyAcceptedAt;
+  final String deletionStatus;
+  final DateTime? deletionRequestedAt;
+  final DateTime? deletionScheduledAt;
 
   UserProfile({
     required this.uid,
@@ -47,7 +50,13 @@ class UserProfile {
     this.termsAcceptedAt,
     this.privacyPolicyVersionAccepted,
     this.privacyPolicyAcceptedAt,
+    this.deletionStatus = 'none',
+    this.deletionRequestedAt,
+    this.deletionScheduledAt,
   });
+
+  bool get isPendingDeletion => deletionStatus == 'pending';
+  bool get isPermanentlyDeleted => deletionStatus == 'permanently_deleted';
 
   UserProfile copyWith({
     String? uid,
@@ -69,7 +78,11 @@ class UserProfile {
     DateTime? termsAcceptedAt,
     String? privacyPolicyVersionAccepted,
     DateTime? privacyPolicyAcceptedAt,
+    String? deletionStatus,
+    DateTime? deletionRequestedAt,
+    DateTime? deletionScheduledAt,
     bool clearImagePath = false,
+    bool clearDeletion = false,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -91,6 +104,9 @@ class UserProfile {
       termsAcceptedAt: termsAcceptedAt ?? this.termsAcceptedAt,
       privacyPolicyVersionAccepted: privacyPolicyVersionAccepted ?? this.privacyPolicyVersionAccepted,
       privacyPolicyAcceptedAt: privacyPolicyAcceptedAt ?? this.privacyPolicyAcceptedAt,
+      deletionStatus: clearDeletion ? 'none' : (deletionStatus ?? this.deletionStatus),
+      deletionRequestedAt: clearDeletion ? null : (deletionRequestedAt ?? this.deletionRequestedAt),
+      deletionScheduledAt: clearDeletion ? null : (deletionScheduledAt ?? this.deletionScheduledAt),
     );
   }
 
@@ -115,6 +131,9 @@ class UserProfile {
       'termsAcceptedAt': termsAcceptedAt?.toIso8601String(),
       'privacyPolicyVersionAccepted': privacyPolicyVersionAccepted,
       'privacyPolicyAcceptedAt': privacyPolicyAcceptedAt?.toIso8601String(),
+      'deletionStatus': deletionStatus,
+      'deletionRequestedAt': deletionRequestedAt?.toIso8601String(),
+      'deletionScheduledAt': deletionScheduledAt?.toIso8601String(),
     };
   }
 
@@ -149,6 +168,9 @@ class UserProfile {
       termsAcceptedAt: _parseDate(json['termsAcceptedAt']),
       privacyPolicyVersionAccepted: json['privacyPolicyVersionAccepted'] as String?,
       privacyPolicyAcceptedAt: _parseDate(json['privacyPolicyAcceptedAt']),
+      deletionStatus: json['deletionStatus'] as String? ?? 'none',
+      deletionRequestedAt: _parseDate(json['deletionRequestedAt']),
+      deletionScheduledAt: _parseDate(json['deletionScheduledAt']),
     );
   }
 }
@@ -283,6 +305,20 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
 
   void clearProfileImage() {
     state = state.copyWith(clearImagePath: true);
+    _saveProfile();
+  }
+
+  void setDeletionStatus({
+    required String status,
+    DateTime? requestedAt,
+    DateTime? scheduledAt,
+  }) {
+    state = state.copyWith(
+      deletionStatus: status,
+      deletionRequestedAt: requestedAt,
+      deletionScheduledAt: scheduledAt,
+      clearDeletion: status == 'none',
+    );
     _saveProfile();
   }
 }

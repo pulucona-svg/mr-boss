@@ -711,6 +711,25 @@
       "labels": {},
       "callableTrigger": {},
       "entryPoint": "toggleAdminUserDisabled"
+    },
+    "requestAccountDeletion": {
+      "platform": "gcfv2",
+      "callableTrigger": {},
+      "entryPoint": "requestAccountDeletion"
+    },
+    "restoreUserAccount": {
+      "platform": "gcfv2",
+      "callableTrigger": {},
+      "entryPoint": "restoreUserAccount"
+    },
+    "scheduledAccountDeletionProcessor": {
+      "platform": "gcfv2",
+      "timeoutSeconds": 540,
+      "scheduleTrigger": {
+        "schedule": "every 24 hours",
+        "retryConfig": {}
+      },
+      "entryPoint": "scheduledAccountDeletionProcessor"
     }
   },
   "specVersion": "v1alpha1",

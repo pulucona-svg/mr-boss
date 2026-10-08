@@ -527,6 +527,25 @@ export const initializePaystackPayment = onCall(async (request) => {
   }
 
   const userId = request.auth.uid;
+
+  // Guard: Block payment initiation if user account is pending deletion or permanently deleted
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (userDoc.exists) {
+    const userData = userDoc.data();
+    if (userData?.deletionStatus === "pending") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot initiate purchase while account is pending deletion. Please restore your account first."
+      );
+    }
+    if (userData?.deletionStatus === "permanently_deleted") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot initiate purchase for a deleted account."
+      );
+    }
+  }
+
   const { packageId, paymentMethod, phoneNumber, userEmail } = request.data || {};
 
   if (!packageId || !AUTHORITATIVE_PACKAGES[packageId]) {
@@ -664,5 +683,54 @@ export const paystackWebhook = onRequest({ cors: false }, async (req, res) => {
     res.status(500).send("Webhook processing error");
   }
 });
+
+/**
+ * ACCOUNT DELETION & RESTORATION LIFECYCLE
+ */
+import { AccountDeletionService } from "./services/account_deletion_service";
+
+/**
+ * CALLABLE FUNCTION: Request user account deletion with 30-day grace period
+ */
+export const requestAccountDeletion = onCall(async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Authentication required to request account deletion.");
+  }
+  const uid = request.auth.uid;
+  const { reason } = request.data || {};
+  const survey = request.data?.survey || request.data?.feedback;
+  return await AccountDeletionService.requestAccountDeletion(db, uid, { reason, survey });
+});
+
+/**
+ * CALLABLE FUNCTION: Restore an account in pending deletion state
+ */
+export const restoreUserAccount = onCall(async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Authentication required to restore account.");
+  }
+  const uid = request.auth.uid;
+  return await AccountDeletionService.restoreUserAccount(db, uid);
+});
+
+/**
+ * SCHEDULED FUNCTION: Processes expired account deletions once every 24 hours
+ */
+export const scheduledAccountDeletionProcessor = onSchedule(
+  {
+    schedule: "every 24 hours",
+    timeoutSeconds: 540,
+  },
+  async (event) => {
+    let ik: ImageKit | null = null;
+    try {
+      ik = getImageKit();
+    } catch (e) {
+      logger.warn("[IMAGEKIT_INIT_WARN] ImageKit credentials missing during account deletion processor:", e);
+    }
+    const processed = await AccountDeletionService.processExpiredDeletions(db, ik);
+    logger.info(`[SCHEDULED_ACCOUNT_DELETION] Purged and anonymized ${processed} expired accounts.`);
+  }
+);
 
 

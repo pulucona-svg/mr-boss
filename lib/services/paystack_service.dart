@@ -5,6 +5,19 @@ import 'package:flutter/foundation.dart';
 import '../models/subscription_model.dart';
 import 'connectivity_service.dart';
 import 'persistence_service.dart';
+import 'top_notification_service.dart';
+
+class PaystackVerificationListener {
+  final void Function(String message)? onStatusUpdate;
+  final void Function()? onSuccess;
+  final void Function(String errorMessage)? onFailure;
+
+  const PaystackVerificationListener({
+    this.onStatusUpdate,
+    this.onSuccess,
+    this.onFailure,
+  });
+}
 
 enum PaystackPaymentMethod {
   mpesa,
@@ -76,6 +89,67 @@ class PaystackService {
   set customFunctions(FirebaseFunctions? functions) => _customFunctions = functions;
 
   bool _isInitialized = false;
+
+  /// Set of currently running background verification references to prevent duplicate loops
+  final Set<String> _activeVerifications = {};
+
+  /// Set of completed references that have already fired success notification
+  final Set<String> _notifiedSuccessReferences = {};
+
+  /// Map of reference to active listeners for UI status updates
+  final Map<String, List<PaystackVerificationListener>> _listeners = {};
+
+  /// Map of reference to active package ID
+  final Map<String, String> _activePackageIds = {};
+
+  /// Last known status message for active references
+  final Map<String, String> _lastStatusMessages = {};
+
+  /// Check whether a reference has an active background verification loop
+  bool isVerifying(String reference) => _activeVerifications.contains(reference);
+
+  /// Get active reference for a package if any is running
+  String? getActiveReferenceForPackage(String packageId) {
+    for (final entry in _activePackageIds.entries) {
+      if (entry.value == packageId && _activeVerifications.contains(entry.key)) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  /// Get last known status message for an active reference
+  String? getLastStatusMessage(String reference) => _lastStatusMessages[reference];
+
+  /// Attach a listener for UI updates on a pending reference
+  void addVerificationListener(String reference, PaystackVerificationListener listener) {
+    _listeners.putIfAbsent(reference, () => []).add(listener);
+  }
+
+  /// Remove a listener when UI is unmounted or dismissed
+  void removeVerificationListener(String reference, PaystackVerificationListener listener) {
+    _listeners[reference]?.remove(listener);
+    if (_listeners[reference]?.isEmpty ?? false) {
+      _listeners.remove(reference);
+    }
+  }
+
+  @visibleForTesting
+  void resetStateForTesting() {
+    _activeVerifications.clear();
+    _notifiedSuccessReferences.clear();
+    _listeners.clear();
+    _activePackageIds.clear();
+    _lastStatusMessages.clear();
+  }
+
+  @visibleForTesting
+  void stopVerificationForTesting(String reference) {
+    _activeVerifications.remove(reference);
+    _activePackageIds.remove(reference);
+    _lastStatusMessages.remove(reference);
+    _listeners.remove(reference);
+  }
 
   /// Keys for SharedPreferences
   static const String keyUnresolvedPayments = 'unresolved_paystack_payments';
@@ -236,6 +310,8 @@ class PaystackService {
     for (final item in unresolved) {
       final reference = item['reference'] as String?;
       if (reference == null || reference.isEmpty) continue;
+      // Skip reference if a live background verification loop is already polling it
+      if (_activeVerifications.contains(reference)) continue;
 
       try {
         final verifyResult = await verifyPayment(reference);
@@ -250,6 +326,7 @@ class PaystackService {
                 : PaystackPaymentMethod.mpesa;
             await saveLastSuccessfulPhone(method, phone);
           }
+          _handleVerificationSuccess(reference);
         } else if (verifyResult.status == 'failed' ||
                    verifyResult.status == 'abandoned' ||
                    verifyResult.status == 'reversed') {
@@ -367,5 +444,162 @@ class PaystackService {
         isPending: true,
       );
     }
+  }
+
+  void _notifyStatus(String reference, String message) {
+    final list = _listeners[reference];
+    if (list != null) {
+      for (final l in List<PaystackVerificationListener>.from(list)) {
+        l.onStatusUpdate?.call(message);
+      }
+    }
+  }
+
+  void _handleVerificationSuccess(String reference) {
+    if (_notifiedSuccessReferences.contains(reference)) return;
+
+    final list = _listeners.remove(reference);
+    if (list != null && list.isNotEmpty) {
+      // Modal is open with an active listener: let the modal update its UI and pop
+      for (final l in List<PaystackVerificationListener>.from(list)) {
+        l.onSuccess?.call();
+      }
+      _notifiedSuccessReferences.add(reference);
+    } else {
+      // Modal is closed / dismissed: trigger existing green success notification globally!
+      _notifiedSuccessReferences.add(reference);
+      TopNotificationService().showNotification(
+        null,
+        'Subscription successful. Enjoy ad-free access!',
+        type: TopNotificationType.success,
+      );
+    }
+  }
+
+  void _handleVerificationFailure(String reference, String errorMessage) {
+    final list = _listeners.remove(reference);
+    if (list != null && list.isNotEmpty) {
+      for (final l in List<PaystackVerificationListener>.from(list)) {
+        l.onFailure?.call(errorMessage);
+      }
+    } else {
+      debugPrint('PaystackService: Payment $reference failed in background. Modal closed, suppressed popup.');
+    }
+  }
+
+  void _handleVerificationTimeout(String reference, String timeoutMessage) {
+    final list = _listeners.remove(reference);
+    if (list != null && list.isNotEmpty) {
+      for (final l in List<PaystackVerificationListener>.from(list)) {
+        l.onFailure?.call(timeoutMessage);
+      }
+    } else {
+      debugPrint('PaystackService: Payment $reference timed out in background. Modal closed, suppressed popup.');
+    }
+  }
+
+  /// Initiates or attaches to the background verification polling loop.
+  /// Survives modal dismissal, screen navigation, and widget lifecycle disposal.
+  Future<void> startBackgroundVerification({
+    required String reference,
+    required String packageId,
+    required PaystackPaymentMethod method,
+    required String phoneNumber,
+    String? cardNumber,
+    PaystackVerificationListener? listener,
+  }) async {
+    if (listener != null) {
+      addVerificationListener(reference, listener);
+    }
+
+    // Guard against starting duplicate polling loops for the same reference
+    if (_activeVerifications.contains(reference)) {
+      debugPrint('PaystackService: Verification loop already active for $reference');
+      return;
+    }
+
+    _activeVerifications.add(reference);
+    _activePackageIds[reference] = packageId;
+
+    // Safe verification polling loop (up to 180 seconds per Paystack Kenya mobile-money documentation)
+    const int maxPollSeconds = 180;
+    const int pollIntervalSeconds = 3;
+    final int maxAttempts = maxPollSeconds ~/ pollIntervalSeconds;
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      if (!_activeVerifications.contains(reference)) return;
+
+      await Future.delayed(const Duration(seconds: pollIntervalSeconds));
+      if (!_activeVerifications.contains(reference)) return;
+
+      // Check if connection was lost while awaiting authorization
+      if (ConnectivityService().isOffline) {
+        const offlineMsg = 'Payment confirmation is pending. We will verify your payment when connectivity returns.';
+        _lastStatusMessages[reference] = offlineMsg;
+        _notifyStatus(reference, offlineMsg);
+        continue;
+      }
+
+      try {
+        final verifyResult = await verifyPayment(reference);
+
+        if (verifyResult.success || verifyResult.alreadyFulfilled) {
+          // Success confirmed! Save successful phone number locally and clean up unresolved reference
+          if (method == PaystackPaymentMethod.mpesa ||
+              method == PaystackPaymentMethod.airtelMoney) {
+            await saveLastSuccessfulPhone(method, phoneNumber);
+          } else if (method == PaystackPaymentMethod.mastercard && cardNumber != null) {
+            final cardNum = cardNumber.replaceAll(' ', '');
+            if (cardNum.length >= 4) {
+              await saveLastCardMetadata(
+                brand: 'Mastercard',
+                last4: cardNum.substring(cardNum.length - 4),
+              );
+            }
+          }
+
+          await removeUnresolvedPayment(reference);
+          _activeVerifications.remove(reference);
+          _activePackageIds.remove(reference);
+          _lastStatusMessages.remove(reference);
+
+          _handleVerificationSuccess(reference);
+          return;
+        } else if (verifyResult.status == 'failed' ||
+                   verifyResult.status == 'abandoned' ||
+                   verifyResult.status == 'reversed') {
+          // Terminal failure: Provider or PIN error
+          await removeUnresolvedPayment(reference);
+          _activeVerifications.remove(reference);
+          _activePackageIds.remove(reference);
+          _lastStatusMessages.remove(reference);
+
+          final errorMsg = verifyResult.status == 'abandoned'
+              ? 'Payment was not completed or expired. Please try again.'
+              : (verifyResult.status == 'reversed'
+                  ? 'Payment was reversed.'
+                  : verifyResult.message);
+
+          _handleVerificationFailure(reference, errorMsg);
+          return;
+        } else {
+          // Status is still pending, ongoing, or pay_offline
+          if (verifyResult.displayText != null) {
+            _lastStatusMessages[reference] = verifyResult.displayText!;
+            _notifyStatus(reference, verifyResult.displayText!);
+          }
+        }
+      } catch (e) {
+        debugPrint('PaystackService: Polling error for $reference: $e');
+      }
+    }
+
+    // Polling reached 180s without final resolution
+    _activeVerifications.remove(reference);
+    _activePackageIds.remove(reference);
+    _lastStatusMessages.remove(reference);
+
+    const timeoutMsg = 'Payment confirmation timed out. If you already authorized on your phone, your subscription will activate automatically once confirmed.';
+    _handleVerificationTimeout(reference, timeoutMsg);
   }
 }

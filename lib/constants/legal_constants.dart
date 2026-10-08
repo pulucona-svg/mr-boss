@@ -887,10 +887,11 @@ class LegalConstants {
     LegalSection(
       title: '24. ACCOUNT DELETION',
       content:
-          'You may request deletion of your Mirror Digital account.\n\n'
-          'Where account deletion is available through the Platform, you may use that functionality.\n\n'
-          'You may also contact:\n\n'
+          'You may request deletion of your Mirror Digital account directly through the application profile settings or by contacting Mirror Digital.\n\n'
+          'When you request account deletion through the Platform, your account enters an authoritative 30-day grace period during which you may restore your account at any time by signing in and choosing to restore. If you do not restore your account within 30 days, permanent deletion and anonymization occur automatically.\n\n'
+          'Where account deletion is requested, you may also contact:\n\n'
           'mirrorlaikipia@gmail.com\n\n'
+          'Educational materials and comments you contributed may be preserved in anonymized form to maintain academic continuity for peers.\n\n'
           'Deletion may not immediately remove every record from active or backup systems.\n\n'
           'Some information may need to be retained for lawful reasons, including:\n'
           '• financial records;\n'

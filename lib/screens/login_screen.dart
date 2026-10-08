@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'signup_screen.dart';
 import 'reset_password_screen.dart';
 import 'academic_personalization_screen.dart';
+import 'account_restore_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
 import '../services/persistence_service.dart';
@@ -60,7 +61,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         final profile = ref.read(userProfileProvider);
 
-        if (profile.onboardingComplete) {
+        if (profile.isPermanentlyDeleted) {
+          debugPrint('LoginScreen: [GUARD] Google Sign-In: Account permanently deleted. Signing out.');
+          await authService.signOut();
+          await PersistenceService().clearAll();
+          if (mounted) {
+            TopNotificationService().showNotification(
+              context,
+              'This account has been permanently deleted.',
+            );
+          }
+          return;
+        }
+
+        if (profile.isPendingDeletion) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AccountRestoreScreen(),
+            ),
+          );
+        } else if (profile.onboardingComplete) {
           Navigator.pushReplacementNamed(context, '/home');
         } else {
           Navigator.pushReplacement(
@@ -145,6 +166,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         final profile = ref.read(userProfileProvider);
 
+        if (profile.isPermanentlyDeleted) {
+          debugPrint('LoginScreen: [GUARD] Email Login: Account permanently deleted. Signing out.');
+          await authService.signOut();
+          await PersistenceService().clearAll();
+          if (mounted) {
+            TopNotificationService().showNotification(
+              context,
+              'This account has been permanently deleted.',
+            );
+          }
+          return;
+        }
+
         TopNotificationService()
             .showNotification(context, 'Login successful');
         TopNotificationService.pendingWelcome = true;
@@ -152,7 +186,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Future.delayed(const Duration(milliseconds: 1000), () {
           if (!mounted) return;
 
-          if (profile.onboardingComplete) {
+          if (profile.isPendingDeletion) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AccountRestoreScreen(),
+              ),
+            );
+          } else if (profile.onboardingComplete) {
             Navigator.pushReplacementNamed(context, '/home');
           } else {
             Navigator.pushReplacement(
