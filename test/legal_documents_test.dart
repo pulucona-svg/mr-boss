@@ -6,6 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/src/pigeon/mocks.dart';
 
+// ignore: depend_on_referenced_packages
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+// ignore: depend_on_referenced_packages
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+
 import 'package:mirror_laikipia/constants/legal_constants.dart';
 import 'package:mirror_laikipia/screens/terms_and_conditions_screen.dart';
 import 'package:mirror_laikipia/screens/privacy_policy_screen.dart';
@@ -15,12 +20,33 @@ import 'package:mirror_laikipia/screens/more_options_screen.dart';
 import 'package:mirror_laikipia/providers/user_provider.dart';
 import 'package:mirror_laikipia/services/persistence_service.dart';
 
+class MockUrlLauncher extends Fake
+    with MockPlatformInterfaceMixin
+    implements UrlLauncherPlatform {
+  String? launchedUrl;
+  LaunchOptions? launchOptions;
+
+  @override
+  Future<bool> canLaunch(String url) async => true;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) async {
+    launchedUrl = url;
+    launchOptions = options;
+    return true;
+  }
+}
+
 void main() {
+  late MockUrlLauncher mockUrlLauncher;
+
   setUp(() async {
     setupFirebaseCoreMocks();
     await Firebase.initializeApp();
     SharedPreferences.setMockInitialValues({});
     await PersistenceService().init();
+    mockUrlLauncher = MockUrlLauncher();
+    UrlLauncherPlatform.instance = mockUrlLauncher;
   });
 
   group('Legal Constants & Platform Name Integrity Tests', () {
@@ -29,6 +55,14 @@ void main() {
       expect(LegalConstants.contactEmail, 'mirrorlaikipia@gmail.com');
       expect(LegalConstants.termsVersion, '1.0');
       expect(LegalConstants.privacyPolicyVersion, '1.0');
+      expect(
+        LegalConstants.privacyPolicyUrl,
+        'https://mirror-digital-legal.vercel.app/privacy-policy',
+      );
+      expect(
+        LegalConstants.termsAndConditionsUrl,
+        'https://mirror-digital-legal.vercel.app/terms-and-conditions',
+      );
 
       // Ensure "Mirror Laikipia" does not appear as the platform name in legal documents
       expect(LegalConstants.termsIntro.contains('Mirror Laikipia'), isFalse);
@@ -241,7 +275,7 @@ void main() {
       expect(termsSpan!.recognizer, isA<TapGestureRecognizer>());
     });
 
-    testWidgets('7. Tapping Terms and Conditions link opens TermsAndConditionsScreen',
+    testWidgets('7. Tapping Terms and Conditions link launches external Terms and Conditions URL',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
@@ -287,22 +321,17 @@ void main() {
       recognizer.onTap?.call();
       await tester.pumpAndSettle();
 
-      // Terms screen should now be opened
-      expect(find.byType(TermsAndConditionsScreen), findsOneWidget);
-      expect(find.text('Terms & Conditions'), findsWidgets);
-      expect(find.text('MIRROR DIGITAL'), findsOneWidget);
-
-      // Back button works
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(TermsAndConditionsScreen), findsNothing);
-      expect(find.byType(SignupScreen), findsOneWidget);
+      // Terms external URL should be launched with externalApplication mode
+      expect(mockUrlLauncher.launchedUrl, LegalConstants.termsAndConditionsUrl);
+      expect(
+        mockUrlLauncher.launchOptions?.mode,
+        PreferredLaunchMode.externalApplication,
+      );
     });
   });
 
   group('Profile Screen & More Options Legal Navigation Tests', () {
-    testWidgets('8. Profile Screen Privacy Policy footer link navigates to PrivacyPolicyScreen',
+    testWidgets('8. Profile Screen Privacy Policy footer link launches external Privacy Policy URL',
         (tester) async {
       tester.view.physicalSize = const Size(1080, 1920);
       tester.view.devicePixelRatio = 1.0;
@@ -326,18 +355,14 @@ void main() {
       await tester.tap(privacyLinkFinder);
       await tester.pumpAndSettle();
 
-      expect(find.byType(PrivacyPolicyScreen), findsOneWidget);
-      expect(find.text('1. ABOUT THIS PRIVACY POLICY'), findsOneWidget);
-
-      // Back navigation
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(PrivacyPolicyScreen), findsNothing);
-      expect(find.byType(ProfileScreen), findsOneWidget);
+      expect(mockUrlLauncher.launchedUrl, LegalConstants.privacyPolicyUrl);
+      expect(
+        mockUrlLauncher.launchOptions?.mode,
+        PreferredLaunchMode.externalApplication,
+      );
     });
 
-    testWidgets('9. MoreOptionsScreen Privacy Policy and Terms navigate to correct screens',
+    testWidgets('9. MoreOptionsScreen Privacy Policy and Terms launch external URLs',
         (tester) async {
       tester.view.physicalSize = const Size(1080, 1920);
       tester.view.devicePixelRatio = 1.0;
@@ -359,17 +384,25 @@ void main() {
       await tester.tap(find.text('Privacy Policy'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(PrivacyPolicyScreen), findsOneWidget);
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
+      expect(mockUrlLauncher.launchedUrl, LegalConstants.privacyPolicyUrl);
+      expect(
+        mockUrlLauncher.launchOptions?.mode,
+        PreferredLaunchMode.externalApplication,
+      );
+
+      // Reset mock tracker
+      mockUrlLauncher.launchedUrl = null;
+      mockUrlLauncher.launchOptions = null;
 
       // Tap Terms and Conditions
       await tester.tap(find.text('Terms and Conditions'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(TermsAndConditionsScreen), findsOneWidget);
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
+      expect(mockUrlLauncher.launchedUrl, LegalConstants.termsAndConditionsUrl);
+      expect(
+        mockUrlLauncher.launchOptions?.mode,
+        PreferredLaunchMode.externalApplication,
+      );
     });
   });
 }

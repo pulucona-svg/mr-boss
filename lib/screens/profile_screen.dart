@@ -11,8 +11,7 @@ import 'reset_password_screen.dart';
 import 'library_screen.dart';
 import 'login_screen.dart';
 import 'subscription_screen.dart';
-import 'privacy_policy_screen.dart';
-import 'terms_and_conditions_screen.dart';
+import '../constants/legal_constants.dart';
 import '../services/subscription_service.dart';
 
 import 'analytics_screen.dart';
@@ -1262,9 +1261,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
           );
         } else if (text == 'Privacy Policy') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+          LegalConstants.launchLegalUrl(
+            LegalConstants.privacyPolicyUrl,
+            context: context,
           );
         } else if (text == 'Change Password') {
           final userEmail = ref.read(userProfileProvider).email;

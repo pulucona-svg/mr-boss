@@ -1,3 +1,6 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 class LegalSection {
   final String title;
   final String content;
@@ -13,6 +16,46 @@ class LegalConstants {
 
   static const String platformName = 'Mirror Digital';
   static const String contactEmail = 'mirrorlaikipia@gmail.com';
+
+  // Official live legal website URLs
+  static const String privacyPolicyUrl =
+      'https://mirror-digital-legal.vercel.app/privacy-policy';
+  static const String termsAndConditionsUrl =
+      'https://mirror-digital-legal.vercel.app/terms-and-conditions';
+
+  /// Safely launches an external legal URL in the user's default browser.
+  /// Handles failures gracefully without crashing.
+  static Future<bool> launchLegalUrl(String url, {BuildContext? context}) async {
+    try {
+      final Uri uri = Uri.parse(url);
+      final bool launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open external browser for legal document.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return launched;
+    } catch (e) {
+      debugPrint('Error launching legal URL $url: $e');
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open external browser for legal document.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
+    }
+  }
 
   // Terms & Conditions metadata
   static const String termsVersion = '1.0';

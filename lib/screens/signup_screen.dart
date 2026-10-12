@@ -7,7 +7,7 @@ import 'academic_personalization_screen.dart';
 import 'email_verification_screen.dart';
 import 'login_screen.dart';
 import 'account_restore_screen.dart';
-import 'terms_and_conditions_screen.dart';
+import '../constants/legal_constants.dart';
 import '../services/top_notification_service.dart';
 import '../services/connectivity_service.dart';
 import '../providers/providers.dart';
@@ -41,11 +41,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   }
 
   void _openTerms() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const TermsAndConditionsScreen(),
-      ),
+    LegalConstants.launchLegalUrl(
+      LegalConstants.termsAndConditionsUrl,
+      context: context,
     );
   }
 

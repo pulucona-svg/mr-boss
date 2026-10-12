@@ -3,8 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/theme_provider.dart';
-import 'privacy_policy_screen.dart';
-import 'terms_and_conditions_screen.dart';
+import '../constants/legal_constants.dart';
 
 class MoreOptionsScreen extends ConsumerWidget {
   const MoreOptionsScreen({super.key});
@@ -177,14 +176,14 @@ class MoreOptionsScreen extends ConsumerWidget {
     return GestureDetector(
       onTap: () {
         if (label == 'Privacy Policy') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PrivacyPolicyScreen()),
+          LegalConstants.launchLegalUrl(
+            LegalConstants.privacyPolicyUrl,
+            context: context,
           );
         } else if (label == 'Terms and Conditions') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const TermsAndConditionsScreen()),
+          LegalConstants.launchLegalUrl(
+            LegalConstants.termsAndConditionsUrl,
+            context: context,
           );
         }
       },
