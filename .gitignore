@@ -58,3 +58,8 @@ functions/.env
 !**/*.env.example
 
 functions/.env
+
+# Android signing secrets
+android/key.properties
+*.jks
+*.keystore

@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyD44DX6hgaOnztSacVP-bhJC523zTpOc-I',
-    appId: '1:386198984140:android:d16ebe33c2cc43ba41f969',
+    appId: '1:386198984140:android:7754014b0b6f19ce41f969',
     messagingSenderId: '386198984140',
     projectId: 'mirror-laikipia',
     storageBucket: 'mirror-laikipia.firebasestorage.app',

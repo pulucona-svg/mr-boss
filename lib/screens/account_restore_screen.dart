@@ -367,11 +367,13 @@ class _AccountRestoreScreenState extends ConsumerState<AccountRestoreScreen> {
                             children: const [
                               Icon(Icons.timer_outlined, color: Color(0xFF20C8FF), size: 20),
                               SizedBox(width: 8),
-                              Text(
-                                'Time Remaining in Grace Period',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                              Expanded(
+                                child: Text(
+                                  'Time Remaining in Grace Period',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
                             ],
@@ -536,15 +538,19 @@ class _AccountRestoreScreenState extends ConsumerState<AccountRestoreScreen> {
     required Color subTextColor,
   }) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: TextStyle(color: subTextColor, fontSize: 13),
         ),
-        Text(
-          value,
-          style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.w600),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     );

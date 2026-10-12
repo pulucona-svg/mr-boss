@@ -697,9 +697,10 @@ export const requestAccountDeletion = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "Authentication required to request account deletion.");
   }
   const uid = request.auth.uid;
-  const { reason } = request.data || {};
+  const { reason, userEmail: customEmail } = request.data || {};
+  const userEmail = request.auth.token?.email || customEmail;
   const survey = request.data?.survey || request.data?.feedback;
-  return await AccountDeletionService.requestAccountDeletion(db, uid, { reason, survey });
+  return await AccountDeletionService.requestAccountDeletion(db, uid, { reason, survey, userEmail });
 });
 
 /**
@@ -710,7 +711,8 @@ export const restoreUserAccount = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "Authentication required to restore account.");
   }
   const uid = request.auth.uid;
-  return await AccountDeletionService.restoreUserAccount(db, uid);
+  const userEmail = request.auth.token?.email || request.data?.userEmail;
+  return await AccountDeletionService.restoreUserAccount(db, uid, userEmail);
 });
 
 /**

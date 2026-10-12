@@ -1,4 +1,4 @@
-package com.example.mirror_laikipia
+package com.mirrordigital.app
 
 import android.os.Bundle
 import android.view.WindowManager

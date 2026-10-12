@@ -2,6 +2,7 @@ import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import ImageKit from "imagekit";
 import { HttpsError } from "firebase-functions/v2/https";
+import { EmailService } from "./email_service";
 
 export interface DeletionSurvey {
   q1_reason?: string;
@@ -20,6 +21,7 @@ export interface DeletionSurvey {
 export interface RequestDeletionParams {
   reason?: string;
   survey?: DeletionSurvey;
+  userEmail?: string;
 }
 
 export class AccountDeletionService {
@@ -47,6 +49,7 @@ export class AccountDeletionService {
 
     let scheduledDate: Date;
     let alreadyPending = false;
+    let resolvedEmail = params.userEmail || "";
 
     await db.runTransaction(async (transaction) => {
       const userSnap = await transaction.get(userRef);
@@ -55,6 +58,9 @@ export class AccountDeletionService {
       }
 
       const userData = userSnap.data() || {};
+      if (!resolvedEmail && userData.email) {
+        resolvedEmail = userData.email;
+      }
 
       // If already pending, return existing deadline idempotently
       if (userData.deletionStatus === "pending" && userData.deletionScheduledAt) {
@@ -91,6 +97,7 @@ export class AccountDeletionService {
           status: "pending",
           requestedAt: admin.firestore.Timestamp.fromDate(now),
           scheduledPurgeAt: admin.firestore.Timestamp.fromDate(scheduledDate),
+          notificationEmail: resolvedEmail || null,
           survey: params.survey || null,
           reason: params.reason || null,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -113,6 +120,47 @@ export class AccountDeletionService {
       logger.warn(`[DELETION_SESSIONS_INVALIDATE_WARN] Could not deactivate sessions for ${uid}:`, sessionErr.message);
     }
 
+    // EMAIL #1: Account Deletion Request Confirmation
+    // Dispatched ONLY after deletion transaction commits successfully.
+    // Failure to send email NEVER rolls back deletion or changes deletionStatus.
+    if (!alreadyPending && resolvedEmail) {
+      try {
+        const auditSnap = await auditRef.get();
+        const auditData = auditSnap.data() || {};
+        if (!auditData.deletionEmailSentAt) {
+          const emailRes = await EmailService.sendDeletionRequestedEmail(resolvedEmail, scheduledDate!);
+          if (emailRes.success) {
+            await auditRef.set(
+              {
+                deletionEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                deletionEmailPending: false,
+                notificationEmail: resolvedEmail,
+              },
+              { merge: true }
+            );
+          } else if (!emailRes.skipped) {
+            logger.warn(`[DELETION_EMAIL_WARN] Could not send deletion confirmation to ${resolvedEmail}:`, emailRes.error);
+            await auditRef.set(
+              {
+                deletionEmailPending: true,
+                notificationEmail: resolvedEmail,
+              },
+              { merge: true }
+            );
+          }
+        }
+      } catch (emailErr: any) {
+        logger.warn(`[DELETION_EMAIL_ERROR] Error dispatching deletion email to ${resolvedEmail}:`, emailErr.message || emailErr);
+        await auditRef.set(
+          {
+            deletionEmailPending: true,
+            notificationEmail: resolvedEmail,
+          },
+          { merge: true }
+        );
+      }
+    }
+
     return {
       success: true,
       deletionStatus: "pending",
@@ -130,7 +178,8 @@ export class AccountDeletionService {
    */
   static async restoreUserAccount(
     db: FirebaseFirestore.Firestore,
-    uid: string
+    uid: string,
+    callerEmail?: string
   ): Promise<{
     success: boolean;
     deletionStatus: string;
@@ -142,6 +191,7 @@ export class AccountDeletionService {
 
     const userRef = db.collection("users").doc(uid);
     const auditRef = db.collection("account_deletion_audits").doc(uid);
+    let targetEmail = callerEmail || "";
 
     await db.runTransaction(async (transaction) => {
       const userSnap = await transaction.get(userRef);
@@ -150,6 +200,9 @@ export class AccountDeletionService {
       }
 
       const userData = userSnap.data() || {};
+      if (!targetEmail && userData.email) {
+        targetEmail = userData.email;
+      }
 
       if (userData.deletionStatus !== "pending") {
         throw new HttpsError("failed-precondition", "Account is not pending deletion.");
@@ -183,12 +236,53 @@ export class AccountDeletionService {
           status: "restored",
           restoredAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          notificationEmail: targetEmail || null,
         },
         { merge: true }
       );
     });
 
     logger.info(`[DELETION_RESTORE_SUCCESS] Account ${uid} successfully restored.`);
+
+    // EMAIL #2: Account Restoration Confirmation
+    // Dispatched ONLY after restore transaction commits successfully.
+    // Failure to send email NEVER rolls back restoration or alters status.
+    if (targetEmail) {
+      try {
+        const auditSnap = await auditRef.get();
+        const auditData = auditSnap.data() || {};
+        if (!auditData.restorationEmailSentAt) {
+          const emailRes = await EmailService.sendAccountRestoredEmail(targetEmail);
+          if (emailRes.success) {
+            await auditRef.set(
+              {
+                restorationEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                restorationEmailPending: false,
+              },
+              { merge: true }
+            );
+          } else if (!emailRes.skipped) {
+            logger.warn(`[RESTORE_EMAIL_WARN] Could not send restoration confirmation to ${targetEmail}:`, emailRes.error);
+            await auditRef.set(
+              {
+                restorationEmailPending: true,
+                notificationEmail: targetEmail,
+              },
+              { merge: true }
+            );
+          }
+        }
+      } catch (emailErr: any) {
+        logger.warn(`[RESTORE_EMAIL_ERROR] Error dispatching restore email to ${targetEmail}:`, emailErr.message || emailErr);
+        await auditRef.set(
+          {
+            restorationEmailPending: true,
+            notificationEmail: targetEmail,
+          },
+          { merge: true }
+        );
+      }
+    }
 
     return {
       success: true,
@@ -226,6 +320,11 @@ export class AccountDeletionService {
         processedUids.add(uid);
         const userRef = db.collection("users").doc(uid);
         const userData = doc.data() || {};
+
+        // Capture authentic email address in memory BEFORE scrub/deletion
+        const authenticEmail = (userData.email && !userData.email.endsWith("@deleted.local"))
+          ? userData.email
+          : null;
 
         try {
           // 1. Double-check status atomically
@@ -377,6 +476,47 @@ export class AccountDeletionService {
             { merge: true }
           );
 
+          // EMAIL #3: Final Permanent Deletion Confirmation
+          // Dispatched after permanent deletion & anonymization operations successfully complete.
+          // Failure to send email NEVER rolls back deletion and NEVER recreates the deleted Auth user.
+          if (authenticEmail) {
+            try {
+              const auditSnap = await db.collection("account_deletion_audits").doc(uid).get();
+              const auditData = auditSnap.data() || {};
+              if (!auditData.permanentDeletionEmailSentAt) {
+                const emailRes = await EmailService.sendPermanentDeletionEmail(authenticEmail);
+                if (emailRes.success) {
+                  await db.collection("account_deletion_audits").doc(uid).set(
+                    {
+                      permanentDeletionEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                      permanentDeletionEmailPending: false,
+                      notificationEmail: admin.firestore.FieldValue.delete(), // Minimizes retention of PII
+                    },
+                    { merge: true }
+                  );
+                } else if (!emailRes.skipped) {
+                  logger.warn(`[PERMANENT_DELETION_EMAIL_WARN] Could not send permanent deletion email to ${authenticEmail}:`, emailRes.error);
+                  await db.collection("account_deletion_audits").doc(uid).set(
+                    {
+                      permanentDeletionEmailPending: true,
+                      notificationEmail: authenticEmail, // Retained strictly for durable email retry
+                    },
+                    { merge: true }
+                  );
+                }
+              }
+            } catch (emailErr: any) {
+              logger.warn(`[PERMANENT_DELETION_EMAIL_ERROR] Error sending permanent deletion email to ${authenticEmail}:`, emailErr.message || emailErr);
+              await db.collection("account_deletion_audits").doc(uid).set(
+                {
+                  permanentDeletionEmailPending: true,
+                  notificationEmail: authenticEmail,
+                },
+                { merge: true }
+              );
+            }
+          }
+
           processedCount++;
         } catch (err: any) {
           logger.error(`[ACCOUNT_DELETION_ERROR] Failed to permanently delete account ${uid}:`, err);
@@ -428,6 +568,45 @@ export class AccountDeletionService {
       }
     } catch (retryQueryErr: any) {
       logger.warn("[ACCOUNT_DELETION_AUTH_RETRY_QUERY_WARN] Error querying authDeletePending accounts:", retryQueryErr?.message || retryQueryErr);
+    }
+
+    // 11. Process retry for accounts where permanent deletion email previously failed
+    // (Never touches or recreates Firebase Auth)
+    try {
+      const retryEmailSnap = await db
+        .collection("account_deletion_audits")
+        .where("permanentDeletionEmailPending", "==", true)
+        .limit(batchLimit)
+        .get();
+
+      if (!retryEmailSnap.empty) {
+        logger.info(`[ACCOUNT_DELETION_EMAIL_RETRY] Found ${retryEmailSnap.size} accounts needing permanent deletion email retry.`);
+        for (const aDoc of retryEmailSnap.docs) {
+          if (processedUids.has(aDoc.id)) continue;
+          const aData = aDoc.data() || {};
+          const retryEmail = aData.notificationEmail;
+          if (retryEmail && !aData.permanentDeletionEmailSentAt) {
+            try {
+              const emailRes = await EmailService.sendPermanentDeletionEmail(retryEmail);
+              if (emailRes.success) {
+                await aDoc.ref.set(
+                  {
+                    permanentDeletionEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                    permanentDeletionEmailPending: false,
+                    notificationEmail: admin.firestore.FieldValue.delete(), // Minimizes personal data retention
+                  },
+                  { merge: true }
+                );
+                logger.info(`[ACCOUNT_DELETION_EMAIL_RETRY_SUCCESS] Sent permanent deletion email on retry for ${aDoc.id}`);
+              }
+            } catch (retryErr: any) {
+              logger.warn(`[PERMANENT_DELETION_EMAIL_RETRY_FAILED] Email retry failed for ${aDoc.id}:`, retryErr.message || retryErr);
+            }
+          }
+        }
+      }
+    } catch (retryQueryErr: any) {
+      logger.warn("[ACCOUNT_DELETION_EMAIL_RETRY_QUERY_WARN] Error querying pending email audits:", retryQueryErr?.message || retryQueryErr);
     }
 
     return processedCount;

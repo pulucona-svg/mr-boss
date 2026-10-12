@@ -338,5 +338,48 @@ void main() {
       expect(find.text('Restore Account'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
     });
+
+    testWidgets('14. AccountRestoreScreen does not overflow on standard compact phone (360px width)', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final requested = DateTime(2026, 9, 28, 23, 45);
+      final deadline = DateTime(2026, 11, 28, 23, 45);
+
+      final container = ProviderContainer(
+        overrides: [
+          userProfileProvider.overrideWith((ref) {
+            final notifier = UserProfileNotifier();
+            notifier.updateProfile(
+              uid: 'user-pending-narrow',
+              username: 'Narrow Screen User',
+            );
+            notifier.setDeletionStatus(
+              status: 'pending',
+              requestedAt: requested,
+              scheduledAt: deadline,
+            );
+            return notifier;
+          }),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: AccountRestoreScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Check detail row texts rendered without layout exceptions
+      expect(find.text('Deletion Requested:'), findsOneWidget);
+      expect(find.text('Permanent Deletion:'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
