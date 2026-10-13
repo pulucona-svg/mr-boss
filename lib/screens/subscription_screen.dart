@@ -23,6 +23,38 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     SubscriptionPackage(id: 'yearly', title: 'Yearly Pass', price: 500, duration: Duration(days: 365)),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(subscriptionServiceProvider).fetchPromotionalCampaignStatus(silent: true);
+    });
+  }
+
+  Future<void> _handleClaimTrial() async {
+    final service = ref.read(subscriptionServiceProvider);
+    final result = await service.claimPromotionalTrial();
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      TopNotificationService().showNotification(
+        context,
+        result['message'] as String? ?? 'Promotional trial activated successfully!',
+        type: TopNotificationType.success,
+      );
+    } else {
+      String errorMsg = result['message'] as String? ?? 'Failed to claim promotional trial.';
+      if (errorMsg.contains('active_paid_subscription')) {
+        errorMsg = 'You currently have an active paid subscription. This promotional offer will become available once your active subscription expires.';
+      }
+      TopNotificationService().showNotification(
+        context,
+        errorMsg,
+        type: TopNotificationType.error,
+      );
+    }
+  }
+
   void _showPurchaseModal(SubscriptionPackage package) {
     final userProfile = ref.read(userProfileProvider);
     showDialog(
@@ -104,6 +136,14 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               s.status == SubscriptionStatus.expired || 
               s.status == SubscriptionStatus.terminated).toList();
           
+          final promoState = service.promotionalState;
+          final activeStage = promoState?.activeStage;
+          final canClaimPromo = promoState != null &&
+              promoState.campaignActive &&
+              promoState.isEligible &&
+              activeStage != null &&
+              !promoState.hasClaimed;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -136,6 +176,37 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                   ),
                   const SizedBox(height: 12),
                   ...queuedSubs.map((s) => _queuedPackageCard(s)),
+                  const SizedBox(height: 30),
+                ],
+
+                if (canClaimPromo) ...[
+                  const Text(
+                    'SPECIAL PROMOTION',
+                    style: TextStyle(
+                      color: Color(0xFFFFB800),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _promotionalTrialCard(activeStage, service.isClaimingTrial),
+                  const SizedBox(height: 30),
+                ] else if (promoState != null &&
+                    promoState.campaignActive &&
+                    promoState.ineligibilityReason == 'active_paid_subscription' &&
+                    activeStage != null) ...[
+                  const Text(
+                    'PROMOTIONAL OFFER',
+                    style: TextStyle(
+                      color: Color(0xFFFFB800),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _promotionalNoticeCard(activeStage, promoState.latestPaidExpiry),
                   const SizedBox(height: 30),
                 ],
 
@@ -172,6 +243,188 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _promotionalTrialCard(PromotionalStageInfo stage, bool isClaiming) {
+    final dateFormat = DateFormat('MMM d, yyyy');
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF261D4E), Color(0xFF1B163B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFB800).withValues(alpha: 0.15),
+            blurRadius: 18,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB800).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  'STAGE ${stage.stageNumber} • LIMITED CLAIMS',
+                  style: const TextStyle(
+                    color: Color(0xFFFFB800),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${stage.remainingClaims} of ${stage.maxClaims} left',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            stage.title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Enjoy full premium ad-free access and resource downloads for ${stage.durationDescription}.',
+            style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.3),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.event_available, color: Color(0xFFFFB800), size: 16),
+              const SizedBox(width: 8),
+              Text(
+                'Claim before ${dateFormat.format(stage.deadlineUtc.toLocal())}',
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+              const Spacer(),
+              const Text(
+                'FREE',
+                style: TextStyle(
+                  color: Color(0xFF20C8FF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: isClaiming ? null : _handleClaimTrial,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB800),
+                foregroundColor: Colors.black,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: isClaiming
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black),
+                    )
+                  : const Text(
+                      'Claim Free Trial',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _promotionalNoticeCard(PromotionalStageInfo stage, DateTime? latestPaidExpiry) {
+    final dateFormat = DateFormat('MMM d, yyyy');
+    final expiryText = latestPaidExpiry != null
+        ? ' once your active subscription ends on ${dateFormat.format(latestPaidExpiry.toLocal())}.'
+        : ' after your current subscription expires.';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1838),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.3), width: 1.2),
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB800).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.stars_rounded, color: Color(0xFFFFB800), size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${stage.title} (${stage.durationDescription})',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'You currently have an active paid subscription. This promotional trial will become available to claim$expiryText',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

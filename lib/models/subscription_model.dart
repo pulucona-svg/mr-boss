@@ -3,6 +3,7 @@ enum SubscriptionStatus {
   queued,
   expired,
   terminated,
+  unknown,
 }
 
 class SubscriptionPackage {
@@ -49,6 +50,21 @@ class SubscriptionHistory {
     required this.status,
     this.downloadCount = 0,
   });
+
+  /// Explicit temporal entitlement evaluation rule:
+  /// activationDate <= time < expiryDate.
+  /// Expired, terminated, and unknown statuses fail closed.
+  bool isEffectiveAt(DateTime time) {
+    if (status == SubscriptionStatus.expired ||
+        status == SubscriptionStatus.terminated ||
+        status == SubscriptionStatus.unknown) {
+      return false;
+    }
+    return !time.isBefore(activationDate) && time.isBefore(expiryDate);
+  }
+
+  /// Explicit temporal entitlement evaluation rule for the current instant.
+  bool get isEffectiveNow => isEffectiveAt(DateTime.now());
 
   SubscriptionHistory copyWith({
     SubscriptionStatus? status,
@@ -105,7 +121,10 @@ class SubscriptionHistory {
     purchaseDate: DateTime.parse(json['purchaseDate']),
     activationDate: DateTime.parse(json['activationDate']),
     expiryDate: DateTime.parse(json['expiryDate']),
-    status: SubscriptionStatus.values.byName(json['status'] ?? 'active'),
+    status: SubscriptionStatus.values.firstWhere(
+      (e) => e.name == (json['status'] ?? ''),
+      orElse: () => SubscriptionStatus.unknown,
+    ),
     downloadCount: json['downloadCount'] ?? 0,
   );
 
@@ -131,10 +150,75 @@ class SubscriptionHistory {
           ? DateTime.parse(json['expiryDate']) 
           : (json['expiryDate'] as dynamic).toDate(),
       status: SubscriptionStatus.values.firstWhere(
-        (e) => e.name == (json['status'] ?? 'active'),
-        orElse: () => SubscriptionStatus.active,
+        (e) => e.name == (json['status'] ?? ''),
+        orElse: () => SubscriptionStatus.unknown,
       ),
       downloadCount: json['downloadCount'] ?? 0,
+    );
+  }
+}
+
+class PromotionalStageInfo {
+  final int stageNumber;
+  final String title;
+  final String durationDescription;
+  final int claimedCount;
+  final int maxClaims;
+  final int remainingClaims;
+  final DateTime deadlineUtc;
+
+  const PromotionalStageInfo({
+    required this.stageNumber,
+    required this.title,
+    required this.durationDescription,
+    required this.claimedCount,
+    required this.maxClaims,
+    required this.remainingClaims,
+    required this.deadlineUtc,
+  });
+
+  factory PromotionalStageInfo.fromMap(Map<dynamic, dynamic> map) {
+    return PromotionalStageInfo(
+      stageNumber: (map['stageNumber'] as num?)?.toInt() ?? 1,
+      title: map['title'] as String? ?? '',
+      durationDescription: map['durationDescription'] as String? ?? '',
+      claimedCount: (map['claimedCount'] as num?)?.toInt() ?? 0,
+      maxClaims: (map['maxClaims'] as num?)?.toInt() ?? 0,
+      remainingClaims: (map['remainingClaims'] as num?)?.toInt() ?? 0,
+      deadlineUtc: DateTime.tryParse(map['deadlineUtc'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+class PromotionalCampaignState {
+  final bool campaignActive;
+  final PromotionalStageInfo? activeStage;
+  final bool isEligible;
+  final bool hasClaimed;
+  final String? ineligibilityReason;
+  final DateTime? latestPaidExpiry;
+
+  const PromotionalCampaignState({
+    required this.campaignActive,
+    this.activeStage,
+    required this.isEligible,
+    required this.hasClaimed,
+    this.ineligibilityReason,
+    this.latestPaidExpiry,
+  });
+
+  factory PromotionalCampaignState.fromMap(Map<dynamic, dynamic> map) {
+    final activeStageMap = map['activeStage'] as Map<dynamic, dynamic>?;
+    final userStatusMap = map['userStatus'] as Map<dynamic, dynamic>?;
+    final expiryStr = userStatusMap?['latestPaidExpiry'] as String?;
+
+    return PromotionalCampaignState(
+      campaignActive: map['campaignActive'] as bool? ?? false,
+      activeStage: activeStageMap != null ? PromotionalStageInfo.fromMap(activeStageMap) : null,
+      isEligible: userStatusMap?['isEligible'] as bool? ?? false,
+      hasClaimed: userStatusMap?['hasClaimed'] as bool? ?? false,
+      ineligibilityReason: userStatusMap?['ineligibilityReason'] as String?,
+      latestPaidExpiry: expiryStr != null ? DateTime.tryParse(expiryStr) : null,
     );
   }
 }

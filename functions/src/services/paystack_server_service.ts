@@ -256,6 +256,57 @@ export interface FulfillResult {
   alreadyFulfilled?: boolean;
 }
 
+export interface ExistingSubscriptionRecord {
+  status: string;
+  expiryDate: Date | admin.firestore.Timestamp | string;
+  activationDate?: Date | admin.firestore.Timestamp | string;
+  amount?: number;
+  paymentChannel?: string;
+}
+
+export function calculateSubscriptionChain(
+  existingDocs: ExistingSubscriptionRecord[],
+  durationDays: number,
+  now: Date = new Date()
+): { newStatus: "active" | "queued"; activationDate: Date; expiryDate: Date } {
+  let latestEffectiveExpiry: Date = now;
+
+  for (const data of existingDocs) {
+    // Exclude terminated, refunded, cancelled, or revoked entitlements
+    if (
+      data.status === "terminated" ||
+      data.status === "refunded" ||
+      data.status === "cancelled" ||
+      data.status === "revoked"
+    ) {
+      continue;
+    }
+
+    const expDate = data.expiryDate instanceof admin.firestore.Timestamp
+      ? data.expiryDate.toDate()
+      : new Date(data.expiryDate);
+
+    if (isNaN(expDate.getTime())) {
+      continue;
+    }
+
+    // Only unexpired active or queued entitlements can extend the chain
+    if ((data.status === "active" || data.status === "queued") && expDate.getTime() > latestEffectiveExpiry.getTime()) {
+      latestEffectiveExpiry = expDate;
+    }
+  }
+
+  const hasPrecedingActive = latestEffectiveExpiry.getTime() > now.getTime();
+  const newStatus: "active" | "queued" = hasPrecedingActive ? "queued" : "active";
+  const activationDate: Date = hasPrecedingActive ? latestEffectiveExpiry : now;
+
+  // Paystack packages use fixed-day integer arithmetic strictly preserved from AUTHORITATIVE_PACKAGES
+  const durationMs = durationDays * 24 * 60 * 60 * 1000;
+  const expiryDate: Date = new Date(activationDate.getTime() + durationMs);
+
+  return { newStatus, activationDate, expiryDate };
+}
+
 /**
  * Idempotently fulfills a verified transaction and activates the existing subscription
  */
@@ -356,31 +407,10 @@ export async function fulfillSubscription(
   }
 
   const historyRef = db.collection("subscriptions").doc(userId).collection("history");
-  const historySnap = await historyRef.get();
-
-  const now = new Date();
-  let hasActiveSubscription = false;
-
-  for (const doc of historySnap.docs) {
-    const data = doc.data();
-    if (data.status === "active") {
-      const expDate = data.expiryDate instanceof admin.firestore.Timestamp
-        ? data.expiryDate.toDate()
-        : new Date(data.expiryDate);
-      if (expDate > now) {
-        hasActiveSubscription = true;
-        break;
-      }
-    }
-  }
-
-  const newStatus = hasActiveSubscription ? "queued" : "active";
-  const activationDate = now;
-  const expiryDate = new Date(now.getTime() + pkg.durationDays * 24 * 60 * 60 * 1000);
-  const newSubId = `${Date.now()}`;
 
   // Execute in a transaction to guarantee strict idempotency under concurrency
   return await db.runTransaction(async (transaction) => {
+    // 1. Transactional check for duplicate fulfillment
     const currentPaymentSnap = await transaction.get(paymentRef);
     if (!currentPaymentSnap.exists) {
       return { success: false, status: "not_found", message: "Payment record not found" };
@@ -391,7 +421,17 @@ export async function fulfillSubscription(
       return { success: true, status: "success", paystackStatus: "success", message: "Already fulfilled", alreadyFulfilled: true };
     }
 
+    // 2. Transactional read of user subscription history to calculate chain
+    const historySnap = await transaction.get(historyRef);
+    const now = new Date();
+    const existingRecords: ExistingSubscriptionRecord[] = historySnap.docs.map(d => d.data() as ExistingSubscriptionRecord);
+    const { newStatus, activationDate, expiryDate } = calculateSubscriptionChain(existingRecords, pkg.durationDays, now);
+
+    const sanitizedRef = reference.replace(/[^a-zA-Z0-9]/g, "").slice(-8);
+    const newSubId = `${Date.now()}_${sanitizedRef}`;
     const subDocRef = historyRef.doc(newSubId);
+
+    // 3. Atomically persist subscription record and update payment record
     transaction.set(subDocRef, {
       id: newSubId,
       packageTitle: pkg.title,
@@ -401,7 +441,7 @@ export async function fulfillSubscription(
       paystackReference: reference,
       paymentChannel: verifyData.channel || paymentData.paymentMethod || "mobile_money",
       operatorReceiptNumber: verifyData.receipt_number || verifyData.order_id || null,
-      purchaseDate: activationDate,
+      purchaseDate: now,
       activationDate: activationDate,
       expiryDate: expiryDate,
       status: newStatus,
@@ -419,7 +459,16 @@ export async function fulfillSubscription(
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    logger.info(`[FULFILL_SUCCESS] Successfully fulfilled package "${pkg.title}" (${newStatus}) for user ${userId}. Ref: ${reference}`);
-    return { success: true, status: "success", paystackStatus: "success", message: "Subscription activated successfully" };
+    logger.info(`[FULFILL_SUCCESS] Successfully fulfilled package "${pkg.title}" (${newStatus}) for user ${userId}. Ref: ${reference}. Active: ${activationDate.toISOString()} -> ${expiryDate.toISOString()}`);
+    return {
+      success: true,
+      status: "success",
+      paystackStatus: "success",
+      message: "Subscription activated successfully",
+      subscriptionId: newSubId,
+      newStatus,
+      activationDate: activationDate.toISOString(),
+      expiryDate: expiryDate.toISOString(),
+    };
   });
 }

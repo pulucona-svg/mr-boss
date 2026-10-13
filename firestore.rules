@@ -96,6 +96,25 @@ service cloud.firestore {
     }
 
     // ===============================================================
+    // Promotional Campaigns & Free Trial Claims
+    // Read: Authenticated users (campaign status & own claims)
+    // Write: Server Admin SDK / Admins only
+    // ===============================================================
+    match /campaigns/{campaignId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /promotional_trial_claims/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /promotional_trial_emails/{emailHash} {
+      allow read, write: if isAdmin();
+    }
+
+    // ===============================================================
     // Academic Resources & Materials Catalog
     // ===============================================================
     match /resources/{resourceId} {

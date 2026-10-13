@@ -12,6 +12,8 @@
     "set-admins": "node --experimental-strip-types scripts/set_admin_claims.ts",
     "provision:users": "node --experimental-strip-types scripts/provision_virtual_users.ts",
     "provision:users:production": "node --experimental-strip-types scripts/provision_virtual_users.ts --production --confirm-provisioning",
+    "provision:reviewer": "node --experimental-strip-types scripts/provision_reviewer_account.ts",
+    "provision:reviewer:production": "node --experimental-strip-types scripts/provision_reviewer_account.ts --production --confirm-reviewer",
     "pilot:inspect": "node --experimental-strip-types scripts/run_dspace_pilot_20.ts",
     "pilot:production": "node --experimental-strip-types scripts/run_dspace_pilot_20.ts --production --confirm-pilot",
     "import:dry-run": "node --experimental-strip-types scripts/import_dspace_materials.ts --dry-run",

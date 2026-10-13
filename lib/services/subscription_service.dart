@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -15,6 +16,7 @@ class SubscriptionService extends ChangeNotifier {
   SubscriptionService._internal();
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  FirebaseFunctions get _functions => FirebaseFunctions.instance;
   List<SubscriptionHistory> _history = [];
   final Set<String> _unlockedResources = {}; 
   bool _isInitialized = false;
@@ -23,11 +25,38 @@ class SubscriptionService extends ChangeNotifier {
   StreamSubscription? _historySubscription;
   String? _userId;
 
+  // Promotional Campaign State
+  PromotionalCampaignState? _promotionalState;
+  bool _isLoadingPromoStatus = false;
+  bool _isClaimingTrial = false;
+  String? _promoError;
+
+  PromotionalCampaignState? get promotionalState => _promotionalState;
+  bool get isLoadingPromoStatus => _isLoadingPromoStatus;
+  bool get isClaimingTrial => _isClaimingTrial;
+  String? get promoError => _promoError;
+
+  @visibleForTesting
+  void setPromotionalStateForTesting(PromotionalCampaignState? state) {
+    _promotionalState = state;
+    try {
+      notifyListeners();
+    } catch (_) {}
+  }
+
   List<SubscriptionHistory> get history => _history;
+
+  @visibleForTesting
+  void setHistoryForTesting(List<SubscriptionHistory> list) {
+    _history = list;
+    try {
+      notifyListeners();
+    } catch (_) {}
+  }
   
   bool? _overrideIsSubscribed;
 
-  bool get isSubscribed => _overrideIsSubscribed ?? _history.any((s) => s.status == SubscriptionStatus.active);
+  bool get isSubscribed => _overrideIsSubscribed ?? _history.any((s) => s.isEffectiveNow);
 
   @visibleForTesting
   set isSubscribedForTesting(bool value) {
@@ -47,14 +76,22 @@ class SubscriptionService extends ChangeNotifier {
 
   SubscriptionHistory? get activeSubscription {
     try {
-      return _history.firstWhere((s) => s.status == SubscriptionStatus.active);
+      return _history.firstWhere((s) => s.isEffectiveNow);
     } catch (e) {
       return null;
     }
   }
 
-  List<SubscriptionHistory> get queuedSubscriptions => 
-      _history.where((s) => s.status == SubscriptionStatus.queued).toList();
+  List<SubscriptionHistory> get queuedSubscriptions {
+    final now = DateTime.now();
+    return _history.where((s) =>
+      s.status != SubscriptionStatus.expired &&
+      s.status != SubscriptionStatus.terminated &&
+      s.status != SubscriptionStatus.unknown &&
+      now.isBefore(s.activationDate) &&
+      s.activationDate.isBefore(s.expiryDate)
+    ).toList();
+  }
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -109,6 +146,9 @@ class SubscriptionService extends ChangeNotifier {
     }, onError: (e) {
       debugPrint('SubscriptionService: [ERROR] Firestore listener failed: $e');
     });
+
+    // Check promotional trial campaign eligibility
+    fetchPromotionalCampaignStatus(silent: true);
   }
 
   /// Clears the service state. Call on logout.
@@ -119,6 +159,9 @@ class SubscriptionService extends ChangeNotifier {
     _history = [];
     _unlockedResources.clear();
     _overrideIsSubscribed = null;
+    _promotionalState = null;
+    _promoError = null;
+    _isClaimingTrial = false;
     _saveHistory();
     _saveUnlockedResources();
     try {
@@ -141,15 +184,98 @@ class SubscriptionService extends ChangeNotifier {
       case 'Daily Pass':
         return 10;
       case 'Weekly Pass':
+      case '1-Week Free Trial':
         return 30;
       case 'Monthly Pass':
+      case '1-Month Free Trial':
         return 50;
       case 'Semester Pass':
+      case '2-Month Free Trial':
         return 150;
       case 'Yearly Pass':
         return -1; // Unlimited
       default:
+        if (packageTitle.contains('2-Month') || packageTitle.contains('2 Month')) return 100;
+        if (packageTitle.contains('1-Month') || packageTitle.contains('1 Month')) return 50;
+        if (packageTitle.contains('Week') || packageTitle.contains('7-Day')) return 30;
         return 0;
+    }
+  }
+
+  /// Fetches the latest promotional trial campaign status and user eligibility
+  Future<void> fetchPromotionalCampaignStatus({bool silent = false}) async {
+    if (!silent) {
+      _isLoadingPromoStatus = true;
+      _promoError = null;
+      notifyListeners();
+    }
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final callable = _functions.httpsCallable('getPromotionalCampaignStatus');
+      final result = await callable.call({
+        if (user?.email != null) 'userEmail': user!.email,
+      });
+
+      if (result.data is Map) {
+        _promotionalState = PromotionalCampaignState.fromMap(
+          Map<dynamic, dynamic>.from(result.data as Map),
+        );
+      }
+    } catch (e) {
+      debugPrint('SubscriptionService: [WARN] Failed to fetch promotional campaign status: $e');
+    } finally {
+      if (!silent) {
+        _isLoadingPromoStatus = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Claims the currently active promotional trial atomically
+  Future<Map<String, dynamic>> claimPromotionalTrial() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      const msg = 'Please sign in to claim a promotional trial.';
+      _promoError = msg;
+      notifyListeners();
+      return {'success': false, 'message': msg};
+    }
+
+    _isClaimingTrial = true;
+    _promoError = null;
+    notifyListeners();
+
+    try {
+      final callable = _functions.httpsCallable('claimPromotionalTrial');
+      final result = await callable.call({
+        'userEmail': user.email,
+      });
+
+      final data = result.data is Map ? Map<String, dynamic>.from(result.data as Map) : <String, dynamic>{};
+
+      // Refresh campaign status to update UI immediately
+      await fetchPromotionalCampaignStatus(silent: true);
+
+      _isClaimingTrial = false;
+      notifyListeners();
+      return {
+        'success': true,
+        'message': data['message'] ?? 'Promotional trial activated successfully!',
+        'data': data,
+      };
+    } on FirebaseFunctionsException catch (e) {
+      final errorMsg = e.message ?? 'Failed to claim promotional trial.';
+      _promoError = errorMsg;
+      _isClaimingTrial = false;
+      notifyListeners();
+      return {'success': false, 'message': errorMsg};
+    } catch (e) {
+      final errorMsg = e.toString().replaceFirst(RegExp(r'^Exception: '), '');
+      _promoError = errorMsg;
+      _isClaimingTrial = false;
+      notifyListeners();
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -189,53 +315,20 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   void _updateSubscriptionStates() {
-    if (_userId == null) return;
-    
-    bool changed = false;
-    final now = DateTime.now();
-    final batch = _firestore.batch();
+    // Dynamic access is calculated in real time via isEffectiveNow.
+    // Client-side Firestore batch writes are omitted to strictly obey firestore.rules (isAdmin only).
+    _reconcileSubscriptionStatusBackend();
+  }
 
-    // 1. Check for expired active subscriptions
-    for (int i = 0; i < _history.length; i++) {
-      if (_history[i].status == SubscriptionStatus.active && _history[i].expiryDate.isBefore(now)) {
-        final docRef = _firestore
-            .collection('subscriptions')
-            .doc(_userId)
-            .collection('history')
-            .doc(_history[i].id);
-        
-        batch.update(docRef, {'status': SubscriptionStatus.expired.name});
-        changed = true;
+  Future<void> _reconcileSubscriptionStatusBackend() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final callable = _functions.httpsCallable('reconcileUserSubscriptions');
+        await callable.call();
       }
-    }
-
-    // 2. If no active subscription, try to activate the oldest queued one
-    bool currentlySubscribed = _history.any((s) => s.status == SubscriptionStatus.active);
-    if (!currentlySubscribed) {
-      final queued = _history.where((s) => s.status == SubscriptionStatus.queued).toList();
-      if (queued.isNotEmpty) {
-        // Sort by purchase date to get the oldest
-        queued.sort((a, b) => a.purchaseDate.compareTo(b.purchaseDate));
-        final oldestQueued = queued.first;
-        
-        final duration = oldestQueued.expiryDate.difference(oldestQueued.activationDate);
-        final docRef = _firestore
-            .collection('subscriptions')
-            .doc(_userId)
-            .collection('history')
-            .doc(oldestQueued.id);
-
-        batch.update(docRef, {
-          'status': SubscriptionStatus.active.name,
-          'activationDate': now,
-          'expiryDate': now.add(duration),
-        });
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      batch.commit().catchError((e) => debugPrint('SubscriptionService: [ERROR] Batch update failed: $e'));
+    } catch (e) {
+      debugPrint('SubscriptionService: [DEBUG] Backend status reconciliation skipped: $e');
     }
   }
 

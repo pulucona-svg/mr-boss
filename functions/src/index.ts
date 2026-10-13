@@ -685,6 +685,67 @@ export const paystackWebhook = onRequest({ cors: false }, async (req, res) => {
 });
 
 /**
+ * PROMOTIONAL TRIAL CAMPAIGN
+ */
+import { PromotionalTrialService } from "./services/promotional_trial_service";
+import { SubscriptionReconciliationService } from "./services/subscription_reconciliation_service";
+
+/**
+ * CALLABLE FUNCTION: Get promotional campaign status and user eligibility
+ */
+export const getPromotionalCampaignStatus = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  const email = request.auth?.token?.email || request.data?.userEmail;
+  try {
+    if (uid) {
+      await SubscriptionReconciliationService.reconcileUserSubscriptions(db, uid);
+    }
+    return await PromotionalTrialService.getCampaignStatus(db, uid, email);
+  } catch (err: any) {
+    logger.error("[PROMO_STATUS_ERROR] Failed to fetch promotional campaign status:", err);
+    throw new HttpsError("internal", err.message || "Failed to fetch campaign status");
+  }
+});
+
+/**
+ * CALLABLE FUNCTION: Atomically claim a promotional free trial
+ */
+export const claimPromotionalTrial = onCall(async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "You must be signed in to claim a promotional trial.");
+  }
+  const uid = request.auth.uid;
+  const userEmail = request.auth.token?.email || request.data?.userEmail;
+
+  if (!userEmail) {
+    throw new HttpsError("invalid-argument", "A valid email is required to claim a trial.");
+  }
+
+  try {
+    return await PromotionalTrialService.claimTrial(db, uid, userEmail);
+  } catch (err: any) {
+    logger.warn(`[PROMO_CLAIM_REJECTED] User ${uid} claim failed:`, err.message);
+    throw new HttpsError("failed-precondition", err.message || "Failed to claim promotional trial.");
+  }
+});
+
+/**
+ * CALLABLE FUNCTION: Reconcile user's subscription history status (queued -> active, active -> expired)
+ */
+export const reconcileUserSubscriptions = onCall(async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError("unauthenticated", "Authentication required to reconcile subscriptions.");
+  }
+  const uid = request.auth.uid;
+  try {
+    return await SubscriptionReconciliationService.reconcileUserSubscriptions(db, uid);
+  } catch (err: any) {
+    logger.error(`[RECONCILE_USER_ERROR] Failed to reconcile subscriptions for ${uid}:`, err);
+    throw new HttpsError("internal", err.message || "Failed to reconcile subscriptions.");
+  }
+});
+
+/**
  * ACCOUNT DELETION & RESTORATION LIFECYCLE
  */
 import { AccountDeletionService } from "./services/account_deletion_service";
