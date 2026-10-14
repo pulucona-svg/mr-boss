@@ -507,6 +507,13 @@ export {
   getAdminUserDetail,
   toggleAdminUserDisabled,
 } from "./admin/admin_users";
+export {
+  startDSpaceJob,
+  getDSpaceJobStatus,
+  getLatestDSpaceJob,
+  cancelDSpaceJob,
+  onDSpaceJobCreated,
+} from "./admin/admin_dspace";
 
 /**
  * PAYSTACK SUBSCRIPTION INTEGRATION ENDPOINTS

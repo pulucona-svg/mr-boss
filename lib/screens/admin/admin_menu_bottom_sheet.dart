@@ -6,6 +6,7 @@ import 'admin_messages_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'curriculum_admin_screen.dart';
 import 'admin_users_screen.dart';
+import 'dspace_admin_screen.dart';
 import '../explore_screen.dart';
 
 class AdminMenuBottomSheet extends StatelessWidget {
@@ -44,6 +45,10 @@ class AdminMenuBottomSheet extends StatelessWidget {
       case 'chat':
       case 'forum':
         return Icons.chat_outlined;
+      case 'cloud_sync_outlined':
+      case 'cloud_sync':
+      case 'dspace':
+        return Icons.cloud_sync_outlined;
       default:
         return Icons.admin_panel_settings_outlined;
     }
@@ -65,6 +70,8 @@ class AdminMenuBottomSheet extends StatelessWidget {
         return '🔔';
       case 'admin_messages':
         return '💬';
+      case 'dspace':
+        return '🏛️';
       default:
         return '⚡';
     }
@@ -281,6 +288,12 @@ class AdminMenuBottomSheet extends StatelessWidget {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (context) => const AdminUsersScreen(),
+                                  ),
+                                );
+                              } else if (item.id == 'dspace') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const DSpaceAdminScreen(),
                                   ),
                                 );
                               } else {

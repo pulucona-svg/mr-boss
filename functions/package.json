@@ -18,7 +18,10 @@
     "pilot:production": "node --experimental-strip-types scripts/run_dspace_pilot_20.ts --production --confirm-pilot",
     "import:dry-run": "node --experimental-strip-types scripts/import_dspace_materials.ts --dry-run",
     "import:full:inspect": "node --experimental-strip-types scripts/run_dspace_full_ingestion.ts",
-    "import:full:production": "node --experimental-strip-types scripts/run_dspace_full_ingestion.ts --production --confirm-full-import"
+    "import:full:production": "node --experimental-strip-types scripts/run_dspace_full_ingestion.ts --production --confirm-full-import",
+    "dspace:check": "python \"C:\\Users\\Hp i7\\Desktop\\script dspce\\sync_dspace_papers.py\" --check",
+    "dspace:worker": "node --experimental-strip-types scripts/run_dspace_worker.ts",
+    "dspace:daemon": "node --experimental-strip-types scripts/run_dspace_worker.ts --daemon"
   },
   "engines": {
     "node": "24"

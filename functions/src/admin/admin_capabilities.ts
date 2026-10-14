@@ -162,6 +162,13 @@ export const getAdminCapabilities = onCall(async (request) => {
         icon: "chat_outlined",
         enabled: true,
       },
+      {
+        id: "dspace",
+        title: "DSpace",
+        subtitle: "Examination past papers sync & import",
+        icon: "cloud_sync_outlined",
+        enabled: true,
+      },
     ],
   };
 });

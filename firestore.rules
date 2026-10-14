@@ -217,5 +217,14 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    // ===============================================================
+    // DSpace Examination Synchronization Jobs
+    // Read: Authorized administrators only
+    // Write: Authorized administrators only
+    // ===============================================================
+    match /dspace_jobs/{jobId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

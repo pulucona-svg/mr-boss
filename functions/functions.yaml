@@ -772,6 +772,86 @@
       "labels": {},
       "callableTrigger": {},
       "entryPoint": "reconcileUserSubscriptions"
+    },
+    "startDSpaceJob": {
+      "availableMemoryMb": 1024,
+      "timeoutSeconds": 540,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "startDSpaceJob"
+    },
+    "getDSpaceJobStatus": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "getDSpaceJobStatus"
+    },
+    "getLatestDSpaceJob": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "getLatestDSpaceJob"
+    },
+    "cancelDSpaceJob": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "cancelDSpaceJob"
+    },
+    "onDSpaceJobCreated": {
+      "availableMemoryMb": 1024,
+      "timeoutSeconds": 540,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "eventTrigger": {
+        "eventType": "google.cloud.firestore.document.v1.created",
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "dspace_jobs/{jobId}"
+        },
+        "retry": false
+      },
+      "entryPoint": "onDSpaceJobCreated"
     }
   },
   "specVersion": "v1alpha1",
