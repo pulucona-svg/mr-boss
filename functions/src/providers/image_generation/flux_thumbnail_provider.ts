@@ -11,18 +11,21 @@ export class FluxProviderError extends Error {
   public readonly isRetryable: boolean;
   public readonly statusCode?: number;
   public readonly cloudflareErrorCode?: number;
+  public readonly isDailyQuotaExhausted: boolean;
 
   constructor(
     message: string,
     isRetryable: boolean,
     statusCode?: number,
-    cloudflareErrorCode?: number
+    cloudflareErrorCode?: number,
+    isDailyQuotaExhausted: boolean = false
   ) {
     super(message);
     this.name = "FluxProviderError";
     this.isRetryable = isRetryable;
     this.statusCode = statusCode;
     this.cloudflareErrorCode = cloudflareErrorCode;
+    this.isDailyQuotaExhausted = isDailyQuotaExhausted;
   }
 }
 
@@ -236,12 +239,19 @@ export class FluxThumbnailProvider implements ThumbnailImageProvider {
               isRetryable = true;
             }
 
+            const isDailyQuota =
+              cfCode === 4006 ||
+              lowerBody.includes("daily free allocation") ||
+              lowerBody.includes("10,000 neurons") ||
+              (lowerBody.includes("allocation") && lowerBody.includes("used up"));
+
             return reject(
               new FluxProviderError(
                 `Cloudflare HTTP ${statusCode} (${res.statusMessage}): ${errBody}`,
                 isRetryable,
                 statusCode,
-                cfCode
+                cfCode,
+                isDailyQuota
               )
             );
           }
@@ -261,12 +271,19 @@ export class FluxThumbnailProvider implements ThumbnailImageProvider {
                   msg.toLowerCase().includes("allocation") ||
                   msg.toLowerCase().includes("rate limit");
 
+                const isDailyQuota =
+                  code === 4006 ||
+                  msg.toLowerCase().includes("daily free allocation") ||
+                  msg.toLowerCase().includes("10,000 neurons") ||
+                  (msg.toLowerCase().includes("allocation") && msg.toLowerCase().includes("used up"));
+
                 return reject(
                   new FluxProviderError(
                     `Cloudflare AI error: ${msg}`,
                     isRetryable,
                     statusCode,
-                    code
+                    code,
+                    isDailyQuota
                   )
                 );
               }

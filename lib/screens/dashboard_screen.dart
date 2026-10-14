@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -33,24 +34,9 @@ class DashboardScreen extends ConsumerStatefulWidget {
   }
 
   static List<Resource?> buildSerpentineGridSlots(List<Resource> filteredResources) {
-    final pinned = filteredResources.where((r) => r.isPinned).toList();
-    pinned.sort((a, b) {
-      if (a.pinnedAt != null && b.pinnedAt != null) {
-        return b.pinnedAt!.compareTo(a.pinnedAt!);
-      }
-      if (a.pinnedAt != null) return -1;
-      if (b.pinnedAt != null) return 1;
-      return (b.approvedAt ?? b.uploadDate).compareTo(a.approvedAt ?? a.uploadDate);
-    });
-
-    final unpinned = filteredResources.where((r) => !r.isPinned).toList();
-
-    // Sort unpinned materials newest release first (preferring approvedAt, falling back to uploadDate)
-    unpinned.sort((a, b) {
-      final cmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
-      if (cmp != 0) return cmp;
-      return b.uploadDate.compareTo(a.uploadDate);
-    });
+    final sorted = ResourceService().sortResources(filteredResources);
+    final pinned = sorted.where((r) => r.isPinned).toList();
+    final unpinned = sorted.where((r) => !r.isPinned).toList();
 
     final List<Resource?> gridSlots = [];
 
@@ -110,6 +96,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String? _lastCorrectedResult;
   String _lastSearchValue = '';
   Timer? _searchDebounceTimer;
+  int _displayLimit = 12;
+  int _lastFilteredCount = 0;
+  String _previousSearchText = '';
+  String _previousCategory = '';
+  Map<String, String> _previousFilters = {};
 
   // Admin Materials Selection State
   bool _isSelectionMode = false;
@@ -121,6 +112,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final uiState = ref.read(uiStateProvider);
     _searchController.text = uiState.dashboardSearch;
     _lastSearchValue = uiState.dashboardSearch;
+    _previousSearchText = uiState.dashboardSearch;
+    _previousCategory = uiState.dashboardCategory;
+    _previousFilters = Map.from(uiState.dashboardFilters);
 
     if (widget.isAdminMode) {
       AdminService().isCurrentUserAdmin().then((isVerified) {
@@ -130,10 +124,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       });
     }
     
-    _isLoading = !_hasLoadedBefore;
+    final hasCachedResources = ResourceService().allResources.isNotEmpty;
+    _isLoading = !_hasLoadedBefore && !hasCachedResources;
     if (_isLoading) {
-      _simulateLoading();
+      ResourceService().addListener(_onResourceServiceUpdated);
     }
+    _scrollController.addListener(_onDashboardScroll);
     _searchFocusNode.addListener(_onSearchFocusChange);
   }
 
@@ -199,13 +195,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  void _simulateLoading() async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    _hasLoadedBefore = true;
-    if (mounted) {
+  void _onResourceServiceUpdated() {
+    if (ResourceService().allResources.isNotEmpty && _isLoading && mounted) {
+      ResourceService().removeListener(_onResourceServiceUpdated);
       setState(() {
         _isLoading = false;
+        _hasLoadedBefore = true;
       });
+    }
+  }
+
+  void _onDashboardScroll() {
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      if (currentScroll >= maxScroll - 400) {
+        if (_displayLimit < _lastFilteredCount) {
+          setState(() {
+            _displayLimit = (_displayLimit + 20).clamp(0, _lastFilteredCount);
+          });
+        }
+      }
     }
   }
 
@@ -410,6 +420,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   void dispose() {
+    ResourceService().removeListener(_onResourceServiceUpdated);
+    _scrollController.removeListener(_onDashboardScroll);
     _searchDebounceTimer?.cancel();
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
@@ -910,6 +922,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final isSearching = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
         final hasOtherFilters = uiState.dashboardFilters.isNotEmpty || uiState.dashboardCategory != 'All';
 
+        final currentSearch = _searchController.text.trim();
+        final currentCat = uiState.dashboardCategory;
+        final currentFilters = uiState.dashboardFilters;
+        if (currentSearch != _previousSearchText ||
+            currentCat != _previousCategory ||
+            !mapEquals(currentFilters, _previousFilters)) {
+          _displayLimit = 12;
+          _previousSearchText = currentSearch;
+          _previousCategory = currentCat;
+          _previousFilters = Map.from(currentFilters);
+        }
+
         return PopScope(
           canPop: isAdmin
               ? (!isSearching && !hasOtherFilters && !_isSelectionMode)
@@ -1295,7 +1319,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ];
     }
 
-    final gridSlots = DashboardScreen.buildSerpentineGridSlots(filteredResources);
+    _lastFilteredCount = filteredResources.length;
+    final visibleResources = filteredResources.length > _displayLimit
+        ? filteredResources.sublist(0, _displayLimit)
+        : filteredResources;
+    final gridSlots = DashboardScreen.buildSerpentineGridSlots(visibleResources);
+
+    if (_displayLimit < filteredResources.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _displayLimit < filteredResources.length) {
+          if (_scrollController.hasClients && _scrollController.position.maxScrollExtent <= 150) {
+            setState(() {
+              _displayLimit = (_displayLimit + 12).clamp(0, filteredResources.length);
+            });
+          }
+        }
+      });
+    }
 
     List<Widget> slivers = [];
     const int itemsPerRow = 2;

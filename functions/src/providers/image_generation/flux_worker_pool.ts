@@ -213,12 +213,35 @@ export class FluxWorkerPool {
       const cleanError = err?.message ? err.message.slice(0, 300) : "Unknown worker error";
 
       if (isRetryable) {
-        // Temporary error (429, 3040, 4006, 408, 5xx, timeout): set per-worker cooldown
+        const isDailyQuota = err instanceof FluxProviderError && err.isDailyQuotaExhausted;
         const nextFailures = currentFailures + 1;
-        // Cooldown: 2m base * multiplier (up to 10m max)
-        const cooldownMultiplier = Math.min(nextFailures, 5);
-        const cooldownMs = this.BASE_COOLDOWN_MS * cooldownMultiplier;
-        const cooldownUntil = new Date(Date.now() + cooldownMs);
+        let cooldownUntil: Date;
+
+        if (isDailyQuota) {
+          // Cloudflare daily free allocation of 10,000 neurons resets at 00:00:00 UTC.
+          // Set cooldown to next 00:01:00 UTC (+1 minute buffer) so worker becomes eligible automatically
+          // without hammering the provider every 10 minutes while quota is exhausted.
+          const now = new Date();
+          const nextUtcReset = new Date(Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() + 1,
+            0, 1, 0
+          ));
+          cooldownUntil = nextUtcReset;
+          logger.warn(
+            `[FLUX_WORKER_DAILY_QUOTA_COOLDOWN] Worker "${workerId}" exhausted daily free allocation (10,000 neurons). In cooldown until UTC midnight reset: ${cooldownUntil.toISOString()}`
+          );
+        } else {
+          // Temporary error (429 rate limit, 3040 capacity, 408 timeout, 5xx): bounded exponential cooldown
+          // Cooldown: 2m base * multiplier (up to 10m max)
+          const cooldownMultiplier = Math.min(nextFailures, 5);
+          const cooldownMs = this.BASE_COOLDOWN_MS * cooldownMultiplier;
+          cooldownUntil = new Date(Date.now() + cooldownMs);
+          logger.warn(
+            `[FLUX_WORKER_COOLDOWN] Worker "${workerId}" experienced transient error (${cleanError}). In cooldown until ${cooldownUntil.toISOString()} (Failures: ${nextFailures})`
+          );
+        }
 
         await docRef.set(
           {
@@ -232,10 +255,6 @@ export class FluxWorkerPool {
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
-        );
-
-        logger.warn(
-          `[FLUX_WORKER_COOLDOWN] Worker "${workerId}" experienced transient error (${cleanError}). In cooldown until ${cooldownUntil.toISOString()} (Failures: ${nextFailures})`
         );
       } else {
         // Permanent error (400, 401, 403): disable worker to prevent aggressive broken retries

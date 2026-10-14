@@ -50,8 +50,23 @@ class Resource {
   int likes;
   int comments;
   bool isLiked;
+  final bool isImportedDSpace;
+  final String? dspaceItemUuid;
 
   DateTime get effectiveReleaseDate => approvedAt ?? uploadDate;
+
+  bool get hasValidThumbnail {
+    final url = thumbnailUrl.trim();
+    if (url.isEmpty) return false;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return thumbnailStatus.toLowerCase() == 'completed' || thumbnailStatus.isEmpty;
+    }
+    try {
+      return File(url).existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
 
   Resource({
     this.id = '',
@@ -102,6 +117,8 @@ class Resource {
     this.likes = 0,
     this.comments = 0,
     this.isLiked = false,
+    this.isImportedDSpace = false,
+    this.dspaceItemUuid,
   });
 
   factory Resource.fromMap(Map<String, dynamic> map, String docId, {String? currentUserId}) {
@@ -194,6 +211,8 @@ class Resource {
       likes: map['likes'] ?? 0,
       comments: map['comments'] ?? 0,
       isLiked: currentUserId != null ? likedByList.contains(currentUserId) : false,
+      isImportedDSpace: map['isImportedDSpace'] == true,
+      dspaceItemUuid: map['dspaceItemUuid']?.toString(),
     );
   }
 
@@ -245,6 +264,8 @@ class Resource {
       'views': views,
       'likes': likes,
       'comments': comments,
+      if (isImportedDSpace) 'isImportedDSpace': true,
+      if (dspaceItemUuid != null) 'dspaceItemUuid': dspaceItemUuid,
     };
   }
 
@@ -311,6 +332,8 @@ class Resource {
     int? likes,
     int? comments,
     bool? isLiked,
+    bool? isImportedDSpace,
+    String? dspaceItemUuid,
     bool clearRejection = false,
     bool clearAdminRemark = false,
     bool clearDeletedAt = false,
@@ -364,6 +387,8 @@ class Resource {
       likes: likes ?? this.likes,
       comments: comments ?? this.comments,
       isLiked: isLiked ?? this.isLiked,
+      isImportedDSpace: isImportedDSpace ?? this.isImportedDSpace,
+      dspaceItemUuid: dspaceItemUuid ?? this.dspaceItemUuid,
     );
   }
 
@@ -417,6 +442,8 @@ class Resource {
       likes: likes,
       comments: comments,
       isLiked: isLiked,
+      isImportedDSpace: isImportedDSpace,
+      dspaceItemUuid: dspaceItemUuid,
     );
   }
 }

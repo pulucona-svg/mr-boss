@@ -54,6 +54,14 @@ class ResourceService extends ChangeNotifier {
   List<Resource> _approvedResources = [];
   List<Resource> _modifiedResources = [];
   List<Resource> _rejectedResources = [];
+  bool _hasIncompleteDSpaceThumbnails = false;
+  bool get hasIncompleteDSpaceThumbnails => _hasIncompleteDSpaceThumbnails;
+
+  @visibleForTesting
+  void setHasIncompleteDSpaceThumbnails(bool value) {
+    _hasIncompleteDSpaceThumbnails = value;
+  }
+
   StreamSubscription? _allResourcesSub;
   StreamSubscription? _userUploadsSub;
 
@@ -229,9 +237,11 @@ class ResourceService extends ChangeNotifier {
       final trashedJson = PersistenceService().getJson('resources_trashed');
 
       if (activeJson is List && activeJson.isNotEmpty) {
-        _allResources = _sortResources(
-          activeJson.map((m) => Resource.fromMap(Map<String, dynamic>.from(m), m['id'] ?? '')).toList(),
-        );
+        final restored = activeJson
+            .map((m) => Resource.fromMap(Map<String, dynamic>.from(m), m['id'] ?? ''))
+            .toList();
+        _hasIncompleteDSpaceThumbnails = restored.any((r) => r.isImportedDSpace && !r.hasValidThumbnail);
+        _allResources = sortResources(restored);
       }
       if (archivedJson is List && archivedJson.isNotEmpty) {
         _archivedResources = archivedJson
@@ -344,7 +354,7 @@ class ResourceService extends ChangeNotifier {
     }
   }
 
-  List<Resource> _sortResources(List<Resource> list) {
+  List<Resource> sortResources(List<Resource> list) {
     final pinned = list.where((r) => r.isPinned).toList();
     final unpinned = list.where((r) => !r.isPinned).toList();
 
@@ -355,18 +365,29 @@ class ResourceService extends ChangeNotifier {
       }
       if (a.pinnedAt != null) return -1;
       if (b.pinnedAt != null) return 1;
-      return b.uploadDate.compareTo(a.uploadDate);
+      return (b.approvedAt ?? b.uploadDate).compareTo(a.approvedAt ?? a.uploadDate);
     });
 
-    // Unpinned: release date (approvedAt ?? uploadDate) descending
+    // Base sort for unpinned: release date (approvedAt ?? uploadDate) descending
     unpinned.sort((a, b) {
       final cmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
       if (cmp != 0) return cmp;
       return b.uploadDate.compareTo(a.uploadDate);
     });
 
+    // While one or more DSpace materials remain without completed thumbnails:
+    // Prioritize materials with completed thumbnails above materials without completed thumbnails
+    if (_hasIncompleteDSpaceThumbnails) {
+      final withThumbnails = unpinned.where((r) => r.hasValidThumbnail).toList();
+      final withoutThumbnails = unpinned.where((r) => !r.hasValidThumbnail).toList();
+      return [...pinned, ...withThumbnails, ...withoutThumbnails];
+    }
+
+    // Normal sorting resumes automatically when every DSpace item has a completed thumbnail
     return [...pinned, ...unpinned];
   }
+
+  List<Resource> _sortResources(List<Resource> list) => sortResources(list);
 
   void _processServerResources(List<Resource> loaded) {
     final active = <Resource>[];
@@ -412,7 +433,8 @@ class ResourceService extends ChangeNotifier {
     // Rejected: newest first
     rejected.sort((a, b) => (b.rejectedAt ?? b.uploadDate).compareTo(a.rejectedAt ?? a.uploadDate));
 
-    _allResources = _sortResources(active);
+    _hasIncompleteDSpaceThumbnails = active.any((r) => r.isImportedDSpace && !r.hasValidThumbnail);
+    _allResources = sortResources(active);
     _archivedResources = archived;
     _trashedResources = trashed;
     _pendingResources = pending;

@@ -56,6 +56,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String? _lastCorrectedOriginalUploads;
   String? _lastCorrectedResultUploads;
   String _lastSearchValueUploads = '';
+  int _displayLimit = 12;
+  int _lastFilteredCount = 0;
 
   @override
   void initState() {
@@ -71,10 +73,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _searchControllerUploads.text = uiState.librarySearchUploads;
     _lastSearchValueUploads = uiState.librarySearchUploads;
 
-    _isLoading = !_hasLoadedBefore;
+    final hasInitialData = DownloadService().downloadedResources.isNotEmpty ||
+        ResourceService().userUploads.isNotEmpty ||
+        ResourceService().allResources.isNotEmpty;
+    _isLoading = !_hasLoadedBefore && !hasInitialData;
     if (_isLoading) {
-      _simulateLoading();
+      ResourceService().addListener(_onLibraryServiceUpdated);
+      DownloadService().addListener(_onLibraryServiceUpdated);
     }
+    _scrollControllerDownloads.addListener(_onLibraryScroll);
+    _scrollControllerUploads.addListener(_onLibraryScroll);
     _searchFocusNodeDownloads.addListener(_onSearchFocusChange);
     _searchFocusNodeUploads.addListener(_onSearchFocusChange);
   }
@@ -108,6 +116,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   void dispose() {
+    ResourceService().removeListener(_onLibraryServiceUpdated);
+    DownloadService().removeListener(_onLibraryServiceUpdated);
+    _scrollControllerDownloads.removeListener(_onLibraryScroll);
+    _scrollControllerUploads.removeListener(_onLibraryScroll);
     _searchFocusNodeDownloads.removeListener(_onSearchFocusChange);
     _searchFocusNodeUploads.removeListener(_onSearchFocusChange);
     _searchFocusNodeDownloads.dispose();
@@ -321,13 +333,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _showOverlay(baseResources);
   }
 
-  void _simulateLoading() async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    _hasLoadedBefore = true;
-    if (mounted) {
+  void _onLibraryServiceUpdated() {
+    final hasData = DownloadService().downloadedResources.isNotEmpty ||
+        ResourceService().userUploads.isNotEmpty ||
+        ResourceService().allResources.isNotEmpty;
+    if (hasData && _isLoading && mounted) {
+      ResourceService().removeListener(_onLibraryServiceUpdated);
+      DownloadService().removeListener(_onLibraryServiceUpdated);
       setState(() {
         _isLoading = false;
+        _hasLoadedBefore = true;
       });
+    }
+  }
+
+  void _onLibraryScroll() {
+    final controller = _isDownloadsSelected ? _scrollControllerDownloads : _scrollControllerUploads;
+    if (controller.hasClients) {
+      final maxScroll = controller.position.maxScrollExtent;
+      final currentScroll = controller.position.pixels;
+      if (currentScroll >= maxScroll - 400) {
+        if (_displayLimit < _lastFilteredCount) {
+          setState(() {
+            _displayLimit = (_displayLimit + 20).clamp(0, _lastFilteredCount);
+          });
+        }
+      }
     }
   }
 
@@ -1274,14 +1305,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ];
     }
 
+    final sortedResources = ResourceService().sortResources(filteredResources);
+    _lastFilteredCount = sortedResources.length;
+    final visibleResources = sortedResources.length > _displayLimit
+        ? sortedResources.sublist(0, _displayLimit)
+        : sortedResources;
+
+    if (_displayLimit < sortedResources.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _displayLimit < sortedResources.length) {
+          final controller = _isDownloadsSelected ? _scrollControllerDownloads : _scrollControllerUploads;
+          if (controller.hasClients && controller.position.maxScrollExtent <= 150) {
+            setState(() {
+              _displayLimit = (_displayLimit + 12).clamp(0, sortedResources.length);
+            });
+          }
+        }
+      });
+    }
+
     List<Widget> slivers = [];
     const int itemsPerRow = 2;
     const int rowsPerAd = 4;
     const int itemsPerAd = itemsPerRow * rowsPerAd;
 
-    for (int i = 0; i < filteredResources.length; i += itemsPerAd) {
-      final end = (i + itemsPerAd < filteredResources.length) ? i + itemsPerAd : filteredResources.length;
-      final chunk = filteredResources.sublist(i, end);
+    for (int i = 0; i < visibleResources.length; i += itemsPerAd) {
+      final end = (i + itemsPerAd < visibleResources.length) ? i + itemsPerAd : visibleResources.length;
+      final chunk = visibleResources.sublist(i, end);
 
       slivers.add(
         SliverPadding(
@@ -1322,9 +1372,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
       );
 
-      if (end < filteredResources.length && 
-          isDownloads && 
-          filteredResources.length > 4 && 
+      if (end < visibleResources.length &&
+          isDownloads &&
+          visibleResources.length > 4 &&
           !SubscriptionService().isSubscribed) {
         slivers.add(
           SliverToBoxAdapter(
