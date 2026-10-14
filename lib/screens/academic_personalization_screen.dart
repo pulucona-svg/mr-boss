@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
+import '../services/connectivity_service.dart';
 import '../services/user_service.dart';
 import '../widgets/academic_fields.dart';
 import 'profile_picture_upload_screen.dart';
@@ -336,12 +338,12 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                             
                                             if (!isUnique) {
                                               debugPrint('AcademicPersonalization: [DEBUG] Username is NOT unique.');
-                                              if (mounted) {
+                                              if (context.mounted) {
                                                 ScaffoldMessenger.of(context).showSnackBar(
                                                   const SnackBar(content: Text('Username already taken. Please choose another.')),
                                                 );
                                               }
-                                              setState(() => _isLoading = false);
+                                              if (mounted) setState(() => _isLoading = false);
                                               return;
                                             }
 
@@ -360,16 +362,24 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                             );
 
                                             final updatedProfile = ref.read(userProfileProvider);
-                                            if (updatedProfile.uid.isNotEmpty) {
-                                              debugPrint('AcademicPersonalization: [DEBUG] Syncing to Firestore for UID: ${updatedProfile.uid}');
-                                              await UserService().completeOnboarding(updatedProfile.uid, updatedProfile.toJson());
+                                            final authUid = FirebaseAuth.instance.currentUser?.uid;
+                                            final targetUid = updatedProfile.uid.isNotEmpty
+                                                ? updatedProfile.uid
+                                                : (authUid ?? '');
+
+                                            if (targetUid.isNotEmpty) {
+                                              if (updatedProfile.uid.isEmpty) {
+                                                notifier.updateProfile(uid: targetUid);
+                                              }
+                                              debugPrint('AcademicPersonalization: [DEBUG] Syncing to Firestore for UID: $targetUid');
+                                              await UserService().completeOnboarding(targetUid, updatedProfile.toFirestoreMap());
                                               debugPrint('AcademicPersonalization: [DEBUG] Firestore sync SUCCESS.');
                                             } else {
                                               debugPrint('AcademicPersonalization: [DEBUG] WARNING: Profile UID is empty. Skipping Firestore sync.');
                                             }
 
                                             if (widget.isOnboarding) {
-                                              if (mounted) {
+                                              if (context.mounted) {
                                                 debugPrint('AcademicPersonalization: [DEBUG] Navigating to ProfilePictureUploadScreen');
                                                 Navigator.push(
                                                   context,
@@ -379,16 +389,24 @@ class _AcademicPersonalizationScreenState extends ConsumerState<AcademicPersonal
                                                 );
                                               }
                                             } else {
-                                              if (mounted) {
+                                              if (context.mounted) {
                                                 debugPrint('AcademicPersonalization: [DEBUG] Onboarding complete. Popping screen.');
                                                 Navigator.pop(context);
                                               }
                                             }
                                           } catch (e) {
                                             debugPrint('AcademicPersonalization: [FATAL ERROR] Save failed: $e');
-                                            if (mounted) {
+                                            if (context.mounted) {
+                                              final String errorMessage;
+                                              if (ConnectivityService.isNetworkError(e)) {
+                                                errorMessage = 'Network error. Please check your internet connection and try again.';
+                                              } else if (e is FirebaseException && e.code == 'permission-denied') {
+                                                errorMessage = 'Failed to save profile: permission-denied. Please check your login session.';
+                                              } else {
+                                                errorMessage = 'Failed to save profile: ${e.toString()}';
+                                              }
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('Failed to save profile: ${e.toString()}')),
+                                                SnackBar(content: Text(errorMessage)),
                                               );
                                             }
                                           } finally {

@@ -167,12 +167,40 @@ class UserService {
     try {
       final docRef = _firestore.collection('users').doc(uid);
       
-      debugPrint('FIRESTORE DEBUG: attempting profile update (set with merge) for collection=users, docId=$uid');
+      // Strict whitelist of permitted profile fields to prevent sending
+      // server-controlled fields (e.g. deletionStatus, roles, subscriptions, local paths)
+      const allowedKeys = {
+        'uid',
+        'username',
+        'institution',
+        'universityLocation',
+        'program',
+        'programCode',
+        'year',
+        'semester',
+        'phone',
+        'email',
+        'photoURL',
+        'joinDate',
+        'termsVersionAccepted',
+        'termsAcceptedAt',
+        'privacyPolicyVersionAccepted',
+        'privacyPolicyAcceptedAt',
+      };
+
+      final sanitizedData = <String, dynamic>{
+        'onboardingComplete': true,
+      };
+
+      for (final entry in data.entries) {
+        if (allowedKeys.contains(entry.key) && entry.value != null) {
+          sanitizedData[entry.key] = entry.value;
+        }
+      }
+
+      debugPrint('FIRESTORE DEBUG: attempting profile update (set with merge) for collection=users, docId=$uid, keys=${sanitizedData.keys}');
       try {
-        await docRef.set({
-          ...data,
-          'onboardingComplete': true,
-        }, SetOptions(merge: true));
+        await docRef.set(sanitizedData, SetOptions(merge: true));
         debugPrint('FIRESTORE DEBUG: profile update/creation success for uid=$uid');
       } catch (e, st) {
         debugPrint('FIRESTORE ERROR [set/merge]: $e');

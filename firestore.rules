@@ -50,23 +50,24 @@ service cloud.firestore {
     // ===============================================================
     // User Profiles & Multi-device Sessions
     // ===============================================================
+    function isRestrictedUserField(keys) {
+      return keys.hasAny([
+        'deletionStatus', 'deletionScheduledAt', 'deletionRequestedAt',
+        'deletionReason', 'deletionSurvey', 'restoredAt', 'isAnonymized',
+        'anonymizedAt', 'authDeletePending',
+        'role', 'isAdmin', 'admin',
+        'isSubscribed', 'subscription', 'subscriptionStatus', 'subscriptionPlan',
+        'tokens'
+      ]);
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAdmin() || (
-        isOwner(userId) &&
-        !request.resource.data.keys().hasAny([
-          'deletionStatus', 'deletionScheduledAt', 'deletionRequestedAt',
-          'deletionReason', 'deletionSurvey', 'restoredAt', 'isAnonymized',
-          'anonymizedAt', 'authDeletePending'
-        ])
+        isOwner(userId) && !isRestrictedUserField(request.resource.data.keys())
       );
       allow update: if isAdmin() || (
-        isOwner(userId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'deletionStatus', 'deletionScheduledAt', 'deletionRequestedAt',
-          'deletionReason', 'deletionSurvey', 'restoredAt', 'isAnonymized',
-          'anonymizedAt', 'authDeletePending'
-        ])
+        isOwner(userId) && !isRestrictedUserField(request.resource.data.diff(resource.data).affectedKeys())
       );
       allow delete: if isAdmin();
 

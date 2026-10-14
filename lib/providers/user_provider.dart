@@ -137,6 +137,43 @@ class UserProfile {
     };
   }
 
+  /// Returns a sanitized map containing only the allowed profile fields for Firestore.
+  /// Server-controlled deletion lifecycle fields and local device paths are excluded.
+  Map<String, dynamic> toFirestoreMap() {
+    final map = <String, dynamic>{
+      'uid': uid,
+      'username': username,
+      'institution': institution,
+      'universityLocation': universityLocation,
+      'program': program,
+      'programCode': programCode,
+      'year': year,
+      'semester': semester,
+      'phone': phone,
+      'email': email,
+      'onboardingComplete': onboardingComplete,
+    };
+    if (photoURL != null && photoURL!.isNotEmpty) {
+      map['photoURL'] = photoURL;
+    }
+    if (joinDate != null) {
+      map['joinDate'] = joinDate!.toIso8601String();
+    }
+    if (termsVersionAccepted != null) {
+      map['termsVersionAccepted'] = termsVersionAccepted;
+    }
+    if (termsAcceptedAt != null) {
+      map['termsAcceptedAt'] = termsAcceptedAt!.toIso8601String();
+    }
+    if (privacyPolicyVersionAccepted != null) {
+      map['privacyPolicyVersionAccepted'] = privacyPolicyVersionAccepted;
+    }
+    if (privacyPolicyAcceptedAt != null) {
+      map['privacyPolicyAcceptedAt'] = privacyPolicyAcceptedAt!.toIso8601String();
+    }
+    return map;
+  }
+
   static DateTime? _parseDate(dynamic val) {
     if (val == null) return null;
     if (val is String) return DateTime.tryParse(val);
