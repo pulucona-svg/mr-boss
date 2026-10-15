@@ -323,7 +323,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                   const SizedBox(height: 20),
                   const Text(
-                    'Join Mirror Laikipia',
+                    'Join Mirror Digital',
                     style: TextStyle(
                       color: Colors.purpleAccent,
                       fontSize: 30,

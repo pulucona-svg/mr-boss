@@ -41,7 +41,7 @@ void main() {
       await tester.pumpWidget(createLoginScreen());
 
       expect(find.text('MIRROR'), findsOneWidget);
-      expect(find.text('LAIKIPIA'), findsOneWidget);
+      expect(find.text('DIGITAL'), findsOneWidget);
       expect(find.byIcon(Icons.school), findsOneWidget);
       expect(find.text('Learn  ·  Access  ·  Grow'), findsOneWidget);
 

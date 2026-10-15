@@ -354,7 +354,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   children: [
                     const SizedBox(height: 12),
 
-                    // MIRROR LAIKIPIA Branding
+                    // MIRROR DIGITAL Branding
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Row(
@@ -394,7 +394,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ],
                               ),
                               const Text(
-                                'LAIKIPIA',
+                                'DIGITAL',
                                 style: TextStyle(
                                   color: Color(0xFF20C8FF),
                                   fontSize: 11,

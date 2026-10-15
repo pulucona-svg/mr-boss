@@ -30,6 +30,7 @@ class AuthService {
       try {
         await _googleSignIn.initialize(
           clientId: _webClientId,
+          serverClientId: _webClientId,
         );
         _isInitialized = true;
         debugPrint('AuthService: GoogleSignIn initialized successfully.');
@@ -167,16 +168,11 @@ class AuthService {
       await _ensureInitialized();
       debugPrint('AuthService: [DEBUG] Step 1: Initialization complete.');
 
-      // Force account picker by disconnecting and signing out first
+      // Ensure clean picker state without revoking Google account OAuth grants
       try {
-        debugPrint('AuthService: [DEBUG] Step 2: Prep - Disconnecting existing Google account...');
-        await _googleSignIn.disconnect().catchError((e) {
-          debugPrint('AuthService: [DEBUG] Disconnect failed (normal if first time): $e');
-          return null;
-        });
-        debugPrint('AuthService: [DEBUG] Step 2: Signing out from Google...');
+        debugPrint('AuthService: [DEBUG] Step 2: Resetting Google Sign-In state...');
         await _googleSignIn.signOut().catchError((e) {
-          debugPrint('AuthService: [DEBUG] SignOut failed (normal): $e');
+          debugPrint('AuthService: [DEBUG] SignOut failed (normal if not signed in): $e');
           return null;
         });
       } catch (e) {
@@ -194,15 +190,21 @@ class AuthService {
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
       debugPrint('AuthService: [DEBUG] Step 4: idToken available: ${googleAuth.idToken != null}');
       
-      // Optionally retrieve access token for scopes if needed (often required by Firebase)
+      // Optionally retrieve access token for scopes if needed, without blocking Firebase auth
       debugPrint('AuthService: [DEBUG] Step 5: Requesting authorization for scopes...');
-      final authz = await googleUser.authorizationClient.authorizationForScopes(['openid', 'email', 'profile']);
-      debugPrint('AuthService: [DEBUG] Step 5: Authorization for scopes retrieved: ${authz != null}');
+      String? accessToken;
+      try {
+        final authz = await googleUser.authorizationClient.authorizationForScopes(['openid', 'email', 'profile']);
+        accessToken = authz?.accessToken;
+        debugPrint('AuthService: [DEBUG] Step 5: Authorization for scopes retrieved: ${authz != null}');
+      } catch (e) {
+        debugPrint('AuthService: [WARN] Scope authorization failed (non-fatal, proceeding with idToken): $e');
+      }
 
       // Create Firebase Credential
       debugPrint('AuthService: [DEBUG] Step 6: Creating Firebase GoogleAuthProvider credential...');
       final credential = GoogleAuthProvider.credential(
-        accessToken: authz?.accessToken,
+        accessToken: accessToken,
         idToken: googleAuth.idToken,
       );
 

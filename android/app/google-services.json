@@ -58,6 +58,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "386198984140-6bvtov2mdaoaheqmfsb520qc1mifgq7b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mirrordigital.app",
+            "certificate_hash": "4bd82f50d29a3368ad3cdac0657c42e231a6866e"
+          }
+        },
+        {
           "client_id": "386198984140-e3naiq9ppj0oupj0gsh5d21nsthp9oo3.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

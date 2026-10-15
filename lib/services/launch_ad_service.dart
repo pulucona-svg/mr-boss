@@ -223,14 +223,14 @@ class LaunchAdService with WidgetsBindingObserver {
       return;
     }
 
-    // 3. Splash timing: ~1.5s for eligible returning non-subscribers
+    // 3. Splash timing: ~1.0s target for eligible returning non-subscribers
     if (!skipDelayForTesting) {
       final elapsed = DateTime.now().difference(splashStartTime);
-      const targetDuration = Duration(milliseconds: 1500);
+      const targetDuration = Duration(milliseconds: 1000);
       if (elapsed < targetDuration) {
         final remaining = targetDuration - elapsed;
         if (kDebugMode) {
-          debugPrint('LaunchAdService: [SPLASH_TIMING] Waiting ${remaining.inMilliseconds}ms for eligible 1.5s splash timing...');
+          debugPrint('LaunchAdService: [SPLASH_TIMING] Waiting ${remaining.inMilliseconds}ms for eligible 1.0s splash timing...');
         }
         await Future.delayed(remaining);
       }
@@ -293,8 +293,8 @@ class LaunchAdService with WidgetsBindingObserver {
     // If we reach here, either no cached AdMob ad was available OR it failed to show
     final bool isOffline = isOfflineOverrideForTesting ?? ConnectivityService().isOffline;
 
-    // 6. ONLINE PATH: Bounded online wait (2500ms for network creative fetch)
-    if (!isOffline) {
+    // 6. ONLINE PATH: Bounded fast online check (up to 400ms if an ad is actively loading)
+    if (!isOffline && AppOpenAdManager().isLoading) {
       if (kDebugMode) {
         debugPrint('[AppLaunch] usingCachedAdmob=false');
         debugPrint('[AppLaunch] online=true');
@@ -302,7 +302,7 @@ class LaunchAdService with WidgetsBindingObserver {
         debugPrint('[AppOpenDebug] waitingForAd=true');
       }
 
-      bool ready = await AppOpenAdManager().waitForAd(timeout: const Duration(milliseconds: 2500));
+      bool ready = await AppOpenAdManager().waitForAd(timeout: const Duration(milliseconds: 400));
 
       if (ready && AppOpenAdManager().hasValidCachedAd) {
         if (kDebugMode) debugPrint('[AppLaunch] boundedLoadResult=ready');
@@ -329,25 +329,14 @@ class LaunchAdService with WidgetsBindingObserver {
       }
 
       if (kDebugMode) {
-        debugPrint('[AppLaunch] boundedLoadResult=timeout');
-        debugPrint('[AppLaunch] continuingWithoutAd=true');
-        debugPrint('[AppOpenDebug] continuingWithoutAppOpen=true');
-        debugPrint('[AppOpenDebug] reason=startup_timeout');
+        debugPrint('[AppLaunch] boundedLoadResult=timeout_or_failed');
+        debugPrint('[AppLaunch] fallingBackToManualAd=true');
       }
-      _safeRemoveNativeSplash();
-      _markLaunchCompleted();
-      safeContinue();
-      AppOpenAdManager().replenishPool();
-      return;
     }
 
-    // 7. OFFLINE PATH: Manual offline App Launch Ad
+    // 7. FALLBACK: Manual launch ad fallback (for both offline devices and online ad failures/timeouts)
     if (kDebugMode) {
-      debugPrint('[AppLaunch] online=false');
-      debugPrint('[AppLaunch] cachedAdmobAvailable=false');
-      debugPrint('[AppLaunch] usingManualOfflineAppLaunch=true');
-      debugPrint('[AppOpenDebug] continuingWithoutAppOpen=true');
-      debugPrint('[AppOpenDebug] reason=device_offline_fallback');
+      debugPrint('[AppLaunch] checkingManualLaunchAdFallback=true');
     }
 
     final launchAd = InterstitialAdService().getNextAppLaunchAd();
@@ -400,6 +389,7 @@ class LaunchAdService with WidgetsBindingObserver {
       _safeRemoveNativeSplash();
       _markLaunchCompleted();
       safeContinue();
+      AppOpenAdManager().replenishPool();
       return;
     }
   }

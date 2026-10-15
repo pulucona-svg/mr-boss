@@ -50,21 +50,27 @@ void main() async {
 
   await PersistenceService().init();
 
-  try {
-    await MobileAds.instance.initialize();
-    AppOpenAdManager().markSdkInitialized();
-    AppOpenAdManager().initialize();
-    LaunchAdService().initialize();
-  } catch (e) {
-    debugPrint('Error initializing MobileAds or Ad services: $e');
-  }
+  // Initialize synchronous ad coordinators
+  AppOpenAdManager().initialize();
+  LaunchAdService().initialize();
+
+  // Initialize MobileAds asynchronously to unblock runApp() immediately
+  unawaited(() async {
+    try {
+      await MobileAds.instance.initialize();
+      AppOpenAdManager().markSdkInitialized();
+      final bool loggedIn = PersistenceService().getSessionUserId() != null;
+      if (loggedIn) {
+        LaunchAdService().startParallelPreload();
+      }
+    } catch (e) {
+      debugPrint('Error initializing MobileAds or Ad services: $e');
+    }
+  }());
 
   _initServices();
 
   final bool isLoggedIn = PersistenceService().getSessionUserId() != null;
-  if (isLoggedIn) {
-    LaunchAdService().startParallelPreload();
-  }
 
   runApp(
     ProviderScope(

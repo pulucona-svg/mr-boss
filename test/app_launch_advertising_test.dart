@@ -1379,6 +1379,9 @@ void main() {
       final sponsoredOffset = tester.getTopLeft(sponsoredFinder);
       final countdownOffset = tester.getTopLeft(countdownFinder);
       expect(countdownOffset.dx, greaterThan(sponsoredOffset.dx));
+
+      // Drain view tracker debounce timer
+      await tester.pump(const Duration(seconds: 3));
     });
 
     testWidgets('App Launch Ad Header: Video ad has mute icon immediately to the left of countdown/X', (tester) async {
@@ -1422,6 +1425,9 @@ void main() {
       // Tapping mute icon toggles without error
       await tester.tap(muteFinder);
       await tester.pump();
+
+      // Drain view tracker debounce timer
+      await tester.pump(const Duration(seconds: 3));
     });
   });
 }
