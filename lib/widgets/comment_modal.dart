@@ -32,6 +32,9 @@ class _CommentModalState extends ConsumerState<CommentModal> {
   final ScrollController _scrollController = ScrollController();
   final Map<String, GlobalKey> _commentKeys = {};
 
+  late final Stream<List<Comment>> _commentsStream;
+  final List<Comment> _pendingLocalComments = [];
+
   Comment? _replyingTo;
   Comment? _editingComment;
   String? _highlightedCommentId;
@@ -41,6 +44,7 @@ class _CommentModalState extends ConsumerState<CommentModal> {
   @override
   void initState() {
     super.initState();
+    _commentsStream = CommentService().streamComments(widget.resourceId);
     if (widget.targetCommentId != null) {
       _highlightedCommentId = widget.targetCommentId;
       _highlightTimer = Timer(const Duration(seconds: 4), () {
@@ -67,40 +71,133 @@ class _CommentModalState extends ConsumerState<CommentModal> {
     }
   }
 
-  void _handleSend() {
+  List<Comment> _mergeComments(List<Comment> serverComments) {
+    final Set<String> serverIds = {};
+    for (final c in serverComments) {
+      serverIds.add(c.id);
+      for (final r in c.replies) {
+        serverIds.add(r.id);
+      }
+    }
+
+    _pendingLocalComments.removeWhere((c) => serverIds.contains(c.id));
+
+    final mergedTopLevel = serverComments.map((c) {
+      return Comment(
+        id: c.id,
+        authorId: c.authorId,
+        author: c.author,
+        authorProfileImage: c.authorProfileImage,
+        text: c.text,
+        timestamp: c.timestamp,
+        likes: c.likes,
+        isLiked: c.isLiked,
+        likedBy: c.likedBy,
+        parentId: c.parentId,
+        reactions: c.reactions,
+        isModerated: c.isModerated,
+        moderationReason: c.moderationReason,
+        moderatedAt: c.moderatedAt,
+        moderatedBy: c.moderatedBy,
+        replies: List<Comment>.from(c.replies),
+      );
+    }).toList();
+
+    for (final pending in _pendingLocalComments) {
+      if (pending.parentId == null) {
+        mergedTopLevel.insert(0, pending);
+      } else {
+        final parent = mergedTopLevel.cast<Comment?>().firstWhere(
+          (c) => c?.id == pending.parentId,
+          orElse: () => null,
+        );
+        if (parent != null) {
+          if (!parent.replies.any((r) => r.id == pending.id)) {
+            parent.replies.add(pending);
+          }
+        }
+      }
+    }
+
+    return mergedTopLevel;
+  }
+
+  Future<void> _handleSend() async {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
 
     if (_editingComment != null) {
-      CommentService().editComment(widget.resourceId, _editingComment!.id, text);
+      final commentId = _editingComment!.id;
       setState(() => _editingComment = null);
+      _commentController.clear();
+      _focusNode.unfocus();
+      try {
+        await CommentService().editComment(widget.resourceId, commentId, text);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to edit comment: $e')),
+          );
+        }
+      }
     } else {
       final userProfile = ref.read(userProfileProvider);
+      final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+      final replying = _replyingTo;
 
-      CommentService().addComment(
-        widget.resourceId,
-        text,
-        replyingTo: _replyingTo,
+      final optimisticComment = Comment(
+        id: tempId,
         authorId: userProfile.uid,
-        authorName: userProfile.username,
+        author: userProfile.username,
         authorProfileImage: userProfile.profileImagePath ?? userProfile.photoURL,
+        text: text,
+        timestamp: DateTime.now(),
+        parentId: replying?.id,
+        likes: 0,
+        likedBy: [],
+        reactions: {},
+        isModerated: false,
+        replies: [],
       );
-    }
 
-    _commentController.clear();
-    _focusNode.unfocus();
-    setState(() => _replyingTo = null);
+      setState(() {
+        _pendingLocalComments.add(optimisticComment);
+        _replyingTo = null;
+      });
+
+      _commentController.clear();
+      _focusNode.unfocus();
+
+      try {
+        await CommentService().addComment(
+          widget.resourceId,
+          text,
+          replyingTo: replying,
+          authorId: userProfile.uid,
+          authorName: userProfile.username,
+          authorProfileImage: userProfile.profileImagePath ?? userProfile.photoURL,
+          commentId: tempId,
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _pendingLocalComments.removeWhere((c) => c.id == tempId);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to post comment: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: AuthorProfileCache(),
-      builder: (context, _) {
-        return StreamBuilder<List<Comment>>(
-          stream: CommentService().streamComments(widget.resourceId),
-          builder: (context, snapshot) {
-            final comments = snapshot.data ?? [];
+    return StreamBuilder<List<Comment>>(
+      stream: _commentsStream,
+      builder: (context, snapshot) {
+        final rawComments = snapshot.data ?? [];
+        final comments = _mergeComments(rawComments);
             final totalCount = comments.length + comments.fold(0, (sum, c) => sum + c.replies.length);
 
             // Prefetch live profile photos for all commenters
@@ -131,7 +228,10 @@ class _CommentModalState extends ConsumerState<CommentModal> {
               });
             }
 
-            return Container(
+            return ListenableBuilder(
+              listenable: AuthorProfileCache(),
+              builder: (context, _) {
+                return Container(
               height: MediaQuery.of(context).size.height * 0.75,
               decoration: const BoxDecoration(
                 color: Color(0xFF141232),

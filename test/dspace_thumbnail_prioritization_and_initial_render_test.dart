@@ -273,8 +273,8 @@ void main() {
       expect(sorted.map((r) => r.id).toList(), equals(['user_with_thumb', 'dspace_with_thumb', 'dspace_pending']));
     });
 
-    test('automatic return to normal ordering when all DSpace thumbnails are complete', () {
-      // When every DSpace thumbnail is complete:
+    test('permanent universal thumbnail ordering prioritizes thumbnails even when all DSpace items have thumbnails', () {
+      // Regardless of DSpace state:
       resourceService.setHasIncompleteDSpaceThumbnails(false);
 
       final m1 = createTestMaterial(
@@ -293,8 +293,9 @@ void main() {
 
       final sorted = resourceService.sortResources([m1, m2]);
 
-      // Normal release date ordering resumes: m2 (newest) followed by m1
-      expect(sorted.map((r) => r.id).toList(), equals(['m2', 'm1']));
+      // Materials with valid thumbnails are ALWAYS grouped ahead of materials without thumbnails:
+      // m1 (with thumbnail) precedes m2 (without thumbnail)
+      expect(sorted.map((r) => r.id).toList(), equals(['m1', 'm2']));
     });
 
     test('Serpentine layout reflects thumbnail prioritization without overriding it', () {

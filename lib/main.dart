@@ -36,6 +36,7 @@ import 'services/app_open_ad_manager.dart';
 import 'services/paystack_service.dart';
 import 'services/notification_service.dart';
 import 'services/manual_ad_view_tracker.dart';
+import 'services/chat_service.dart';
 import 'providers/providers.dart';
 
 void main() async {
@@ -387,6 +388,15 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
       // Initialize ResourceService with real-time listeners
       ResourceService().initialize(userProfile.uid);
       ResourceService().synchronizeWithPool(courseService);
+
+      // Initialize ChatService for the authenticated user
+      if (userProfile.uid.isNotEmpty) {
+        ChatService().initForUser(
+          userId: userProfile.uid,
+          userName: userProfile.username.isNotEmpty ? userProfile.username : 'User',
+          userPhotoUrl: userProfile.profileImagePath ?? userProfile.photoURL,
+        );
+      }
 
       // Start session monitoring
       _startSessionMonitoring();

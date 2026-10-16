@@ -23,7 +23,7 @@ class MockCommentService extends CommentService {
 
 class MockChatServiceForAdmin extends ChatService {
   final List<Message> _mockMessages;
-  MockChatServiceForAdmin(this._mockMessages);
+  MockChatServiceForAdmin(this._mockMessages) : super.testable();
 
   @override
   List<Message> get messages => _mockMessages;

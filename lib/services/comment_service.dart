@@ -61,19 +61,18 @@ class CommentService extends ChangeNotifier {
         });
   }
 
-  Future<void> addComment(
+  Future<String> addComment(
     String resourceId,
     String text, {
     Comment? replyingTo,
     required String authorName,
     String? authorProfileImage,
     String? authorId,
+    String? commentId,
   }) async {
-    final commentDocRef = _firestore
-        .collection('resources')
-        .doc(resourceId)
-        .collection('comments')
-        .doc();
+    final commentDocRef = commentId != null
+        ? _firestore.collection('resources').doc(resourceId).collection('comments').doc(commentId)
+        : _firestore.collection('resources').doc(resourceId).collection('comments').doc();
 
     final commentData = {
       'authorId': authorId,
@@ -91,14 +90,16 @@ class CommentService extends ChangeNotifier {
     final resourceDocRef = _firestore.collection('resources').doc(resourceId);
 
     try {
-      await _firestore.runTransaction((transaction) async {
-        transaction.set(commentDocRef, commentData);
-        transaction.update(resourceDocRef, {
-          'comments': FieldValue.increment(1),
-        });
+      final batch = _firestore.batch();
+      batch.set(commentDocRef, commentData);
+      batch.update(resourceDocRef, {
+        'comments': FieldValue.increment(1),
       });
+      await batch.commit();
+      return commentDocRef.id;
     } catch (e) {
       debugPrint('CommentService: [ERROR] Failed to add comment: $e');
+      rethrow;
     }
   }
 

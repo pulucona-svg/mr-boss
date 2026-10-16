@@ -33,11 +33,20 @@ class _AdminChatDetailScreenState extends ConsumerState<AdminChatDetailScreen> {
   Message? _replyingTo;
 
   ChatService? _chatService;
+  late Stream<List<Message>> _messagesStream;
+  final List<Message> _pendingAdminMessages = [];
 
   @override
   void initState() {
     super.initState();
     _chatService = ref.read(chatServiceProvider);
+
+    final adminProfile = ref.read(userProfileProvider);
+    final adminId = adminProfile.uid.isNotEmpty ? adminProfile.uid : 'admin';
+    _messagesStream = _chatService!.streamConversationMessages(
+      widget.conversation.userId,
+      adminId: adminId,
+    );
 
     // Mark conversation messages read by admin upon opening
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -85,18 +94,46 @@ class _AdminChatDetailScreenState extends ConsumerState<AdminChatDetailScreen> {
     if (text.isEmpty) return;
 
     final adminProfile = ref.read(userProfileProvider);
+    final adminId = adminProfile.uid.isNotEmpty ? adminProfile.uid : 'admin';
     _messageController.clear();
     final reply = _replyingTo;
     setState(() => _replyingTo = null);
 
-    await ref.read(chatServiceProvider).adminSendMessage(
-      userId: widget.conversation.userId,
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final optimisticMessage = Message(
+      id: tempId,
       text: text,
-      replyTo: reply,
-      adminId: adminProfile.uid.isNotEmpty ? adminProfile.uid : 'admin',
+      isMe: true,
+      timestamp: DateTime.now(),
+      status: MessageStatus.sent,
+      replyToId: reply?.id,
+      replyText: reply?.text,
+      senderRole: 'admin',
     );
 
+    setState(() {
+      _pendingAdminMessages.add(optimisticMessage);
+    });
     _scrollToBottom();
+
+    try {
+      await ref.read(chatServiceProvider).adminSendMessage(
+        userId: widget.conversation.userId,
+        text: text,
+        replyTo: reply,
+        adminId: adminId,
+        messageId: tempId,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pendingAdminMessages.removeWhere((m) => m.id == tempId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send message: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _pickImage() async {
@@ -261,8 +298,6 @@ class _AdminChatDetailScreenState extends ConsumerState<AdminChatDetailScreen> {
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
-    final chatService = ref.watch(chatServiceProvider);
-    final adminProfile = ref.watch(userProfileProvider);
 
     final bgColor = isDark ? const Color(0xFF0E0D24) : const Color(0xFFEFE7DE);
     final appBarColor = isDark ? const Color(0xFF141232) : const Color(0xFF1A1A2E);
@@ -349,10 +384,7 @@ class _AdminChatDetailScreenState extends ConsumerState<AdminChatDetailScreen> {
           // Messages Stream
           Expanded(
             child: StreamBuilder<List<Message>>(
-              stream: chatService.streamConversationMessages(
-                widget.conversation.userId,
-                adminId: adminProfile.uid.isNotEmpty ? adminProfile.uid : 'admin',
-              ),
+              stream: _messagesStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                   return const Center(
@@ -360,7 +392,11 @@ class _AdminChatDetailScreenState extends ConsumerState<AdminChatDetailScreen> {
                   );
                 }
 
-                final messages = snapshot.data ?? [];
+                final serverMessages = snapshot.data ?? [];
+                final serverIds = serverMessages.map((m) => m.id).toSet();
+                _pendingAdminMessages.removeWhere((m) => serverIds.contains(m.id));
+
+                final messages = [...serverMessages, ..._pendingAdminMessages];
 
                 if (messages.isEmpty) {
                   return Center(

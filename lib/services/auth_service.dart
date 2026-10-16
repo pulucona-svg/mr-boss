@@ -7,6 +7,7 @@ import 'dart:io';
 import 'user_service.dart';
 import 'resource_service.dart';
 import 'subscription_service.dart';
+import 'chat_service.dart';
 import 'device_id_manager.dart';
 import 'connectivity_service.dart';
 
@@ -249,6 +250,7 @@ class AuthService {
       // Clear all resource state and listeners to prevent data leakage
       ResourceService().clear();
       SubscriptionService().clear();
+      ChatService().clear();
       
       await _ensureInitialized();
       await Future.wait<dynamic>([

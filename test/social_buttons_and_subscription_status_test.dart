@@ -11,6 +11,8 @@ import 'package:mirror_laikipia/services/subscription_service.dart';
 import 'package:mirror_laikipia/screens/admin/admin_messages_screen.dart';
 
 class MockChatService extends ChatService {
+  MockChatService() : super.testable();
+
   @override
   Stream<List<ConversationSummary>> streamAllConversations() {
     return Stream.value([

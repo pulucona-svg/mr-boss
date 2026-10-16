@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/message.dart';
 import 'persistence_service.dart';
 
@@ -61,9 +62,22 @@ class ConversationSummary {
 }
 
 class ChatService extends ChangeNotifier {
+  static ChatService _instance = ChatService._internal();
+  factory ChatService() => _instance;
+
+  @visibleForTesting
+  static void resetInstance([ChatService? customInstance]) {
+    _instance.disposeStreams();
+    _instance = customInstance ?? ChatService._internal();
+  }
+
+  @visibleForTesting
+  ChatService.testable();
+
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   FirebaseFunctions get _functions => FirebaseFunctions.instance;
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  AudioPlayer? _audioPlayer;
+  AudioPlayer get audioPlayer => _audioPlayer ??= AudioPlayer();
 
   final List<Message> _messages = [];
   bool _isAdminTyping = false;
@@ -72,6 +86,7 @@ class ChatService extends ChangeNotifier {
   String? _currentUserName;
   String? _currentUserPhotoUrl;
 
+  StreamSubscription<User?>? _authSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _conversationSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _messagesSub;
   Timer? _typingDebounceTimer;
@@ -80,8 +95,59 @@ class ChatService extends ChangeNotifier {
   bool get isAdminTyping => _isAdminTyping;
   int get unreadCount => _userUnreadCount > 0 ? _userUnreadCount : _messages.where((m) => !m.isMe && !m.isRead).length;
 
-  ChatService() {
+  ChatService._internal() {
     _restoreLocalMessages();
+    _setupAuthListener();
+  }
+
+  void _setupAuthListener() {
+    try {
+      _authSubscription?.cancel();
+      _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user != null) {
+          initForUser(
+            userId: user.uid,
+            userName: user.displayName ?? 'User',
+            userPhotoUrl: user.photoURL,
+          );
+        } else {
+          clear();
+        }
+      });
+
+      final current = FirebaseAuth.instance.currentUser;
+      if (current != null) {
+        initForUser(
+          userId: current.uid,
+          userName: current.displayName ?? 'User',
+          userPhotoUrl: current.photoURL,
+        );
+      }
+    } catch (e) {
+      debugPrint("ChatService _setupAuthListener error: $e");
+    }
+  }
+
+  void clear() {
+    _conversationSub?.cancel();
+    _messagesSub?.cancel();
+    _conversationSub = null;
+    _messagesSub = null;
+    _typingDebounceTimer?.cancel();
+    _currentUserId = null;
+    _currentUserName = null;
+    _currentUserPhotoUrl = null;
+    _userUnreadCount = 0;
+    _isAdminTyping = false;
+    _messages.clear();
+    notifyListeners();
+  }
+
+  void disposeStreams() {
+    _authSubscription?.cancel();
+    _conversationSub?.cancel();
+    _messagesSub?.cancel();
+    _typingDebounceTimer?.cancel();
   }
 
   // -------------------------------------------------------------
@@ -127,7 +193,7 @@ class ChatService extends ChangeNotifier {
   // -------------------------------------------------------------
   void _playSound(String fileName) async {
     try {
-      await _audioPlayer.play(AssetSource(fileName));
+      await audioPlayer.play(AssetSource(fileName));
     } catch (e) {
       debugPrint("Sound play failed: $e");
     }
@@ -210,8 +276,12 @@ class ChatService extends ChangeNotifier {
         }
       }
 
+      final remoteIds = remoteMessages.map((m) => m.id).toSet();
+      final pendingLocal = _messages.where((m) => m.isMe && !remoteIds.contains(m.id)).toList();
+
       _messages.clear();
       _messages.addAll(remoteMessages);
+      _messages.addAll(pendingLocal);
       _saveLocalMessages();
       notifyListeners();
 
@@ -296,8 +366,8 @@ class ChatService extends ChangeNotifier {
     final convRef = _firestore.collection('conversations').doc(userId);
 
     try {
-      // 1. Write message to Firestore subcollection
-      await convRef.collection('messages').doc(messageId).set({
+      final batch = _firestore.batch();
+      batch.set(convRef.collection('messages').doc(messageId), {
         'id': messageId,
         'senderId': userId,
         'senderRole': 'user',
@@ -313,8 +383,7 @@ class ChatService extends ChangeNotifier {
         'metadata': metadata,
       });
 
-      // 2. Update conversation metadata
-      await convRef.set({
+      batch.set(convRef, {
         'userId': userId,
         'userName': _currentUserName ?? 'User',
         'userPhotoUrl': _currentUserPhotoUrl,
@@ -324,14 +393,14 @@ class ChatService extends ChangeNotifier {
         'isUserTyping': false,
       }, SetOptions(merge: true));
 
+      await batch.commit();
       _saveLocalMessages();
     } catch (e) {
       debugPrint("Error sending message to Firestore: $e");
-      // Fallback local simulation if Firestore is not accessible
-      _simulateMessageStatus(messageId);
-      if (text.trim().isNotEmpty) {
-        _fetchGeminiAdminResponse(text.trim());
-      }
+      _messages.removeWhere((m) => m.id == messageId);
+      notifyListeners();
+      _saveLocalMessages();
+      rethrow;
     }
   }
 
@@ -581,23 +650,25 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Admin send reply to user
-  Future<void> adminSendMessage({
+  Future<String> adminSendMessage({
     required String userId,
     required String text,
     File? imageFile,
     Message? replyTo,
     required String adminId,
+    String? messageId,
   }) async {
-    final messageId = DateTime.now().millisecondsSinceEpoch.toString();
+    final msgId = messageId ?? DateTime.now().millisecondsSinceEpoch.toString();
     String? imageUrl;
     if (imageFile != null) {
       imageUrl = await _uploadChatImage(imageFile, 'admin');
     }
 
     final convRef = _firestore.collection('conversations').doc(userId);
+    final batch = _firestore.batch();
 
-    await convRef.collection('messages').doc(messageId).set({
-      'id': messageId,
+    batch.set(convRef.collection('messages').doc(msgId), {
+      'id': msgId,
       'senderId': adminId,
       'senderRole': 'admin',
       'text': text,
@@ -611,82 +682,16 @@ class ChatService extends ChangeNotifier {
       'deletedFor': [],
     });
 
-    await convRef.update({
+    batch.set(convRef, {
       'lastMessageText': text.isNotEmpty ? text : '📷 Photo',
       'lastMessageTimestamp': FieldValue.serverTimestamp(),
       'userUnreadCount': FieldValue.increment(1),
       'isAdminTyping': false,
-    });
+    }, SetOptions(merge: true));
 
+    await batch.commit();
     _playSound('sent.mp3');
-  }
-
-  // -------------------------------------------------------------
-  // FALLBACK SIMULATION & AI ASSISTANT PRESERVATION
-  // -------------------------------------------------------------
-  void _simulateMessageStatus(String messageId) async {
-    await Future.delayed(const Duration(seconds: 1));
-    _updateLocalMessageStatus(messageId, MessageStatus.delivered);
-
-    await Future.delayed(const Duration(seconds: 2));
-    _updateLocalMessageStatus(messageId, MessageStatus.read);
-  }
-
-  void _updateLocalMessageStatus(String id, MessageStatus status) {
-    final index = _messages.indexWhere((m) => m.id == id);
-    if (index != -1) {
-      _messages[index] = _messages[index].copyWith(status: status);
-      _saveLocalMessages();
-      notifyListeners();
-    }
-  }
-
-  void _fetchGeminiAdminResponse(String userText) async {
-    await Future.delayed(const Duration(milliseconds: 400));
-    _isAdminTyping = true;
-    notifyListeners();
-
-    try {
-      final history = _messages
-          .where((m) => !m.isDeleted && m.text.isNotEmpty)
-          .take(10)
-          .map((m) => {'isMe': m.isMe, 'text': m.text})
-          .toList();
-
-      final result = await _functions
-          .httpsCallable('askGeminiHelpSupport')
-          .call({'message': userText, 'history': history});
-
-      _isAdminTyping = false;
-
-      if (result.data != null && result.data['reply'] != null) {
-        final replyText = result.data['reply'].toString();
-        _receiveAdminMessage(replyText);
-      } else {
-        _receiveAdminMessage(
-            "Hello! I am the Mirror Laikipia AI Assistant. How can I help you with your account, uploads, downloads, or subscriptions today?");
-      }
-    } catch (e) {
-      _isAdminTyping = false;
-      debugPrint("Gemini Help Assistant error: $e");
-    }
-  }
-
-  void _receiveAdminMessage(String text) {
-    final message = Message(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      senderId: 'admin',
-      senderRole: 'admin',
-      text: text,
-      timestamp: DateTime.now(),
-      isMe: false,
-      type: MessageType.text,
-      status: MessageStatus.read,
-    );
-    _messages.add(message);
-    _saveLocalMessages();
-    notifyListeners();
-    _playSound('received.mp3');
+    return msgId;
   }
 
   @override
@@ -694,7 +699,7 @@ class ChatService extends ChangeNotifier {
     _conversationSub?.cancel();
     _messagesSub?.cancel();
     _typingDebounceTimer?.cancel();
-    _audioPlayer.dispose();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 }

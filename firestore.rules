@@ -201,11 +201,18 @@ service cloud.firestore {
 
     // ===============================================================
     // Global & System Notifications
-    // Read: Authenticated users
+    // Read: Authorized administrators, or authenticated users for broadcast
+    //       notifications ('all') and their own targeted notifications.
     // Write: Authorized administrators only
     // ===============================================================
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
+      allow read: if isAdmin() || (
+        isAuthenticated() && (
+          !('target' in resource.data) ||
+          resource.data.target == 'all' ||
+          resource.data.target == request.auth.uid
+        )
+      );
       allow create, update, delete: if isAdmin();
     }
 

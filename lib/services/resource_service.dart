@@ -372,19 +372,17 @@ class ResourceService extends ChangeNotifier {
     unpinned.sort((a, b) {
       final cmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
       if (cmp != 0) return cmp;
-      return b.uploadDate.compareTo(a.uploadDate);
+      final uploadCmp = b.uploadDate.compareTo(a.uploadDate);
+      if (uploadCmp != 0) return uploadCmp;
+      return b.id.compareTo(a.id);
     });
 
-    // While one or more DSpace materials remain without completed thumbnails:
-    // Prioritize materials with completed thumbnails above materials without completed thumbnails
-    if (_hasIncompleteDSpaceThumbnails) {
-      final withThumbnails = unpinned.where((r) => r.hasValidThumbnail).toList();
-      final withoutThumbnails = unpinned.where((r) => !r.hasValidThumbnail).toList();
-      return [...pinned, ...withThumbnails, ...withoutThumbnails];
-    }
-
-    // Normal sorting resumes automatically when every DSpace item has a completed thumbnail
-    return [...pinned, ...unpinned];
+    // Permanent universal thumbnail ordering:
+    // Materials with completed/valid thumbnails are ALWAYS prioritized above materials without thumbnails.
+    // Within each group, materials maintain chronological release date ordering.
+    final withThumbnails = unpinned.where((r) => r.hasValidThumbnail).toList();
+    final withoutThumbnails = unpinned.where((r) => !r.hasValidThumbnail).toList();
+    return [...pinned, ...withThumbnails, ...withoutThumbnails];
   }
 
   List<Resource> _sortResources(List<Resource> list) => sortResources(list);
@@ -966,12 +964,16 @@ class ResourceService extends ChangeNotifier {
       _allResources.insert(0, finalModRes);
       _allResources = _sortResources(_allResources);
 
+      final notifId = 'notif_modify_$docId';
+      final uploaderId = finalModRes.uploaderId;
+
       NotificationService().addModerationNotification(
         type: NotificationType.materialModified,
         resourceTitle: finalModRes.title,
-        id: 'notif_modify_$docId',
+        id: notifId,
         materialId: docId,
         remark: finalModRes.adminRemark,
+        target: uploaderId.isNotEmpty ? uploaderId : 'all',
       );
     } else {
       // Active material
@@ -1052,6 +1054,27 @@ class ResourceService extends ChangeNotifier {
         debugPrint('ResourceService: [ERROR] Firestore update failed: $err');
       }
     }
+
+    if (isModified) {
+      try {
+        final uploaderId = updatedResource.uploaderId;
+        final notifRef = _firestore.collection('notifications').doc('notif_modify_$docId');
+        await notifRef.set({
+          'type': 'materialModified',
+          'title': 'Material Modified & Approved',
+          'message': 'Your upload "${updatedResource.title}" was updated by an administrator and published.',
+          'resourceTitle': updatedResource.title,
+          'materialId': docId,
+          'senderName': 'Admin',
+          'senderType': 'admin',
+          'createdAt': FieldValue.serverTimestamp(),
+          'remark': updatedResource.adminRemark,
+          'target': uploaderId.isNotEmpty ? uploaderId : 'all',
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('ResourceService: [WARN] Failed to persist modification notification: $e');
+      }
+    }
   }
 
   Future<void> approveMaterial(String materialId, {String? adminRemark}) async {
@@ -1083,12 +1106,16 @@ class ResourceService extends ChangeNotifier {
         _userUploads[userIdx] = approvedRes;
       }
 
+      final notifId = 'notif_approve_$cleanId';
+      final uploaderId = approvedRes.uploaderId;
+
       NotificationService().addModerationNotification(
         type: NotificationType.materialApproved,
         resourceTitle: approvedRes.title,
-        id: 'notif_approve_$cleanId',
+        id: notifId,
         materialId: cleanId,
         remark: adminRemark,
+        target: uploaderId.isNotEmpty ? uploaderId : 'all',
       );
     }
 
@@ -1117,6 +1144,27 @@ class ResourceService extends ChangeNotifier {
         await _firestore.collection('resources').doc(cleanId).update(updateData);
       } catch (err) {
         debugPrint('ResourceService: [ERROR] Direct Firestore approve failed: $err');
+      }
+    }
+
+    if (approvedRes != null) {
+      try {
+        final uploaderId = approvedRes.uploaderId;
+        final notifRef = _firestore.collection('notifications').doc('notif_approve_$cleanId');
+        await notifRef.set({
+          'type': 'materialApproved',
+          'title': 'Material Approved',
+          'message': 'Your upload "${approvedRes.title}" has been approved and is now live.',
+          'resourceTitle': approvedRes.title,
+          'materialId': cleanId,
+          'senderName': 'Admin',
+          'senderType': 'admin',
+          'createdAt': FieldValue.serverTimestamp(),
+          'remark': adminRemark,
+          'target': uploaderId.isNotEmpty ? uploaderId : 'all',
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('ResourceService: [WARN] Failed to persist approval notification: $e');
       }
     }
   }
@@ -1158,13 +1206,17 @@ class ResourceService extends ChangeNotifier {
 
       DownloadService().purgeArchivedOrTrashed({cleanId, rejectedRes.title});
 
+      final notifId = 'notif_reject_$cleanId';
+      final uploaderId = rejectedRes.uploaderId;
+
       NotificationService().addModerationNotification(
         type: NotificationType.materialRejected,
         resourceTitle: rejectedRes.title,
-        id: 'notif_reject_$cleanId',
+        id: notifId,
         materialId: cleanId,
         rejectionReasons: rejectionReasons,
         remark: adminRemark,
+        target: uploaderId.isNotEmpty ? uploaderId : 'all',
       );
     }
 
@@ -1196,6 +1248,28 @@ class ResourceService extends ChangeNotifier {
         await _firestore.collection('resources').doc(cleanId).update(updateData);
       } catch (err) {
         debugPrint('ResourceService: [ERROR] Direct Firestore reject failed: $err');
+      }
+    }
+
+    if (rejectedRes != null) {
+      try {
+        final uploaderId = rejectedRes.uploaderId;
+        final notifRef = _firestore.collection('notifications').doc('notif_reject_$cleanId');
+        await notifRef.set({
+          'type': 'materialRejected',
+          'title': 'Material Declined',
+          'message': 'Your upload "${rejectedRes.title}" was declined by an administrator.',
+          'resourceTitle': rejectedRes.title,
+          'materialId': cleanId,
+          'senderName': 'Admin',
+          'senderType': 'admin',
+          'createdAt': FieldValue.serverTimestamp(),
+          'rejectionReasons': rejectionReasons,
+          'remark': adminRemark,
+          'target': uploaderId.isNotEmpty ? uploaderId : 'all',
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('ResourceService: [WARN] Failed to persist rejection notification: $e');
       }
     }
   }

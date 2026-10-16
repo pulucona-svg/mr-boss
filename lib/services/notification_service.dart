@@ -56,7 +56,7 @@ class NotificationService extends ChangeNotifier {
       _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
         if (user != null) {
           _loadReadIds(user.uid);
-          _startFirestoreListener();
+          _startFirestoreListener(user.uid);
         } else {
           _stopFirestoreListener();
           _loadReadIds(null);
@@ -66,7 +66,7 @@ class NotificationService extends ChangeNotifier {
       final current = FirebaseAuth.instance.currentUser;
       if (current != null) {
         _loadReadIds(current.uid);
-        _startFirestoreListener();
+        _startFirestoreListener(current.uid);
       } else {
         _loadReadIds(null);
       }
@@ -75,19 +75,40 @@ class NotificationService extends ChangeNotifier {
     }
   }
 
-  void _startFirestoreListener() {
+  void _startFirestoreListener([String? userId]) {
     try {
       _firestoreSubscription?.cancel();
       _isInitialSnapshot = true;
-      _firestoreSubscription = FirebaseFirestore.instance
-          .collection('notifications')
+      final currentUserId = userId ?? _resolveCurrentUserId();
+      final targets = <String>['all'];
+      if (currentUserId != null && currentUserId.isNotEmpty && currentUserId != 'all') {
+        targets.add(currentUserId);
+      }
+
+      final collectionRef = FirebaseFirestore.instance.collection('notifications');
+      final targetedQuery = collectionRef.where('target', whereIn: targets);
+
+      // Attempt ordering by createdAt (descending) first. If the composite index is still
+      // pending building on Firestore, seamlessly fall back to an unindexed whereIn query
+      // and sort in-memory (which _rebuildMergedList already does) to ensure zero downtime.
+      _firestoreSubscription = targetedQuery
           .orderBy('createdAt', descending: true)
           .limit(50)
           .snapshots()
           .listen(
             (snapshot) => _handleFirestoreSnapshot(snapshot),
             onError: (e) {
-              debugPrint('NotificationService: Firestore stream error: $e');
+              debugPrint('NotificationService: Ordered stream error ($e), falling back to unindexed targeted query');
+              _firestoreSubscription?.cancel();
+              _firestoreSubscription = targetedQuery
+                  .limit(50)
+                  .snapshots()
+                  .listen(
+                    (snapshot) => _handleFirestoreSnapshot(snapshot),
+                    onError: (err) {
+                      debugPrint('NotificationService: Fallback stream error: $err');
+                    },
+                  );
             },
           );
     } catch (e) {
@@ -129,13 +150,38 @@ class NotificationService extends ChangeNotifier {
     }
   }
 
+  String? _testUserId;
+
+  @visibleForTesting
+  void setTestUserId(String? uid) {
+    _testUserId = uid;
+  }
+
+  String? _resolveCurrentUserId() {
+    if (_testUserId != null) return _testUserId;
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _handleFirestoreSnapshot(QuerySnapshot snapshot) {
     final List<AppNotification> items = [];
     final List<AppNotification> newArrivals = [];
+    final currentUserId = _resolveCurrentUserId();
 
     for (final doc in snapshot.docs) {
       final isRead = _readIds.contains(doc.id);
       final notification = AppNotification.fromFirestore(doc, isRead: isRead);
+
+      final target = notification.target;
+      if (target != null && target.isNotEmpty && target != 'all') {
+        if (currentUserId == null || target != currentUserId) {
+          continue;
+        }
+      }
+
       items.add(notification);
 
       if (!_isInitialSnapshot) {
@@ -232,6 +278,7 @@ class NotificationService extends ChangeNotifier {
     String? materialId,
     String? remark,
     List<String>? rejectionReasons,
+    String? target,
   }) {
     final notifId = id ?? '${DateTime.now().microsecondsSinceEpoch}_${_localNotifications.length}';
     if (_localNotifications.any((n) => n.id == notifId) ||
@@ -251,6 +298,7 @@ class NotificationService extends ChangeNotifier {
       materialId: materialId,
       remark: remark,
       rejectionReasons: rejectionReasons,
+      target: target,
     );
     _localNotifications.insert(0, notification);
     _rebuildMergedList();
@@ -290,7 +338,18 @@ class NotificationService extends ChangeNotifier {
   @visibleForTesting
   void handleTestSnapshot(List<AppNotification> items) {
     final List<AppNotification> newArrivals = [];
+    final currentUserId = _resolveCurrentUserId();
+
+    final filteredItems = <AppNotification>[];
     for (final n in items) {
+      final target = n.target;
+      if (target != null && target.isNotEmpty && target != 'all') {
+        if (currentUserId == null || target != currentUserId) {
+          continue;
+        }
+      }
+      filteredItems.add(n);
+
       if (!_isInitialSnapshot) {
         if (!_seenIds.contains(n.id)) {
           _seenIds.add(n.id);
@@ -301,7 +360,7 @@ class NotificationService extends ChangeNotifier {
       }
     }
     _firestoreNotifications.clear();
-    _firestoreNotifications.addAll(items);
+    _firestoreNotifications.addAll(filteredItems);
     _rebuildMergedList();
 
     if (_isInitialSnapshot) {

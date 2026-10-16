@@ -847,7 +847,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         // Pinned materials are already strictly at the top, and unpinned are ordered newest release first
         final sourceResources = allResources;
 
-        final filteredResources = sourceResources.where((res) {
+        final filteredResources = ResourceService().sortResources(sourceResources.where((res) {
           // 1. Filter out pinned non-timetable items (personal downloads only; never hide server-pinned items)
           final isPinned = DownloadService().isPinned(res.title);
           final isTimetableType = res.type.toLowerCase().contains('timetable') || 
@@ -916,7 +916,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           });
 
           return matchesFilters;
-        }).toList();
+        }).toList());
 
         final isAdmin = widget.isAdminMode;
         final isSearching = _searchFocusNode.hasFocus || _searchController.text.isNotEmpty;
@@ -1319,18 +1319,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ];
     }
 
-    _lastFilteredCount = filteredResources.length;
-    final visibleResources = filteredResources.length > _displayLimit
-        ? filteredResources.sublist(0, _displayLimit)
-        : filteredResources;
+    final sortedResources = ResourceService().sortResources(filteredResources);
+    _lastFilteredCount = sortedResources.length;
+    final visibleResources = sortedResources.length > _displayLimit
+        ? sortedResources.sublist(0, _displayLimit)
+        : sortedResources;
     final gridSlots = DashboardScreen.buildSerpentineGridSlots(visibleResources);
 
-    if (_displayLimit < filteredResources.length) {
+    if (_displayLimit < sortedResources.length) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _displayLimit < filteredResources.length) {
+        if (mounted && _displayLimit < sortedResources.length) {
           if (_scrollController.hasClients && _scrollController.position.maxScrollExtent <= 150) {
             setState(() {
-              _displayLimit = (_displayLimit + 12).clamp(0, filteredResources.length);
+              _displayLimit = (_displayLimit + 12).clamp(0, sortedResources.length);
             });
           }
         }
