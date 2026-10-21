@@ -46,6 +46,7 @@ export interface ThumbnailSearchResult {
   nextRetryAt?: Date;
   attemptCount?: number;
   alreadyCompleted?: boolean;
+  isDailyQuota?: boolean;
 }
 
 export class ThumbnailSearchService {
@@ -220,10 +221,13 @@ export class ThumbnailSearchService {
             });
 
             const isRetryable = err instanceof FluxProviderError ? err.isRetryable : false;
+            const isDailyQuota = err instanceof FluxProviderError && err.isDailyQuotaExhausted;
             const poolStatus = await FluxWorkerPool.getPoolStatus(db, customWorkerConfigs);
 
             // If retryable and another worker is free right now, attempt immediate failover within pool
-            if (isRetryable && poolStatus.available > 0 && forcedProvider !== "gemini") {
+            // CRITICAL: NEVER failover across pool workers on daily quota exhaustion!
+            // All accounts share the same daily quota window; immediate failover causes rapid cascade exhaustion of all workers.
+            if (isRetryable && !isDailyQuota && poolStatus.available > 0 && forcedProvider !== "gemini") {
               logger.info(
                 `[FLUX_POOL_FAILOVER] Another Flux worker is available (${poolStatus.available} free). Attempting immediate failover within pool...`
               );
@@ -286,11 +290,24 @@ export class ThumbnailSearchService {
               meta.resourceId
             ) {
               const backoffMs = this.calculateBackoffMs(currentAttempt);
-              const nextRetryDate = new Date(Date.now() + backoffMs);
+              let nextRetryDate: Date;
 
-              logger.warn(
-                `[FLUX_CAPACITY_RETRY_SCHEDULED] Resource "${meta.resourceId}" (isImportedDSpace=${isImportedDSpace}) scheduled for Flux retry attempt ${currentAttempt + 1} at ${nextRetryDate.toISOString()} due to worker error: ${err.message}`
-              );
+              // If daily quota error, coordinate next retry with the pool's cooldown
+              if (isDailyQuota) {
+                const poolStatusAfter = await FluxWorkerPool.getPoolStatus(db, customWorkerConfigs);
+                const poolWaitMs = poolStatusAfter.earliestCooldown
+                  ? Math.max(30000, poolStatusAfter.earliestCooldown.getTime() - Date.now())
+                  : backoffMs;
+                nextRetryDate = new Date(Date.now() + Math.max(backoffMs, poolWaitMs));
+                logger.warn(
+                  `[FLUX_DAILY_QUOTA_RETRY_SCHEDULED] Resource "${meta.resourceId}" (isImportedDSpace=${isImportedDSpace}) scheduled for Flux retry at ${nextRetryDate.toISOString()} aligned with pool cooldown.`
+                );
+              } else {
+                nextRetryDate = new Date(Date.now() + backoffMs);
+                logger.warn(
+                  `[FLUX_CAPACITY_RETRY_SCHEDULED] Resource "${meta.resourceId}" (isImportedDSpace=${isImportedDSpace}) scheduled for Flux retry attempt ${currentAttempt + 1} at ${nextRetryDate.toISOString()} due to worker error: ${err.message}`
+                );
+              }
 
               await db.collection("resources").doc(meta.resourceId).update({
                 thumbnailStatus: "pending",
@@ -310,6 +327,7 @@ export class ThumbnailSearchService {
               return {
                 success: false,
                 retryScheduled: true,
+                isDailyQuota: isDailyQuota,
                 nextRetryAt: nextRetryDate,
                 attemptCount: currentAttempt,
                 workerId: reservedWorker.workerId,
@@ -355,6 +373,7 @@ export class ThumbnailSearchService {
             return {
               success: false,
               retryScheduled: true,
+              isDailyQuota: poolStatus.isDailyQuotaPaused === true,
               nextRetryAt: nextRetryDate,
               attemptCount: currentAttempt,
               error: `All Flux workers busy/cooling down. Queued for retry at ${nextRetryDate.toISOString()}`,
@@ -562,7 +581,7 @@ export class ThumbnailSearchService {
         if (data.thumbnailUrl && data.thumbnailUrl.trim().length > 0) continue;
 
         try {
-          await this.searchAndUploadThumbnail(
+          const result = await this.searchAndUploadThumbnail(
             db,
             ik,
             {
@@ -582,7 +601,15 @@ export class ThumbnailSearchService {
             undefined,
             customWorkerConfigs
           );
-          processed++;
+
+          if (result && result.success) {
+            processed++;
+          } else if (result && result.isDailyQuota) {
+            logger.info(
+              `[THUMBNAIL_RETRY_PROCESSOR] Halting batch execution: pool entered daily quota cooldown. Postponing remaining ${snap.size - (processed + 1)} resources in this cycle.`
+            );
+            break;
+          }
         } catch (err: any) {
           logger.error(`[THUMBNAIL_RETRY_ERROR] Failed processing retry for "${resourceId}":`, err);
         }

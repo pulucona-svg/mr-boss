@@ -24,10 +24,76 @@ export interface FluxWorkerRecord {
   updatedAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
 }
 
+export interface FluxPoolStateRecord {
+  dailyQuotaPausedUntil: admin.firestore.Timestamp | null;
+  lastDailyQuotaErrorAt: admin.firestore.Timestamp | null;
+  lastDailyQuotaWorkerId: string | null;
+  lastSuccessfulGenerationAt: admin.firestore.Timestamp | null;
+  dailyQuotaFailureStreak: number;
+  dailyQuotaProbeInProgress: boolean;
+  probeLockedUntil: admin.firestore.Timestamp | null;
+  updatedAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
+}
+
 export class FluxWorkerPool {
   public static readonly COLLECTION_NAME = "flux_workers";
+  public static readonly POOL_STATE_DOC_ID = "_pool_state";
   public static readonly LEASE_LOCK_DURATION_MS = 120000; // 2 minutes max lease
   public static readonly BASE_COOLDOWN_MS = 120000; // 2 minutes cooldown on rate-limit / capacity errors
+  public static readonly DAILY_QUOTA_PROBE_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes bounded probe during rollover
+  public static readonly PROBE_LOCK_DURATION_MS = 60 * 1000; // 1 minute probe lock
+
+  /**
+   * Helper to check if two dates fall on the exact same UTC calendar day.
+   */
+  public static isSameUtcDay(a: Date, b: Date): boolean {
+    return (
+      a.getUTCFullYear() === b.getUTCFullYear() &&
+      a.getUTCMonth() === b.getUTCMonth() &&
+      a.getUTCDate() === b.getUTCDate()
+    );
+  }
+
+  /**
+   * Calculates the appropriate cooldown period for daily quota exhaustion.
+   * - During the post-midnight rollover / transition window (00:00 - 02:00 UTC) when no
+   *   successful generations have occurred today: sets a bounded probe cooldown (30 min)
+   *   to allow Cloudflare's edge quota synchronization to settle without locking out the whole day.
+   * - Once genuine daily quota exhaustion occurs (after successful generations today, or past the
+   *   rollover window): sets cooldown to the upcoming UTC reset with a 15-minute buffer (00:15 UTC).
+   */
+  public static calculateDailyQuotaCooldown(
+    now: Date = new Date(),
+    options?: {
+      lastSuccessAt?: Date | null;
+      failureStreak?: number;
+    }
+  ): { cooldownUntil: Date; isProbingWindow: boolean } {
+    const utcHour = now.getUTCHours();
+    const hasSucceededToday = options?.lastSuccessAt
+      ? this.isSameUtcDay(now, options.lastSuccessAt)
+      : false;
+
+    // Transition / rollover window: 00:00 UTC - 02:00 UTC with no successful generation today
+    const isProbingWindow = utcHour < 2 && !hasSucceededToday;
+
+    if (isProbingWindow) {
+      // Bounded retry cooldown (30 minutes)
+      const cooldownUntil = new Date(now.getTime() + this.DAILY_QUOTA_PROBE_COOLDOWN_MS);
+      return { cooldownUntil, isProbingWindow: true };
+    }
+
+    // Genuine exhaustion: cooldown until upcoming UTC reset tomorrow at 00:15:00 UTC
+    // (15-minute buffer prevents probing before edge sync at 00:00-00:10 UTC)
+    const nextUtcReset = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+      0, 15, 0
+    ));
+
+    return { cooldownUntil: nextUtcReset, isProbingWindow: false };
+  }
 
   /**
    * Retrieves all active worker configurations from secure environment configuration.
@@ -60,12 +126,43 @@ export class FluxWorkerPool {
     try {
       const reservedConfig = await db.runTransaction(async (transaction) => {
         const nowMs = Date.now();
+
+        // 1. Check pool-wide daily quota pause and active probe gate
+        const poolStateRef = db.collection(this.COLLECTION_NAME).doc(this.POOL_STATE_DOC_ID);
+        const poolStateSnap = await transaction.get(poolStateRef);
+        const poolState = poolStateSnap.exists ? poolStateSnap.data() || {} : {};
+
+        let poolQuotaPausedUntilMs = 0;
+        if (poolState.dailyQuotaPausedUntil) {
+          poolQuotaPausedUntilMs = poolState.dailyQuotaPausedUntil.toDate
+            ? poolState.dailyQuotaPausedUntil.toDate().getTime()
+            : new Date(poolState.dailyQuotaPausedUntil).getTime();
+        }
+
+        if (poolQuotaPausedUntilMs > nowMs) {
+          // Entire worker pool is in daily quota cooldown
+          return null;
+        }
+
+        // Prevent concurrent probe storms across scheduler instances
+        if (poolState.dailyQuotaProbeInProgress && poolState.probeLockedUntil) {
+          const probeLockedUntilMs = poolState.probeLockedUntil.toDate
+            ? poolState.probeLockedUntil.toDate().getTime()
+            : new Date(poolState.probeLockedUntil).getTime();
+          if (probeLockedUntilMs > nowMs) {
+            // Another instance is actively executing a single recovery probe
+            return null;
+          }
+        }
+
         const candidateRecords: Array<{
           config: FluxWorkerConfig;
           docRef: admin.firestore.DocumentReference;
           lastUsedMs: number;
           failureCount: number;
         }> = [];
+
+        let hasSupersededLegacyQuota = false;
 
         for (const config of configs) {
           const docRef = db.collection(this.COLLECTION_NAME).doc(config.workerId);
@@ -103,8 +200,21 @@ export class FluxWorkerPool {
                 : new Date(data.cooldownUntil).getTime();
 
               if (cooldownUntilMs > nowMs) {
-                // Still in active cooldown
-                isAvailable = false;
+                // Check if this was a daily quota error and pool-wide quota pause has expired
+                const isDailyQuotaError =
+                  data.lastError &&
+                  (data.lastError.includes("4006") ||
+                   data.lastError.includes("daily free allocation") ||
+                   data.lastError.includes("10,000 neurons"));
+
+                if (isDailyQuotaError && poolQuotaPausedUntilMs <= nowMs) {
+                  // Legacy/uncoordinated quota cooldown superseded by unpaused pool state: eligible
+                  isAvailable = true;
+                  hasSupersededLegacyQuota = true;
+                } else {
+                  // Still in active cooldown
+                  isAvailable = false;
+                }
               }
             }
 
@@ -156,6 +266,44 @@ export class FluxWorkerPool {
           { merge: true }
         );
 
+        let lastSuccessAt: Date | null = null;
+        if (poolState.lastSuccessfulGenerationAt) {
+          lastSuccessAt = poolState.lastSuccessfulGenerationAt.toDate
+            ? poolState.lastSuccessfulGenerationAt.toDate()
+            : new Date(poolState.lastSuccessfulGenerationAt);
+        }
+        const hasSucceededToday = lastSuccessAt
+          ? this.isSameUtcDay(new Date(nowMs), lastSuccessAt)
+          : false;
+
+        // A reservation is genuinely acting as a quota-recovery probe only when:
+        // 1. The pool previously entered a daily quota pause that has now elapsed, OR
+        // 2. An active daily quota failure streak is recorded, OR
+        // 3. Workers were revived from legacy uncoordinated quota cooldowns before any success today.
+        // During normal steady-state operation, the probe gate remains unlocked to preserve full multi-worker concurrency.
+        const isQuotaRecoveryProbe = Boolean(
+          poolState.dailyQuotaPausedUntil != null ||
+          (typeof poolState.dailyQuotaFailureStreak === "number" && poolState.dailyQuotaFailureStreak > 0) ||
+          (!hasSucceededToday && hasSupersededLegacyQuota)
+        );
+
+        if (isQuotaRecoveryProbe) {
+          // Lock probe gate in pool state to prevent concurrent recovery probe storms
+          transaction.set(
+            poolStateRef,
+            {
+              dailyQuotaProbeInProgress: true,
+              probeLockedUntil: admin.firestore.Timestamp.fromDate(new Date(nowMs + this.PROBE_LOCK_DURATION_MS)),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          logger.info(
+            `[FLUX_POOL_PROBE_LOCKED] Worker "${chosen.config.workerId}" designated as single authorized quota recovery probe.`
+          );
+        }
+
         logger.info(
           `[FLUX_POOL_RESERVED] Atomically reserved worker "${chosen.config.workerId}" for job "${resourceId}" (Lease expires: ${leaseExpiration.toISOString()})`
         );
@@ -197,6 +345,7 @@ export class FluxWorkerPool {
             status: "available",
             currentJob: null,
             lockedUntil: null,
+            cooldownUntil: null,
             failureCount: 0,
             lastError: null,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -204,6 +353,24 @@ export class FluxWorkerPool {
           { merge: true }
         );
         logger.info(`[FLUX_POOL_RELEASE_SUCCESS] Worker "${workerId}" successfully completed and is now available.`);
+
+        // Synchronize pool state: clear daily quota pause, reset probe lock and failure streak
+        try {
+          const poolStateRef = db.collection(this.COLLECTION_NAME).doc(this.POOL_STATE_DOC_ID);
+          await poolStateRef.set(
+            {
+              dailyQuotaPausedUntil: null,
+              dailyQuotaProbeInProgress: false,
+              probeLockedUntil: null,
+              dailyQuotaFailureStreak: 0,
+              lastSuccessfulGenerationAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (poolErr: any) {
+          logger.warn("[FLUX_POOL_STATE_WARN] Failed synchronizing pool state on success:", poolErr.message);
+        }
         return;
       }
 
@@ -218,20 +385,48 @@ export class FluxWorkerPool {
         let cooldownUntil: Date;
 
         if (isDailyQuota) {
-          // Cloudflare daily free allocation of 10,000 neurons resets at 00:00:00 UTC.
-          // Set cooldown to next 00:01:00 UTC (+1 minute buffer) so worker becomes eligible automatically
-          // without hammering the provider every 10 minutes while quota is exhausted.
           const now = new Date();
-          const nextUtcReset = new Date(Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate() + 1,
-            0, 1, 0
-          ));
-          cooldownUntil = nextUtcReset;
-          logger.warn(
-            `[FLUX_WORKER_DAILY_QUOTA_COOLDOWN] Worker "${workerId}" exhausted daily free allocation (10,000 neurons). In cooldown until UTC midnight reset: ${cooldownUntil.toISOString()}`
+          const poolStateRef = db.collection(this.COLLECTION_NAME).doc(this.POOL_STATE_DOC_ID);
+          const poolStateSnap = await poolStateRef.get();
+          const poolStateData = poolStateSnap.exists ? poolStateSnap.data() || {} : {};
+
+          let lastSuccessAt: Date | null = null;
+          if (poolStateData.lastSuccessfulGenerationAt) {
+            lastSuccessAt = poolStateData.lastSuccessfulGenerationAt.toDate
+              ? poolStateData.lastSuccessfulGenerationAt.toDate()
+              : new Date(poolStateData.lastSuccessfulGenerationAt);
+          }
+
+          const streak = (poolStateData.dailyQuotaFailureStreak || 0) + 1;
+          const { cooldownUntil: calculatedCd, isProbingWindow } = this.calculateDailyQuotaCooldown(now, {
+            lastSuccessAt,
+            failureStreak: streak,
+          });
+          cooldownUntil = calculatedCd;
+
+          // Update pool-wide coordination state
+          await poolStateRef.set(
+            {
+              dailyQuotaPausedUntil: admin.firestore.Timestamp.fromDate(cooldownUntil),
+              lastDailyQuotaErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+              lastDailyQuotaWorkerId: workerId,
+              dailyQuotaProbeInProgress: false,
+              probeLockedUntil: null,
+              dailyQuotaFailureStreak: streak,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
           );
+
+          if (isProbingWindow) {
+            logger.warn(
+              `[FLUX_WORKER_DAILY_QUOTA_PROBE] Worker "${workerId}" hit 4006 during rollover window (attempt ${streak}). Pausing pool for bounded probe until: ${cooldownUntil.toISOString()}`
+            );
+          } else {
+            logger.warn(
+              `[FLUX_WORKER_DAILY_QUOTA_EXHAUSTED] Worker "${workerId}" exhausted daily allocation. In cooldown until UTC midnight reset: ${cooldownUntil.toISOString()}`
+            );
+          }
         } else {
           // Temporary error (429 rate limit, 3040 capacity, 408 timeout, 5xx): bounded exponential cooldown
           // Cooldown: 2m base * multiplier (up to 10m max)
@@ -241,6 +436,19 @@ export class FluxWorkerPool {
           logger.warn(
             `[FLUX_WORKER_COOLDOWN] Worker "${workerId}" experienced transient error (${cleanError}). In cooldown until ${cooldownUntil.toISOString()} (Failures: ${nextFailures})`
           );
+
+          // Clear probe lock if this worker was probing
+          try {
+            const poolStateRef = db.collection(this.COLLECTION_NAME).doc(this.POOL_STATE_DOC_ID);
+            await poolStateRef.set(
+              {
+                dailyQuotaProbeInProgress: false,
+                probeLockedUntil: null,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          } catch (_) {}
         }
 
         await docRef.set(
@@ -274,6 +482,19 @@ export class FluxWorkerPool {
         logger.error(
           `[FLUX_WORKER_DISABLED] Worker "${workerId}" disabled due to permanent error: ${cleanError}`
         );
+
+        // Clear probe lock if this worker was probing
+        try {
+          const poolStateRef = db.collection(this.COLLECTION_NAME).doc(this.POOL_STATE_DOC_ID);
+          await poolStateRef.set(
+            {
+              dailyQuotaProbeInProgress: false,
+              probeLockedUntil: null,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (_) {}
       }
     } catch (err: any) {
       logger.error(`[FLUX_POOL_RELEASE_ERROR] Failed releasing worker "${workerId}":`, err.message);
@@ -295,6 +516,7 @@ export class FluxWorkerPool {
     allUnavailable: boolean;
     allDisabled: boolean;
     earliestCooldown?: Date;
+    isDailyQuotaPaused?: boolean;
   }> {
     const configs = customConfigs || this.getWorkerConfigs();
     const nowMs = Date.now();
@@ -311,6 +533,29 @@ export class FluxWorkerPool {
       snap.forEach((doc) => {
         recordsByWorker.set(doc.id, doc.data());
       });
+
+      // Check pool-wide daily quota pause first
+      const poolState = recordsByWorker.get(this.POOL_STATE_DOC_ID);
+      let poolQuotaPausedUntilMs = 0;
+      if (poolState && poolState.dailyQuotaPausedUntil) {
+        poolQuotaPausedUntilMs = poolState.dailyQuotaPausedUntil.toDate
+          ? poolState.dailyQuotaPausedUntil.toDate().getTime()
+          : new Date(poolState.dailyQuotaPausedUntil).getTime();
+
+        if (poolQuotaPausedUntilMs > nowMs) {
+          return {
+            total: configs.length,
+            available: 0,
+            busy: 0,
+            coolingDown: configs.length,
+            disabled: 0,
+            allUnavailable: true,
+            allDisabled: false,
+            earliestCooldown: new Date(poolQuotaPausedUntilMs),
+            isDailyQuotaPaused: true,
+          };
+        }
+      }
 
       for (const config of configs) {
         const d = recordsByWorker.get(config.workerId);
@@ -339,6 +584,18 @@ export class FluxWorkerPool {
             ? d.cooldownUntil.toDate().getTime()
             : new Date(d.cooldownUntil).getTime();
           if (cdMs > nowMs) {
+            // Check if this was a daily quota cooldown superseded by an unpaused pool state
+            const isDailyQuotaError =
+              d.lastError &&
+              (d.lastError.includes("4006") ||
+               d.lastError.includes("daily free allocation") ||
+               d.lastError.includes("10,000 neurons"));
+
+            if (isDailyQuotaError && poolQuotaPausedUntilMs <= nowMs) {
+              available++;
+              continue;
+            }
+
             coolingDown++;
             if (earliestCooldownMs === null || cdMs < earliestCooldownMs) {
               earliestCooldownMs = cdMs;
@@ -364,6 +621,7 @@ export class FluxWorkerPool {
       allUnavailable: available === 0,
       allDisabled: disabled === configs.length,
       earliestCooldown: earliestCooldownMs ? new Date(earliestCooldownMs) : undefined,
+      isDailyQuotaPaused: false,
     };
   }
 }

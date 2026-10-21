@@ -2,8 +2,23 @@ import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../models/notification.dart';
 
-class NotificationModal extends StatelessWidget {
+class NotificationModal extends StatefulWidget {
   const NotificationModal({super.key});
+
+  @override
+  State<NotificationModal> createState() => _NotificationModalState();
+}
+
+class _NotificationModalState extends State<NotificationModal> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        NotificationService().markAllAsRead();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

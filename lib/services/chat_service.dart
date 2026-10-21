@@ -74,6 +74,15 @@ class ChatService extends ChangeNotifier {
   @visibleForTesting
   ChatService.testable();
 
+  @visibleForTesting
+  void setTestMessages(List<Message> testMessages, {int userUnreadCount = 0, String? currentUserId}) {
+    _messages.clear();
+    _messages.addAll(testMessages);
+    _userUnreadCount = userUnreadCount;
+    _currentUserId = currentUserId;
+    notifyListeners();
+  }
+
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   FirebaseFunctions get _functions => FirebaseFunctions.instance;
   AudioPlayer? _audioPlayer;
@@ -259,6 +268,15 @@ class ChatService extends ChangeNotifier {
         final msg = Message.fromFirestore(doc, currentUserId: userId, isAdmin: false);
         // Exclude messages deleted by user for themselves
         if (!msg.deletedFor.contains(userId)) {
+          // Guard against snapshot race where Firestore write is still in flight
+          // but message was already marked read in local memory
+          if (!msg.isMe && !msg.isRead) {
+            final localIndex = _messages.indexWhere((m) => m.id == msg.id);
+            if (localIndex != -1 && _messages[localIndex].isRead) {
+              remoteMessages.add(msg.copyWith(status: MessageStatus.read, isRead: true));
+              continue;
+            }
+          }
           remoteMessages.add(msg);
         }
 
@@ -297,29 +315,61 @@ class ChatService extends ChangeNotifier {
   // MARK ALL AS READ (USER SIDE)
   // -------------------------------------------------------------
   void markAllAsRead() {
+    // 1. Immediately update in-memory message states for incoming admin messages
+    for (int i = 0; i < _messages.length; i++) {
+      final m = _messages[i];
+      if (!m.isMe && m.senderRole == 'admin' && m.status != MessageStatus.read) {
+        _messages[i] = m.copyWith(
+          status: MessageStatus.read,
+          isRead: true,
+        );
+      }
+    }
     _userUnreadCount = 0;
+    _saveLocalMessages();
     notifyListeners();
 
-    if (_currentUserId == null) return;
-    final convRef = _firestore.collection('conversations').doc(_currentUserId);
+    try {
+      if (_currentUserId == null) return;
+      final convRef = _firestore.collection('conversations').doc(_currentUserId);
 
-    // Clear user unread count on conversation
-    convRef.update({'userUnreadCount': 0}).catchError((e) {
-      debugPrint("Error clearing user unread count: $e");
-    });
+      // 2. Clear user unread count on conversation metadata
+      convRef.update({'userUnreadCount': 0}).catchError((e) {
+        debugPrint("Error clearing user unread count: $e");
+      });
 
-    // Mark unread admin messages as read
-    convRef.collection('messages')
-        .where('senderRole', isEqualTo: 'admin')
-        .where('status', isNotEqualTo: 'read')
-        .get()
-        .then((snap) {
-      for (var doc in snap.docs) {
-        doc.reference.update({'status': 'read'}).catchError((_) {});
-      }
-    }).catchError((e) {
-      debugPrint("Error marking messages read: $e");
-    });
+      // 3. Mark unread admin messages as read in Firestore without an unindexed inequality query
+      convRef.collection('messages')
+          .where('senderRole', isEqualTo: 'admin')
+          .get()
+          .then((snap) {
+        final unreadDocs = snap.docs.where((doc) {
+          final data = doc.data();
+          return data['status'] != 'read';
+        }).toList();
+
+        if (unreadDocs.isEmpty) return;
+
+        const int batchLimit = 450;
+        for (int i = 0; i < unreadDocs.length; i += batchLimit) {
+          final chunk = unreadDocs.sublist(
+            i,
+            (i + batchLimit > unreadDocs.length) ? unreadDocs.length : i + batchLimit,
+          );
+          final batch = _firestore.batch();
+          for (final doc in chunk) {
+            batch.update(doc.reference, {'status': 'read'});
+          }
+          batch.commit().catchError((e) {
+            debugPrint("Error committing read status batch: $e");
+          });
+        }
+      }).catchError((e) {
+        debugPrint("Error querying admin messages for read status update: $e");
+      });
+    } catch (e) {
+      debugPrint("Error in markAllAsRead Firestore sync: $e");
+    }
   }
 
   // -------------------------------------------------------------

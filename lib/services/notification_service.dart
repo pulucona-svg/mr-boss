@@ -151,10 +151,64 @@ class NotificationService extends ChangeNotifier {
   }
 
   String? _testUserId;
+  DateTime? _testAccountCreationTime;
 
   @visibleForTesting
   void setTestUserId(String? uid) {
     _testUserId = uid;
+  }
+
+  @visibleForTesting
+  void setTestAccountCreationTime(DateTime? time) {
+    _testAccountCreationTime = time;
+  }
+
+  DateTime? _resolveAccountCreationTime() {
+    if (_testAccountCreationTime != null) return _testAccountCreationTime;
+    try {
+      return FirebaseAuth.instance.currentUser?.metadata.creationTime;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Determines whether a notification is eligible for delivery to the current user.
+  ///
+  /// Rules:
+  /// 1. Targeted notifications (`target != 'all'`): Must match `currentUserId`.
+  ///    Targeted notifications intended for this user are ALWAYS retained regardless
+  ///    of timestamp (e.g. moderation actions on uploads).
+  /// 2. Global announcements (`target == 'all'` or empty/omitted):
+  ///    If the user's account creation timestamp is known, announcements published
+  ///    before the account existed are filtered out. A 60-second allowance is granted
+  ///    to account for potential clock skew between client and Firebase server timestamps.
+  /// 3. If account creation timestamp is unavailable (e.g. anonymous or missing auth metadata),
+  ///    announcements are safely retained as a non-breaking fallback.
+  bool _isEligibleForUser(
+    AppNotification notification,
+    String? currentUserId,
+    DateTime? accountCreatedAt,
+  ) {
+    final target = notification.target;
+
+    // 1. Personal / targeted notifications: must match current user UID
+    if (target != null && target.isNotEmpty && target != 'all') {
+      if (currentUserId == null || target != currentUserId) {
+        return false;
+      }
+      // Targeted specifically to this user: always eligible
+      return true;
+    }
+
+    // 2. Global announcements: filter out historical broadcasts published before account creation
+    if (accountCreatedAt != null) {
+      final allowedBoundary = accountCreatedAt.subtract(const Duration(minutes: 1));
+      if (notification.timestamp.isBefore(allowedBoundary)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   String? _resolveCurrentUserId() {
@@ -170,16 +224,14 @@ class NotificationService extends ChangeNotifier {
     final List<AppNotification> items = [];
     final List<AppNotification> newArrivals = [];
     final currentUserId = _resolveCurrentUserId();
+    final accountCreatedAt = _resolveAccountCreationTime();
 
     for (final doc in snapshot.docs) {
       final isRead = _readIds.contains(doc.id);
       final notification = AppNotification.fromFirestore(doc, isRead: isRead);
 
-      final target = notification.target;
-      if (target != null && target.isNotEmpty && target != 'all') {
-        if (currentUserId == null || target != currentUserId) {
-          continue;
-        }
+      if (!_isEligibleForUser(notification, currentUserId, accountCreatedAt)) {
+        continue;
       }
 
       items.add(notification);
@@ -339,14 +391,12 @@ class NotificationService extends ChangeNotifier {
   void handleTestSnapshot(List<AppNotification> items) {
     final List<AppNotification> newArrivals = [];
     final currentUserId = _resolveCurrentUserId();
+    final accountCreatedAt = _resolveAccountCreationTime();
 
     final filteredItems = <AppNotification>[];
     for (final n in items) {
-      final target = n.target;
-      if (target != null && target.isNotEmpty && target != 'all') {
-        if (currentUserId == null || target != currentUserId) {
-          continue;
-        }
+      if (!_isEligibleForUser(n, currentUserId, accountCreatedAt)) {
+        continue;
       }
       filteredItems.add(n);
 

@@ -27,6 +27,7 @@ class Resource {
   final List<String> programCodes;
   final String materialFormat;
   final DateTime uploadDate;
+  final DateTime? thumbnailCompletedAt;
   String? status; // 'approved', 'waiting', 'declined', 'archived', 'trash', 'pending', 'rejected', 'modified'
   final String? declineReason;
   final DateTime? declineDate;
@@ -54,6 +55,7 @@ class Resource {
   final String? dspaceItemUuid;
 
   DateTime get effectiveReleaseDate => approvedAt ?? uploadDate;
+  DateTime get effectiveThumbnailDate => thumbnailCompletedAt ?? effectiveReleaseDate;
 
   bool get hasValidThumbnail {
     final url = thumbnailUrl.trim();
@@ -91,6 +93,7 @@ class Resource {
     required this.uploaderId,
     this.uploaderProfilePic,
     required this.uploadDate,
+    this.thumbnailCompletedAt,
     this.targetPrograms = const ['Computer Science'],
     this.programCodes = const [],
     this.materialFormat = 'PDF',
@@ -123,6 +126,13 @@ class Resource {
 
   factory Resource.fromMap(Map<String, dynamic> map, String docId, {String? currentUserId}) {
     final likedByList = List<String>.from(map['likedBy'] ?? []);
+    final rawCompleted = map['thumbnailCompletedAt'] ??
+        (map['thumbnailGeneration'] is Map ? map['thumbnailGeneration']['completedAt'] : null);
+    final thumbnailCompletedAt = rawCompleted != null
+        ? (rawCompleted is Timestamp
+            ? rawCompleted.toDate()
+            : (rawCompleted is String ? DateTime.tryParse(rawCompleted) : null))
+        : null;
     final url = (map['thumbnailUrl'] ?? '').toString();
     final status = (map['thumbnailStatus'] ?? (url.trim().isNotEmpty ? 'completed' : 'pending')).toString();
 
@@ -148,6 +158,7 @@ class Resource {
       uploaderRole: map['uploaderRole'] ?? '',
       uploaderId: map['uploaderId'] ?? '',
       uploaderProfilePic: map['uploaderProfilePic'],
+      thumbnailCompletedAt: thumbnailCompletedAt,
       uploadDate: map['uploadDate'] != null
           ? (map['uploadDate'] is Timestamp
               ? (map['uploadDate'] as Timestamp).toDate()
@@ -224,6 +235,7 @@ class Resource {
       'thumbnailUrl': thumbnailUrl,
       'thumbnailId': thumbnailId,
       'thumbnailStatus': thumbnailStatus,
+      if (thumbnailCompletedAt != null) 'thumbnailCompletedAt': Timestamp.fromDate(thumbnailCompletedAt!),
       'fileUrl': fileUrl,
       'fileId': fileId,
       'unitName': unitName,
@@ -272,6 +284,7 @@ class Resource {
   Map<String, dynamic> toJson() {
     final map = toMap();
     map['uploadDate'] = uploadDate.toIso8601String();
+    if (thumbnailCompletedAt != null) map['thumbnailCompletedAt'] = thumbnailCompletedAt!.toIso8601String();
     if (declineDate != null) map['declineDate'] = declineDate!.toIso8601String();
     if (approvedAt != null) map['approvedAt'] = approvedAt!.toIso8601String();
     if (rejectedAt != null) map['rejectedAt'] = rejectedAt!.toIso8601String();
@@ -309,6 +322,7 @@ class Resource {
     List<String>? programCodes,
     String? materialFormat,
     DateTime? uploadDate,
+    DateTime? thumbnailCompletedAt,
     String? status,
     String? declineReason,
     DateTime? declineDate,
@@ -361,6 +375,7 @@ class Resource {
       uploaderId: uploaderId ?? this.uploaderId,
       uploaderProfilePic: uploaderProfilePic ?? this.uploaderProfilePic,
       uploadDate: uploadDate ?? this.uploadDate,
+      thumbnailCompletedAt: thumbnailCompletedAt ?? this.thumbnailCompletedAt,
       targetPrograms: targetPrograms ?? this.targetPrograms,
       programCodes: programCodes ?? this.programCodes,
       materialFormat: materialFormat ?? this.materialFormat,
@@ -416,6 +431,7 @@ class Resource {
       uploaderId: uploaderId,
       uploaderProfilePic: uploaderProfilePic,
       uploadDate: uploadDate,
+      thumbnailCompletedAt: thumbnailCompletedAt,
       targetPrograms: poolPrograms.isNotEmpty ? poolPrograms : targetPrograms,
       programCodes: poolProgramCodes.isNotEmpty ? poolProgramCodes : poolProgramCodes,
       materialFormat: materialFormat,

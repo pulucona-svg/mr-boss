@@ -368,8 +368,24 @@ class ResourceService extends ChangeNotifier {
       return (b.approvedAt ?? b.uploadDate).compareTo(a.approvedAt ?? a.uploadDate);
     });
 
-    // Base sort for unpinned: release date (approvedAt ?? uploadDate) descending
-    unpinned.sort((a, b) {
+    final withThumbnails = unpinned.where((r) => r.hasValidThumbnail).toList();
+    final withoutThumbnails = unpinned.where((r) => !r.hasValidThumbnail).toList();
+
+    // Permanent universal thumbnail ordering:
+    // Materials with completed/valid thumbnails are ALWAYS prioritized above materials without thumbnails.
+    // Within the thumbnail group, prioritize recently completed thumbnails with release date fallback.
+    withThumbnails.sort((a, b) {
+      final cmp = b.effectiveThumbnailDate.compareTo(a.effectiveThumbnailDate);
+      if (cmp != 0) return cmp;
+      final releaseCmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
+      if (releaseCmp != 0) return releaseCmp;
+      final uploadCmp = b.uploadDate.compareTo(a.uploadDate);
+      if (uploadCmp != 0) return uploadCmp;
+      return b.id.compareTo(a.id);
+    });
+
+    // Materials without thumbnails preserve existing release date ordering and tie-breakers
+    withoutThumbnails.sort((a, b) {
       final cmp = b.effectiveReleaseDate.compareTo(a.effectiveReleaseDate);
       if (cmp != 0) return cmp;
       final uploadCmp = b.uploadDate.compareTo(a.uploadDate);
@@ -377,11 +393,6 @@ class ResourceService extends ChangeNotifier {
       return b.id.compareTo(a.id);
     });
 
-    // Permanent universal thumbnail ordering:
-    // Materials with completed/valid thumbnails are ALWAYS prioritized above materials without thumbnails.
-    // Within each group, materials maintain chronological release date ordering.
-    final withThumbnails = unpinned.where((r) => r.hasValidThumbnail).toList();
-    final withoutThumbnails = unpinned.where((r) => !r.hasValidThumbnail).toList();
     return [...pinned, ...withThumbnails, ...withoutThumbnails];
   }
 
