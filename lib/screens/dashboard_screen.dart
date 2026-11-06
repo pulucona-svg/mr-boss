@@ -23,6 +23,8 @@ import '../utils/feedback_utils.dart';
 import 'archive_trash_screen.dart';
 import '../services/admin_service.dart';
 import '../widgets/upload_bottom_sheet.dart';
+import '../services/search_placeholder_service.dart';
+import '../services/course_service.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   final bool isAdminMode;
@@ -106,9 +108,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedMaterialIds = {};
 
+  late final TypewriterPlaceholderController _placeholderController;
+
   @override
   void initState() {
     super.initState();
+    _placeholderController = TypewriterPlaceholderController();
+    _placeholderController.service.init().then((_) {
+      if (mounted) {
+        _syncPlaceholderData();
+        _placeholderController.start();
+      }
+    });
+
     final uiState = ref.read(uiStateProvider);
     _searchController.text = uiState.dashboardSearch;
     _lastSearchValue = uiState.dashboardSearch;
@@ -172,6 +184,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   void _onSearchFocusChange() {
     if (_searchFocusNode.hasFocus) {
+      _placeholderController.pause();
       // Small delay to ensure the keyboard is coming up and layout is stable
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
@@ -184,6 +197,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       });
       _showOverlay();
     } else {
+      if (_searchController.text.isEmpty) {
+        _placeholderController.resume();
+      }
       _hideOverlay();
       if (mounted) {
         _scrollController.animateTo(
@@ -195,7 +211,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
+  void _syncPlaceholderData() {
+    final resources = ResourceService().allResources;
+    final courseUnits = CourseService().allUnits;
+    _placeholderController.service.syncWithResources(resources, courseUnits);
+  }
+
   void _onResourceServiceUpdated() {
+    _syncPlaceholderData();
     if (ResourceService().allResources.isNotEmpty && _isLoading && mounted) {
       ResourceService().removeListener(_onResourceServiceUpdated);
       setState(() {
@@ -420,6 +443,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   void dispose() {
+    _placeholderController.dispose();
     ResourceService().removeListener(_onResourceServiceUpdated);
     _scrollController.removeListener(_onDashboardScroll);
     _searchDebounceTimer?.cancel();
@@ -843,6 +867,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       listenable: Listenable.merge([ResourceService(), DownloadService()]),
       builder: (context, child) {
         final allResources = ResourceService().allResources;
+        _syncPlaceholderData();
 
         // Pinned materials are already strictly at the top, and unpinned are ordered newest release first
         final sourceResources = allResources;
@@ -1116,119 +1141,130 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   Expanded(
                                     child: CompositedTransformTarget(
                                       link: _layerLink,
-                                      child: TextField(
-                                        controller: _searchController,
-                                        focusNode: _searchFocusNode,
-                                        textCapitalization: TextCapitalization.sentences,
-                                        onChanged: (value) {
-                                          if (_lastCorrectedOriginal != null && _lastCorrectedResult != null && !value.endsWith(' ')) {
-                                            if (value.length < _lastSearchValue.length) {
-                                              // Backspaced the space -> Revert
-                                              final revertedText = value.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
-                                              _searchDebounceTimer?.cancel();
-                                              setState(() {
-                                                _searchController.text = revertedText;
-                                                _lastSearchValue = revertedText;
-                                                _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
-                                                _lastCorrectedOriginal = null;
-                                                _lastCorrectedResult = null;
-                                                ref.read(uiStateProvider.notifier).setDashboardSearch(revertedText);
-                                              });
-                                              _showOverlay();
-                                              return;
-                                            } else {
-                                              // Typed forward -> Accept (hide undo)
-                                              setState(() {
-                                                _lastCorrectedOriginal = null;
-                                                _lastCorrectedResult = null;
-                                              });
-                                            }
-                                          }
-
-                                          _lastSearchValue = value;
-
-                                          if (value.endsWith(' ')) {
-                                            _searchDebounceTimer?.cancel();
-                                            _handleAutocorrect(value);
-                                            final effectiveValue = _lastSearchValue;
-                                            _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
-                                              if (mounted) {
-                                                ref.read(uiStateProvider.notifier).setDashboardSearch(effectiveValue);
-                                                _showOverlay();
+                                      child: ValueListenableBuilder<String>(
+                                        valueListenable: _placeholderController.textNotifier,
+                                        builder: (context, animatedHint, _) {
+                                          return TextField(
+                                            controller: _searchController,
+                                            focusNode: _searchFocusNode,
+                                            textCapitalization: TextCapitalization.sentences,
+                                            onChanged: (value) {
+                                              if (_lastCorrectedOriginal != null && _lastCorrectedResult != null && !value.endsWith(' ')) {
+                                                if (value.length < _lastSearchValue.length) {
+                                                  // Backspaced the space -> Revert
+                                                  final revertedText = value.replaceFirst(_lastCorrectedResult!, _lastCorrectedOriginal!);
+                                                  _searchDebounceTimer?.cancel();
+                                                  setState(() {
+                                                    _searchController.text = revertedText;
+                                                    _lastSearchValue = revertedText;
+                                                    _searchController.selection = TextSelection.fromPosition(TextPosition(offset: revertedText.length));
+                                                    _lastCorrectedOriginal = null;
+                                                    _lastCorrectedResult = null;
+                                                    ref.read(uiStateProvider.notifier).setDashboardSearch(revertedText);
+                                                  });
+                                                  _showOverlay();
+                                                  return;
+                                                } else {
+                                                  // Typed forward -> Accept (hide undo)
+                                                  setState(() {
+                                                    _lastCorrectedOriginal = null;
+                                                    _lastCorrectedResult = null;
+                                                  });
+                                                }
                                               }
-                                            });
-                                            return;
-                                          }
 
-                                          if (value.isEmpty) {
-                                            // Clear / backspaced to empty: immediate clear, bypass debounce
-                                            _searchDebounceTimer?.cancel();
-                                            _hideOverlay();
-                                            ref.read(uiStateProvider.notifier).setDashboardSearch('');
-                                            return;
-                                          }
+                                              _lastSearchValue = value;
 
-                                          // Debounce expensive search filtering and suggestion scan by 200 ms
-                                          _searchDebounceTimer?.cancel();
-                                          _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
-                                            if (mounted) {
-                                              ref.read(uiStateProvider.notifier).setDashboardSearch(value);
-                                              _showOverlay();
-                                            }
-                                          });
-                                        },
-                                        onSubmitted: (val) {
-                                          _searchDebounceTimer?.cancel();
-                                          _hideOverlay();
-                                          ref.read(uiStateProvider.notifier).setDashboardSearch(val);
-                                        },
-                                        onTap: _showOverlay,
-                                        style: TextStyle(color: textColor),
-                                        decoration: InputDecoration(
-                                          hintText: 'Search materials...',
-                                          hintStyle: const TextStyle(color: Colors.grey),
-                                          prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
-                                          suffixIcon: _lastCorrectedOriginal != null
-                                              ? GestureDetector(
-                                                  onTap: _revertAutocorrect,
-                                                  child: Container(
-                                                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                                                    decoration: BoxDecoration(
-                                                      color: isDark ? Colors.white.withAlpha(26) : Colors.black.withAlpha(13),
-                                                      borderRadius: BorderRadius.circular(12),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        Text(
-                                                          _lastCorrectedOriginal!,
-                                                          style: TextStyle(
-                                                            color: isDark ? Colors.white54 : Colors.black54,
-                                                            fontSize: 10,
-                                                            fontWeight: FontWeight.bold,
-                                                            decoration: TextDecoration.lineThrough,
-                                                          ),
+                                              if (value.endsWith(' ')) {
+                                                _searchDebounceTimer?.cancel();
+                                                _handleAutocorrect(value);
+                                                final effectiveValue = _lastSearchValue;
+                                                _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+                                                  if (mounted) {
+                                                    ref.read(uiStateProvider.notifier).setDashboardSearch(effectiveValue);
+                                                    _showOverlay();
+                                                  }
+                                                });
+                                                return;
+                                              }
+
+                                              if (value.isEmpty) {
+                                                // Clear / backspaced to empty: immediate clear, bypass debounce
+                                                _searchDebounceTimer?.cancel();
+                                                _hideOverlay();
+                                                ref.read(uiStateProvider.notifier).setDashboardSearch('');
+                                                if (!_searchFocusNode.hasFocus) {
+                                                  _placeholderController.resume();
+                                                }
+                                                return;
+                                              }
+
+                                              // Debounce expensive search filtering and suggestion scan by 200 ms
+                                              _searchDebounceTimer?.cancel();
+                                              _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+                                                if (mounted) {
+                                                  ref.read(uiStateProvider.notifier).setDashboardSearch(value);
+                                                  _showOverlay();
+                                                }
+                                              });
+                                            },
+                                            onSubmitted: (val) {
+                                              _searchDebounceTimer?.cancel();
+                                              _hideOverlay();
+                                              ref.read(uiStateProvider.notifier).setDashboardSearch(val);
+                                              if (val.isEmpty && !_searchFocusNode.hasFocus) {
+                                                _placeholderController.resume();
+                                              }
+                                            },
+                                            onTap: _showOverlay,
+                                            style: TextStyle(color: textColor),
+                                            decoration: InputDecoration(
+                                              hintText: animatedHint,
+                                              hintStyle: const TextStyle(color: Colors.grey),
+                                              prefixIcon: const Icon(Icons.search, color: Color(0xFF24C7FF)),
+                                              suffixIcon: _lastCorrectedOriginal != null
+                                                  ? GestureDetector(
+                                                      onTap: _revertAutocorrect,
+                                                      child: Container(
+                                                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                                        decoration: BoxDecoration(
+                                                          color: isDark ? Colors.white.withAlpha(26) : Colors.black.withAlpha(13),
+                                                          borderRadius: BorderRadius.circular(12),
                                                         ),
-                                                        const SizedBox(width: 4),
-                                                        const Text(
-                                                          'Undo',
-                                                          style: TextStyle(
-                                                            color: Color(0xFF24C7FF),
-                                                            fontSize: 10,
-                                                            fontWeight: FontWeight.w900,
-                                                          ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Text(
+                                                              _lastCorrectedOriginal!,
+                                                              style: TextStyle(
+                                                                color: isDark ? Colors.white54 : Colors.black54,
+                                                                fontSize: 10,
+                                                                fontWeight: FontWeight.bold,
+                                                                decoration: TextDecoration.lineThrough,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(width: 4),
+                                                            const Text(
+                                                              'Undo',
+                                                              style: TextStyle(
+                                                                color: Color(0xFF24C7FF),
+                                                                fontSize: 10,
+                                                                fontWeight: FontWeight.w900,
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                )
-                                              : null,
-                                          filled: true,
-                                          fillColor: isDark ? const Color(0xFF181739).withAlpha(184) : Colors.white.withAlpha(184),
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
-                                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
-                                        ),
+                                                      ),
+                                                    )
+                                                  : null,
+                                              filled: true,
+                                              fillColor: isDark ? const Color(0xFF181739).withAlpha(184) : Colors.white.withAlpha(184),
+                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
+                                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: isDark ? const Color(0xFF302B65) : Colors.blue.shade100)),
+                                            ),
+                                          );
+                                        },
                                       ),
                                     ),
                                   ),
