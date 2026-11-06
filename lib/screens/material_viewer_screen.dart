@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide FileService;
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:intl/intl.dart';
 import '../services/persistence_service.dart';
 import '../services/progress_service.dart';
@@ -19,8 +21,14 @@ import '../services/top_notification_service.dart';
 import '../services/interstitial_ad_service.dart';
 import '../widgets/document_inline_ad_banner.dart';
 import '../widgets/resource_details_modal.dart';
+import '../services/security_service.dart';
+import '../models/ai_provider.dart';
+import '../widgets/ai_floating_launcher.dart';
+import 'ai_assistant_screen.dart';
+import 'ai_chatgpt_screen.dart';
 
 class MaterialViewerScreen extends StatefulWidget {
+  final String? id;
   final String title;
   final String fileUrl;
   final String? unitName;
@@ -30,6 +38,7 @@ class MaterialViewerScreen extends StatefulWidget {
 
   const MaterialViewerScreen({
     super.key,
+    this.id,
     required this.title,
     required this.fileUrl,
     this.unitName,
@@ -56,7 +65,9 @@ class TtsSentence {
   });
 }
 
-class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
+class _MaterialViewerScreenState extends State<MaterialViewerScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
+  bool _isBackgrounded = false;
   final FileService _fileService = FileService();
   bool _isLoading = true;
   String? _localPath;
@@ -72,6 +83,84 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   late final ValueNotifier<int> _currentPageNotifier;
   late final ValueNotifier<List<int>> _bookmarksNotifier;
   final PdfViewerController _pdfController = PdfViewerController();
+
+  // Intelligent tap-driven bottom study toolbar variables
+  late final AnimationController _toolbarAnimController;
+  late final Animation<Offset> _toolbarSlideAnimation;
+  int _activePointerCount = 0;
+  Offset? _pointerDownPosition;
+  DateTime? _pointerDownTime;
+  bool _gestureDisqualified = false;
+
+  void _onDocumentPointerDown(PointerDownEvent event) {
+    _activePointerCount++;
+    if (_activePointerCount > 1 || _activeAnnotationType != AnnotationType.none || _isSearching) {
+      _gestureDisqualified = true;
+    } else {
+      _gestureDisqualified = false;
+      _pointerDownPosition = event.position;
+      _pointerDownTime = DateTime.now();
+    }
+  }
+
+  void _onDocumentPointerMove(PointerMoveEvent event) {
+    if (_gestureDisqualified) return;
+    if (_activePointerCount > 1) {
+      _gestureDisqualified = true;
+      return;
+    }
+    if (_pointerDownPosition != null) {
+      final distance = (event.position - _pointerDownPosition!).distance;
+      if (distance > 10.0) {
+        _gestureDisqualified = true;
+      }
+    }
+  }
+
+  void _onDocumentPointerUp(PointerUpEvent event) {
+    final wasDisqualified = _gestureDisqualified;
+    final countBefore = _activePointerCount;
+    _activePointerCount = math.max(0, _activePointerCount - 1);
+
+    if (!wasDisqualified &&
+        countBefore == 1 &&
+        _pointerDownPosition != null &&
+        _pointerDownTime != null &&
+        _activeAnnotationType == AnnotationType.none &&
+        !_isSearching) {
+      final distance = (event.position - _pointerDownPosition!).distance;
+      final elapsedMs = DateTime.now().difference(_pointerDownTime!).inMilliseconds;
+      if (distance <= 10.0 && elapsedMs <= 350) {
+        _toggleToolbarVisibility();
+      }
+    }
+
+    if (_activePointerCount == 0) {
+      _pointerDownPosition = null;
+      _pointerDownTime = null;
+      _gestureDisqualified = false;
+    }
+  }
+
+  void _onDocumentPointerCancel(PointerCancelEvent event) {
+    _activePointerCount = math.max(0, _activePointerCount - 1);
+    _gestureDisqualified = true;
+    if (_activePointerCount == 0) {
+      _pointerDownPosition = null;
+      _pointerDownTime = null;
+      _gestureDisqualified = false;
+    }
+  }
+
+  void _toggleToolbarVisibility() {
+    if (!mounted) return;
+    if (_toolbarAnimController.status == AnimationStatus.completed ||
+        _toolbarAnimController.value > 0.5) {
+      _toolbarAnimController.reverse();
+    } else {
+      _toolbarAnimController.forward();
+    }
+  }
 
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
@@ -117,9 +206,28 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
   String get _annotationsKey => 'annotations_doc_${widget.title}';
   String get _notesKey => 'notes_doc_${widget.title}';
 
+  bool _isCompactAiLauncher = false;
+
+  void _loadAiLauncherMode() {
+    final mode = PersistenceService().getString(kAiLauncherModeKey);
+    if (mode == 'compact') {
+      _isCompactAiLauncher = true;
+    }
+  }
+
+  Future<void> _setAiLauncherMode(String mode) async {
+    await PersistenceService().setString(kAiLauncherModeKey, mode);
+    if (mounted) {
+      setState(() {
+        _isCompactAiLauncher = (mode == 'compact');
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadAiLauncherMode();
     final initialProgress = ProgressService().getProgress(widget.title);
     _progressNotifier = ValueNotifier<double>(initialProgress);
     _currentPageNotifier = ValueNotifier<int>(1);
@@ -158,6 +266,39 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
     _prepareFile();
     _initTts();
+
+    _toolbarAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+      value: 1.0,
+    );
+    _toolbarSlideAnimation = Tween<Offset>(
+      begin: const Offset(0.0, 1.2),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _toolbarAnimController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    WidgetsBinding.instance.addObserver(this);
+    SecurityService().enableSecureScreen();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) {
+        setState(() => _isBackgrounded = false);
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      if (mounted) {
+        setState(() => _isBackgrounded = true);
+      }
+    }
   }
 
   void _onControllerChanged() {
@@ -474,6 +615,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
   @override
   void dispose() {
+    _toolbarAnimController.dispose();
     _scrollTimer?.cancel();
     _highlightTimer?.cancel();
     _pdfController.removeListener(_onControllerChanged);
@@ -502,6 +644,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
     _currentPageNotifier.dispose();
     _bookmarksNotifier.dispose();
     _multiImageScrollController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -542,6 +685,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         }
       },
       child: Scaffold(
+        extendBody: true,
         backgroundColor: const Color(0xFF070716),
         appBar: AppBar(
           backgroundColor: const Color(0xFF141232),
@@ -572,34 +716,51 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                           color: Color(0xFF20C8FF),
                         ),
                       ),
-                      if (subtitleLine.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              subtitleLine,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.white70,
-                              ),
-                            ),
-                            if (_isPdf) ...[
-                              const SizedBox(width: 24),
-                              GestureDetector(
-                                onTap: _startSearchMode,
-                                behavior: HitTestBehavior.translucent,
-                                child: const Icon(
-                                  Icons.search,
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (subtitleLine.isNotEmpty)
+                            Flexible(
+                              child: Text(
+                                subtitleLine,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
                                   color: Colors.white70,
-                                  size: 16,
                                 ),
                               ),
+                            ),
+                          if (_isPdf) ...[
+                            if (subtitleLine.isNotEmpty)
+                              const SizedBox(width: 16),
+                            GestureDetector(
+                              key: const ValueKey('pdf_search_button'),
+                              onTap: _startSearchMode,
+                              behavior: HitTestBehavior.translucent,
+                              child: const Icon(
+                                Icons.search,
+                                color: Colors.white70,
+                                size: 16,
+                              ),
+                            ),
+                            if (_isCompactAiLauncher) ...[
+                              const SizedBox(width: 10),
+                              AiCompactToolbarLauncher(
+                                onRestoreLargeLauncher: () =>
+                                    _setAiLauncherMode('large'),
+                              ),
                             ],
+                          ] else if (_isCompactAiLauncher) ...[
+                            if (subtitleLine.isNotEmpty)
+                              const SizedBox(width: 10),
+                            AiCompactToolbarLauncher(
+                              onRestoreLargeLauncher: () =>
+                                  _setAiLauncherMode('large'),
+                            ),
                           ],
-                        ),
-                      ],
+                        ],
+                      ),
                     ],
                   ),
           ),
@@ -642,9 +803,18 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF)))
           : Stack(
               children: [
-                ListenableBuilder(
-                  listenable: SubscriptionService(),
-                  builder: (context, child) => _buildViewer(),
+                Positioned.fill(
+                  child: Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: _onDocumentPointerDown,
+                    onPointerMove: _onDocumentPointerMove,
+                    onPointerUp: _onDocumentPointerUp,
+                    onPointerCancel: _onDocumentPointerCancel,
+                    child: ListenableBuilder(
+                      listenable: SubscriptionService(),
+                      builder: (context, child) => _buildViewer(),
+                    ),
+                  ),
                 ),
                 if (_activeAnnotationType != AnnotationType.none) ...[
                   // Center-right page navigation scroll buttons
@@ -667,13 +837,146 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
                   Positioned(
                     left: 16,
                     right: 16,
-                    bottom: 16,
+                    bottom: 84,
                     child: _buildDrawingToolbar(context),
                   ),
                 ],
+                // Floating Multi-AI Launcher (hidden when drawing mode is active or when compact mode is active)
+                if (_activeAnnotationType == AnnotationType.none && !_isCompactAiLauncher)
+                  Positioned.fill(
+                    child: AiFloatingLauncher(
+                      onSelectProvider: _openAiProvider,
+                      onDismiss: () => _setAiLauncherMode('compact'),
+                      bottomInset: 84.0,
+                    ),
+                  ),
+                if (_isBackgrounded)
+                  Positioned.fill(
+                    child: _buildPrivacyShield(),
+                  ),
               ],
             ),
-        bottomNavigationBar: _isLoading ? null : _buildStudyToolbar(context),
+        bottomNavigationBar: _isLoading
+            ? null
+            : AnimatedBuilder(
+                animation: _toolbarAnimController,
+                builder: (context, child) {
+                  final isHidden = _toolbarAnimController.value == 0.0;
+                  return SlideTransition(
+                    key: const ValueKey('study_toolbar_slide_transition'),
+                    position: _toolbarSlideAnimation,
+                    child: IgnorePointer(
+                      ignoring: isHidden,
+                      child: child,
+                    ),
+                  );
+                },
+                child: _buildStudyToolbar(context),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildAskChatGptFab(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openAiChatGpt,
+        borderRadius: BorderRadius.circular(28),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141232),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFF20C8FF), width: 1.5),
+            boxShadow: [
+              const BoxShadow(
+                color: Colors.black45,
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+              BoxShadow(
+                color: const Color(0xFF20C8FF).withValues(alpha: 0.35),
+                blurRadius: 12,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.auto_awesome, color: Color(0xFF20C8FF), size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Ask ChatGPT',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openAiProvider(AiProviderConfig provider) async {
+    if (!provider.isWebViewSupported) {
+      final uri = Uri.parse(provider.url);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        debugPrint('MaterialViewerScreen: Error launching external URL: $e');
+      }
+      return;
+    }
+
+    // Pause reading time tracking and audio to avoid interference while chatting
+    UsageService().stopMaterialTracking();
+    _flutterTts.stop();
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AiAssistantScreen(
+          provider: provider,
+          materialTitle: widget.title,
+        ),
+      ),
+    );
+
+    // Re-engage secure screen and resume reading time tracking when returning to the document
+    if (mounted) {
+      SecurityService().enableSecureScreen();
+      UsageService().startMaterialTracking(widget.title);
+    }
+  }
+
+  void _openAiChatGpt() {
+    _openAiProvider(AiProviderConfig.getConfig(AiProvider.chatGpt));
+  }
+
+  Widget _buildPrivacyShield() {
+    return Container(
+      color: const Color(0xFF070716),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shield_outlined, color: Color(0xFF20C8FF), size: 48),
+            SizedBox(height: 12),
+            Text(
+              'Document Shield Active',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Mirror Digital Privacy Protection',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -938,10 +1241,15 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
 
   void _showMaterialDetails() {
     Resource? matchedResource;
-    for (final r in ResourceService().allResources) {
-      if (r.title == widget.title || r.fileUrl == widget.fileUrl) {
-        matchedResource = r;
-        break;
+    if (widget.id != null && widget.id!.isNotEmpty) {
+      matchedResource = ResourceService().findResourceById(widget.id!);
+    }
+    if (matchedResource == null) {
+      for (final r in ResourceService().allResources) {
+        if (r.title == widget.title || r.fileUrl == widget.fileUrl) {
+          matchedResource = r;
+          break;
+        }
       }
     }
 
@@ -951,6 +1259,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen> {
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) => ResourceDetailsModal(
+          id: matchedResource?.id ?? widget.id ?? '',
           title: matchedResource!.title,
           type: matchedResource.type,
           thumbnailUrl: matchedResource.thumbnailUrl,
