@@ -408,6 +408,77 @@ class PaystackService {
     }
   }
 
+  /// Initiates a donation payment securely through dedicated backend Firebase Callable
+  Future<PaystackPaymentResult> processDonation({
+    required int amountKes,
+    required PaystackPaymentMethod method,
+    required String phoneNumber,
+    required String email,
+    String? cardHolderName,
+    String? cardNumber,
+    String? expiryDate,
+    String? cvv,
+  }) async {
+    // 1. Guard check minimum donation of Ksh 3
+    if (amountKes < 3) {
+      return PaystackPaymentResult(
+        success: false,
+        paystackStatus: 'failed',
+        message: 'Minimum donation amount is Ksh.3.',
+        method: method,
+      );
+    }
+
+    // 2. Guard check for Mastercard below KES 100
+    if (method == PaystackPaymentMethod.mastercard && amountKes < minCardAmount) {
+      return PaystackPaymentResult(
+        success: false,
+        paystackStatus: 'failed',
+        message: 'Card payment does not support payments below Ksh.100.',
+        method: method,
+      );
+    }
+
+    final normalizedPhone = normalizeKenyanPhone(phoneNumber);
+    final paymentMethodName = method == PaystackPaymentMethod.mpesa
+        ? 'mpesa'
+        : (method == PaystackPaymentMethod.airtelMoney ? 'airtelMoney' : 'mastercard');
+
+    try {
+      final callable = _functions.httpsCallable('initializeDonationPayment');
+      final result = await callable.call({
+        'amount': amountKes,
+        'paymentMethod': paymentMethodName,
+        'phoneNumber': normalizedPhone,
+        'userEmail': email,
+      });
+
+      final data = Map<String, dynamic>.from(result.data as Map);
+      final isSuccess = data['success'] == true;
+
+      return PaystackPaymentResult(
+        success: isSuccess,
+        reference: data['reference'],
+        paystackStatus: data['paystackStatus'],
+        displayText: data['displayText'],
+        authorizationUrl: data['authorizationUrl'],
+        accessCode: data['accessCode'],
+        message: data['message'] ?? data['displayText'] ?? (isSuccess ? 'Donation initialized' : 'Donation initialization failed'),
+        method: method,
+      );
+    } catch (e) {
+      debugPrint('PaystackService: Backend donation initialization failed: $e');
+      return PaystackPaymentResult(
+        success: false,
+        paystackStatus: 'failed',
+        message: e.toString().contains('Card payment does not support')
+            ? 'Card payment does not support payments below Ksh.100.'
+            : (e.toString().contains('Minimum donation') ? 'Minimum donation amount is Ksh.3.' : 'Donation initialization failed. Please try again.'),
+        method: method,
+      );
+    }
+  }
+
   /// Verifies transaction completion with backend
   Future<PaystackVerificationResult> verifyPayment(String reference) async {
     try {

@@ -852,6 +852,62 @@
         "retry": false
       },
       "entryPoint": "onDSpaceJobCreated"
+    },
+    "getAdRewardStatus": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "getAdRewardStatus"
+    },
+    "startAdRewardSession": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "startAdRewardSession"
+    },
+    "claimAdReward": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "claimAdReward"
+    },
+    "initializeDonationPayment": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "callableTrigger": {},
+      "entryPoint": "initializeDonationPayment"
     }
   },
   "specVersion": "v1alpha1",

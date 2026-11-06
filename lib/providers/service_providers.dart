@@ -11,6 +11,8 @@ import '../services/file_service.dart';
 import '../services/upload_service.dart';
 import '../services/timetable_upload_service.dart';
 import '../services/admin_service.dart';
+import '../services/xp_service.dart';
+import '../services/search_placeholder_service.dart';
 
 export 'user_provider.dart' show userProfileProvider, UserProfile;
 export '../repositories/news_repository.dart';
@@ -21,6 +23,7 @@ final downloadServiceProvider = ChangeNotifierProvider((ref) => DownloadService(
 final viewServiceProvider = ChangeNotifierProvider((ref) => ViewService());
 final commentServiceProvider = ChangeNotifierProvider((ref) => CommentService());
 final subscriptionServiceProvider = ChangeNotifierProvider((ref) => SubscriptionService());
+final xpServiceProvider = ChangeNotifierProvider((ref) => XPService());
 final courseServiceProvider = Provider((ref) => CourseService());
 final curriculumServiceProvider = ChangeNotifierProvider((ref) => CurriculumService());
 final authServiceProvider = Provider((ref) => AuthService());
@@ -28,3 +31,4 @@ final fileServiceProvider = Provider((ref) => FileService());
 final uploadServiceProvider = Provider((ref) => UploadService());
 final timetableUploadServiceProvider = Provider((ref) => TimetableUploadService());
 final adminServiceProvider = ChangeNotifierProvider((ref) => AdminService());
+final searchPlaceholderServiceProvider = Provider((ref) => SearchPlaceholderService());

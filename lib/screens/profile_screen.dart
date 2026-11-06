@@ -20,6 +20,8 @@ import '../services/persistence_service.dart';
 import '../services/admin_service.dart';
 import 'admin/admin_menu_bottom_sheet.dart';
 import 'account_deletion_screen.dart';
+import '../widgets/donation_modal.dart';
+import '../widgets/xp_points_bottom_sheet.dart';
 
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -362,7 +364,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildStatBox(null, '2450', 'XP Points', isDark, customIcon: 'XP')),
+                        Expanded(
+                          child: _buildStatBox(
+                            null,
+                            userProfile.xpBalance.toString(),
+                            'XP Points',
+                            isDark,
+                            customIcon: 'XP',
+                            onTap: () {
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (ctx) => XPPointsBottomSheet(isDark: isDark),
+                              );
+                            },
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -456,7 +474,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _buildStatusBadge('Donate', 'ACTIVE', Icons.verified, Colors.blue, isDark)),
+                        Expanded(
+                          child: _buildStatusBadge(
+                            'Donate',
+                            'ACTIVE',
+                            Icons.verified,
+                            Colors.blue,
+                            isDark,
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: true,
+                                builder: (ctx) => DonationModal(
+                                  phoneNumber: userProfile.phone,
+                                  onSuccess: () {
+                                    ref.read(userProfileProvider.notifier).fetchProfileFromFirestore(userProfile.uid);
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: ListenableBuilder(

@@ -29,6 +29,14 @@ class UserProfile {
   final String deletionStatus;
   final DateTime? deletionRequestedAt;
   final DateTime? deletionScheduledAt;
+  final int xpBalance;
+  final int donationXp;
+  final int adRewardXp;
+  final int totalDonatedKes;
+  final int adRewardCountVideoToday;
+  final int adRewardCountInterstitialToday;
+  final String? adRewardDateNairobi;
+  final DateTime? lastAdRewardAt;
 
   UserProfile({
     required this.uid,
@@ -53,6 +61,14 @@ class UserProfile {
     this.deletionStatus = 'none',
     this.deletionRequestedAt,
     this.deletionScheduledAt,
+    this.xpBalance = 0,
+    this.donationXp = 0,
+    this.adRewardXp = 0,
+    this.totalDonatedKes = 0,
+    this.adRewardCountVideoToday = 0,
+    this.adRewardCountInterstitialToday = 0,
+    this.adRewardDateNairobi,
+    this.lastAdRewardAt,
   });
 
   bool get isPendingDeletion => deletionStatus == 'pending';
@@ -81,6 +97,14 @@ class UserProfile {
     String? deletionStatus,
     DateTime? deletionRequestedAt,
     DateTime? deletionScheduledAt,
+    int? xpBalance,
+    int? donationXp,
+    int? adRewardXp,
+    int? totalDonatedKes,
+    int? adRewardCountVideoToday,
+    int? adRewardCountInterstitialToday,
+    String? adRewardDateNairobi,
+    DateTime? lastAdRewardAt,
     bool clearImagePath = false,
     bool clearDeletion = false,
   }) {
@@ -107,6 +131,14 @@ class UserProfile {
       deletionStatus: clearDeletion ? 'none' : (deletionStatus ?? this.deletionStatus),
       deletionRequestedAt: clearDeletion ? null : (deletionRequestedAt ?? this.deletionRequestedAt),
       deletionScheduledAt: clearDeletion ? null : (deletionScheduledAt ?? this.deletionScheduledAt),
+      xpBalance: xpBalance ?? this.xpBalance,
+      donationXp: donationXp ?? this.donationXp,
+      adRewardXp: adRewardXp ?? this.adRewardXp,
+      totalDonatedKes: totalDonatedKes ?? this.totalDonatedKes,
+      adRewardCountVideoToday: adRewardCountVideoToday ?? this.adRewardCountVideoToday,
+      adRewardCountInterstitialToday: adRewardCountInterstitialToday ?? this.adRewardCountInterstitialToday,
+      adRewardDateNairobi: adRewardDateNairobi ?? this.adRewardDateNairobi,
+      lastAdRewardAt: lastAdRewardAt ?? this.lastAdRewardAt,
     );
   }
 
@@ -134,6 +166,14 @@ class UserProfile {
       'deletionStatus': deletionStatus,
       'deletionRequestedAt': deletionRequestedAt?.toIso8601String(),
       'deletionScheduledAt': deletionScheduledAt?.toIso8601String(),
+      'xpBalance': xpBalance,
+      'donationXp': donationXp,
+      'adRewardXp': adRewardXp,
+      'totalDonatedKes': totalDonatedKes,
+      'adRewardCountVideoToday': adRewardCountVideoToday,
+      'adRewardCountInterstitialToday': adRewardCountInterstitialToday,
+      'adRewardDateNairobi': adRewardDateNairobi,
+      'lastAdRewardAt': lastAdRewardAt?.toIso8601String(),
     };
   }
 
@@ -208,6 +248,14 @@ class UserProfile {
       deletionStatus: json['deletionStatus'] as String? ?? 'none',
       deletionRequestedAt: _parseDate(json['deletionRequestedAt']),
       deletionScheduledAt: _parseDate(json['deletionScheduledAt']),
+      xpBalance: (json['xpBalance'] as num?)?.toInt() ?? 0,
+      donationXp: (json['donationXp'] as num?)?.toInt() ?? 0,
+      adRewardXp: (json['adRewardXp'] as num?)?.toInt() ?? 0,
+      totalDonatedKes: (json['totalDonatedKes'] as num?)?.toInt() ?? 0,
+      adRewardCountVideoToday: (json['adRewardCountVideoToday'] as num?)?.toInt() ?? (json['adRewardCountToday'] as num?)?.toInt() ?? 0,
+      adRewardCountInterstitialToday: (json['adRewardCountInterstitialToday'] as num?)?.toInt() ?? 0,
+      adRewardDateNairobi: json['adRewardDateNairobi'] as String? ?? json['adRewardDate'] as String?,
+      lastAdRewardAt: _parseDate(json['lastAdRewardAt']),
     );
   }
 }
@@ -228,8 +276,29 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
           phone: '',
           email: '',
           onboardingComplete: false,
+          xpBalance: 0,
+          donationXp: 0,
+          adRewardXp: 0,
+          totalDonatedKes: 0,
+          adRewardCountVideoToday: 0,
+          adRewardCountInterstitialToday: 0,
         )) {
     _restoreProfile();
+  }
+
+  void updateXpBalance({
+    required int xpBalance,
+    int? donationXp,
+    int? adRewardXp,
+    int? totalDonatedKes,
+  }) {
+    state = state.copyWith(
+      xpBalance: xpBalance,
+      donationXp: donationXp ?? state.donationXp,
+      adRewardXp: adRewardXp ?? state.adRewardXp,
+      totalDonatedKes: totalDonatedKes ?? state.totalDonatedKes,
+    );
+    _saveProfile();
   }
 
   String get instanceSessionId => _instanceSessionId;

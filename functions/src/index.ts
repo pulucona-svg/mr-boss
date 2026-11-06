@@ -521,9 +521,12 @@ export {
 import {
   AUTHORITATIVE_PACKAGES,
   initializePaymentOnPaystack,
+  initializeDonationOnPaystack,
   verifyPaystackSignature,
   fulfillSubscription,
+  fulfillDonation,
 } from "./services/paystack_server_service";
+import * as crypto from "crypto";
 
 /**
  * CALLABLE: Initialize Paystack payment securely on backend
@@ -640,7 +643,119 @@ export const initializePaystackPayment = onCall(async (request) => {
 });
 
 /**
- * CALLABLE: Verify Paystack payment and fulfill subscription
+ * CALLABLE: Initialize Paystack donation payment securely on backend
+ */
+export const initializeDonationPayment = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "User must be authenticated to make a donation.");
+  }
+
+  const userId = request.auth.uid;
+
+  // Guard: Block payment initiation if user account is pending deletion or permanently deleted
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (userDoc.exists) {
+    const userData = userDoc.data();
+    if (userData?.deletionStatus === "pending") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot initiate donation while account is pending deletion. Please restore your account first."
+      );
+    }
+    if (userData?.deletionStatus === "permanently_deleted") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot initiate donation for a deleted account."
+      );
+    }
+  }
+
+  const { amount, paymentMethod, phoneNumber, userEmail } = request.data || {};
+
+  const donationAmount = Number(amount);
+  if (!Number.isInteger(donationAmount) || donationAmount < 3) {
+    throw new HttpsError("invalid-argument", "Minimum donation amount is Ksh.3.");
+  }
+
+  if (!["mpesa", "airtelMoney", "mastercard"].includes(paymentMethod)) {
+    throw new HttpsError("invalid-argument", `Unsupported payment method: ${paymentMethod}`);
+  }
+
+  // Enforce minimum KES 100 for card payments
+  if (paymentMethod === "mastercard" && donationAmount < 100) {
+    throw new HttpsError("failed-precondition", "Card payment does not support payments below Ksh.100.");
+  }
+
+  const expectedXp = donationAmount * 10;
+  const authenticatedEmail = request.auth.token?.email || userEmail?.trim() || `user_${userId}@mirrorlaikipia.app`;
+  const reference = `ML_DONATION_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  // Store pending donation payment in Firestore
+  await db.collection("payments").doc(reference).set({
+    reference,
+    userId,
+    type: "donation",
+    expectedAmountKes: donationAmount,
+    expectedAmountSubunits: donationAmount * 100,
+    expectedXp,
+    currency: "KES",
+    paymentMethod,
+    phoneNumber: phoneNumber || null,
+    userEmail: authenticatedEmail,
+    status: "pending",
+    fulfilled: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  try {
+    const initResult = await initializeDonationOnPaystack({
+      amountKes: donationAmount,
+      paymentMethod,
+      phoneNumber,
+      userEmail: authenticatedEmail,
+      userId,
+      reference,
+    });
+
+    if (!initResult.success) {
+      await db.collection("payments").doc(reference).update({
+        status: "init_failed",
+        errorMessage: initResult.message || "Failed to initialize payment",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {
+        success: false,
+        reference,
+        paystackStatus: initResult.paystackStatus,
+        displayText: initResult.displayText,
+        message: initResult.message,
+      };
+    }
+
+    return {
+      success: true,
+      reference,
+      paystackStatus: initResult.paystackStatus,
+      displayText: initResult.displayText,
+      message: initResult.displayText,
+      authorizationUrl: (initResult as any).authorizationUrl,
+      accessCode: (initResult as any).accessCode,
+      expectedXp,
+    };
+  } catch (err: any) {
+    logger.error(`[PAYSTACK_DONATION_INIT_ERROR] Error initializing donation for ${reference}:`, err);
+    await db.collection("payments").doc(reference).update({
+      status: "init_failed",
+      errorMessage: err.message || "Failed to initialize donation",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    throw new HttpsError("internal", err.message || "Failed to initialize donation on Paystack");
+  }
+});
+
+/**
+ * CALLABLE: Verify Paystack payment and fulfill subscription or donation
  */
 export const verifyPaystackPayment = onCall(async (request) => {
   if (!request.auth?.uid) {
@@ -653,6 +768,10 @@ export const verifyPaystackPayment = onCall(async (request) => {
   }
 
   try {
+    const paymentSnap = await db.collection("payments").doc(reference).get();
+    if (paymentSnap.exists && paymentSnap.data()?.type === "donation") {
+      return await fulfillDonation(db, reference, "verify");
+    }
     const fulfillResult = await fulfillSubscription(db, reference, "verify");
     return fulfillResult;
   } catch (err: any) {
@@ -680,7 +799,12 @@ export const paystackWebhook = onRequest({ cors: false }, async (req, res) => {
     if (event?.event === "charge.success") {
       const reference = event.data?.reference;
       if (reference) {
-        await fulfillSubscription(db, reference, "webhook");
+        const paymentSnap = await db.collection("payments").doc(reference).get();
+        if (paymentSnap.exists && paymentSnap.data()?.type === "donation") {
+          await fulfillDonation(db, reference, "webhook");
+        } else {
+          await fulfillSubscription(db, reference, "webhook");
+        }
       }
     }
 
@@ -689,6 +813,283 @@ export const paystackWebhook = onRequest({ cors: false }, async (req, res) => {
     logger.error("[PAYSTACK_WEBHOOK_ERROR] Failed to process webhook event:", err);
     res.status(500).send("Webhook processing error");
   }
+});
+
+/**
+ * REWARDED ADVERTISEMENT ENDPOINTS
+ * Supports:
+ *  1. 'rewarded_video': 5 XP (Live unit ID: ca-app-pub-6360381092649351/9633647084)
+ *  2. 'rewarded_interstitial': 7 XP (Official Google AdMob test unit ID: ca-app-pub-3940256099942544/5354046379, to be swapped with production ID)
+ * Features:
+ *  - Global 30-second cooldown across all reward formats.
+ *  - Independent daily counters (20 max for video, 20 max for interstitial).
+ *  - Nairobi timezone (Africa/Nairobi) date keys, resetting authoritatively at Nairobi midnight.
+ *  - Transactional one-time session consumption preventing replay attacks.
+ *  - Transactional XP balance increment and immutable xp_transactions ledger.
+ */
+
+export const LIVE_REWARDED_VIDEO_AD_UNIT_ID = "ca-app-pub-6360381092649351/9633647084";
+export const REWARDED_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/5354046379";
+
+export function getNairobiDateKey(date: Date = new Date()): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(date); // Formats as YYYY-MM-DD in Africa/Nairobi
+}
+
+export const getAdRewardStatus = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "User must be authenticated.");
+  }
+  const userId = request.auth.uid;
+  const userSnap = await db.collection("users").doc(userId).get();
+  const userData = userSnap.data() || {};
+  const now = new Date();
+  const todayNairobiKey = getNairobiDateKey(now);
+
+  const isSameNairobiDay = userData.adRewardDateNairobi === todayNairobiKey || userData.adRewardDate === todayNairobiKey;
+  const videoCount = isSameNairobiDay ? (userData.adRewardCountVideoToday ?? userData.adRewardCountToday ?? 0) : 0;
+  const interstitialCount = isSameNairobiDay ? (userData.adRewardCountInterstitialToday ?? 0) : 0;
+
+  let cooldownRemainingSeconds = 0;
+  if (userData.lastAdRewardAt) {
+    const lastRewardTime = userData.lastAdRewardAt.toDate ? userData.lastAdRewardAt.toDate().getTime() : new Date(userData.lastAdRewardAt).getTime();
+    const elapsedSeconds = Math.floor((now.getTime() - lastRewardTime) / 1000);
+    if (elapsedSeconds < 30) {
+      cooldownRemainingSeconds = 30 - elapsedSeconds;
+    }
+  }
+
+  return {
+    success: true,
+    nairobiDate: todayNairobiKey,
+    videoCountToday: videoCount,
+    interstitialCountToday: interstitialCount,
+    remainingVideoToday: Math.max(0, 20 - videoCount),
+    remainingInterstitialToday: Math.max(0, 20 - interstitialCount),
+    cooldownRemainingSeconds,
+  };
+});
+
+export const startAdRewardSession = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "User must be authenticated to watch rewarded ads.");
+  }
+
+  const userId = request.auth.uid;
+  const rawType = (request.data?.rewardType as string | undefined)?.trim().toLowerCase() || "rewarded_video";
+  const rewardType = rawType === "rewarded_interstitial" ? "rewarded_interstitial" : "rewarded_video";
+  const isInterstitial = rewardType === "rewarded_interstitial";
+
+  const userRef = db.collection("users").doc(userId);
+  const userSnap = await userRef.get();
+
+  const now = new Date();
+  const todayNairobiKey = getNairobiDateKey(now);
+
+  let videoCountToday = 0;
+  let interstitialCountToday = 0;
+
+  if (userSnap.exists) {
+    const userData = userSnap.data();
+    if (userData?.deletionStatus === "pending" || userData?.deletionStatus === "permanently_deleted") {
+      throw new HttpsError("failed-precondition", "Cannot claim rewards while account is pending deletion.");
+    }
+
+    // 1. Global 30-second cooldown across all reward formats
+    if (userData?.lastAdRewardAt) {
+      const lastRewardTime = userData.lastAdRewardAt.toDate ? userData.lastAdRewardAt.toDate().getTime() : new Date(userData.lastAdRewardAt).getTime();
+      const elapsedSeconds = Math.floor((now.getTime() - lastRewardTime) / 1000);
+      if (elapsedSeconds < 30) {
+        const remaining = 30 - elapsedSeconds;
+        return {
+          success: false,
+          reason: "cooldown",
+          remainingSeconds: remaining,
+          message: `Please wait ${remaining} more seconds before claiming another reward.`,
+        };
+      }
+    }
+
+    // 2. Check independent 20-reward daily cap (Nairobi calendar day)
+    const isSameNairobiDay = userData?.adRewardDateNairobi === todayNairobiKey || userData?.adRewardDate === todayNairobiKey;
+    videoCountToday = isSameNairobiDay ? (userData?.adRewardCountVideoToday ?? userData?.adRewardCountToday ?? 0) : 0;
+    interstitialCountToday = isSameNairobiDay ? (userData?.adRewardCountInterstitialToday ?? 0) : 0;
+
+    const countToday = isInterstitial ? interstitialCountToday : videoCountToday;
+    if (countToday >= 20) {
+      return {
+        success: false,
+        reason: "daily_cap_reached",
+        rewardType,
+        limit: 20,
+        message: isInterstitial
+          ? "You have reached the maximum 20 rewarded interstitials for today. Come back tomorrow!"
+          : "You have reached the maximum 20 rewarded video ads for today. Come back tomorrow!",
+      };
+    }
+  }
+
+  const sessionId = `ML_AD_SESSION_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
+  const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes
+  const adUnitId = isInterstitial ? REWARDED_INTERSTITIAL_AD_UNIT_ID : LIVE_REWARDED_VIDEO_AD_UNIT_ID;
+  const expectedXp = isInterstitial ? 7 : 5;
+
+  await userRef.collection("ad_reward_sessions").doc(sessionId).set({
+    sessionId,
+    userId,
+    rewardType,
+    adUnitId,
+    expectedXp,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt,
+    consumed: false,
+  });
+
+  return {
+    success: true,
+    sessionId,
+    rewardType,
+    adUnitId,
+    expectedXp,
+    remainingVideoToday: Math.max(0, 20 - videoCountToday),
+    remainingInterstitialToday: Math.max(0, 20 - interstitialCountToday),
+  };
+});
+
+export const claimAdReward = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "User must be authenticated.");
+  }
+
+  const userId = request.auth.uid;
+  const { sessionId } = request.data || {};
+
+  if (!sessionId || typeof sessionId !== "string") {
+    throw new HttpsError("invalid-argument", "Missing or invalid sessionId.");
+  }
+
+  const userRef = db.collection("users").doc(userId);
+  const sessionRef = userRef.collection("ad_reward_sessions").doc(sessionId);
+  const txRef = userRef.collection("xp_transactions").doc(sessionId);
+
+  return await db.runTransaction(async (transaction) => {
+    const userSnap = await transaction.get(userRef);
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User document not found.");
+    }
+    const userData = userSnap.data() || {};
+    if (userData.deletionStatus === "pending" || userData.deletionStatus === "permanently_deleted") {
+      throw new HttpsError("failed-precondition", "Cannot claim rewards for an account pending deletion.");
+    }
+
+    const sessionSnap = await transaction.get(sessionRef);
+    if (!sessionSnap.exists) {
+      throw new HttpsError("not-found", "Invalid reward session.");
+    }
+    const sessionData = sessionSnap.data() || {};
+    if (sessionData.userId !== userId) {
+      throw new HttpsError("permission-denied", "Session does not belong to the authenticated user.");
+    }
+    if (sessionData.consumed === true) {
+      throw new HttpsError("failed-precondition", "This reward session has already been consumed.");
+    }
+
+    const now = new Date();
+    const sessionExpiry = sessionData.expiresAt?.toDate ? sessionData.expiresAt.toDate() : new Date(sessionData.expiresAt);
+    if (sessionExpiry.getTime() < now.getTime()) {
+      throw new HttpsError("deadline-exceeded", "Reward session has expired.");
+    }
+
+    // 1. Transactional check for global 30s cooldown
+    if (userData.lastAdRewardAt) {
+      const lastRewardTime = userData.lastAdRewardAt.toDate ? userData.lastAdRewardAt.toDate().getTime() : new Date(userData.lastAdRewardAt).getTime();
+      const elapsedSeconds = Math.floor((now.getTime() - lastRewardTime) / 1000);
+      if (elapsedSeconds < 30) {
+        const remaining = 30 - elapsedSeconds;
+        throw new HttpsError("resource-exhausted", `Please wait ${remaining} more seconds before claiming another reward.`);
+      }
+    }
+
+    // 2. Transactional check for independent 20-reward daily cap (Nairobi calendar day)
+    const todayNairobiKey = getNairobiDateKey(now);
+    const isSameNairobiDay = userData.adRewardDateNairobi === todayNairobiKey || userData.adRewardDate === todayNairobiKey;
+    const videoCountToday = isSameNairobiDay ? (userData.adRewardCountVideoToday ?? userData.adRewardCountToday ?? 0) : 0;
+    const interstitialCountToday = isSameNairobiDay ? (userData.adRewardCountInterstitialToday ?? 0) : 0;
+
+    const rewardType = sessionData.rewardType === "rewarded_interstitial" ? "rewarded_interstitial" : "rewarded_video";
+    const isInterstitial = rewardType === "rewarded_interstitial";
+    const countToday = isInterstitial ? interstitialCountToday : videoCountToday;
+
+    if (countToday >= 20) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `Daily ${isInterstitial ? "rewarded interstitial" : "rewarded ad"} limit of 20 reached. Come back tomorrow!`
+      );
+    }
+
+    // Authoritative XP calculation derived strictly from verified session rewardType (never client-supplied)
+    const xpEarned = isInterstitial ? 7 : 5;
+    const title = isInterstitial ? "Rewarded Interstitial" : "Rewarded Advertisement";
+    const description = isInterstitial
+      ? "Completed rewarded interstitial advertisement (+7 XP)"
+      : "Completed rewarded video advertisement (+5 XP)";
+
+    // 3. Mark session consumed
+    transaction.update(sessionRef, {
+      consumed: true,
+      consumedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 4. Create immutable XP transaction record
+    transaction.set(txRef, {
+      transactionId: sessionId,
+      userId,
+      type: rewardType,
+      title,
+      description,
+      xpAmount: xpEarned,
+      adUnitId: sessionData.adUnitId || (isInterstitial ? REWARDED_INTERSTITIAL_AD_UNIT_ID : LIVE_REWARDED_VIDEO_AD_UNIT_ID),
+      status: "success",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 5. Transactionally increment user balance and independent format counts
+    const updateData: Record<string, any> = {
+      xpBalance: admin.firestore.FieldValue.increment(xpEarned),
+      adRewardXp: admin.firestore.FieldValue.increment(xpEarned),
+      adRewardDateNairobi: todayNairobiKey,
+      adRewardDate: todayNairobiKey,
+      lastAdRewardAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (isInterstitial) {
+      updateData.adRewardCountInterstitialToday = interstitialCountToday + 1;
+    } else {
+      updateData.adRewardCountVideoToday = videoCountToday + 1;
+      updateData.adRewardCountToday = videoCountToday + 1;
+    }
+
+    transaction.update(userRef, updateData);
+
+    logger.info(`[REWARDED_AD_SUCCESS] User ${userId} successfully claimed ${xpEarned} XP for ${rewardType} session ${sessionId}. Today count: ${countToday + 1}/20.`);
+
+    return {
+      success: true,
+      xpEarned,
+      rewardType,
+      newCountToday: countToday + 1,
+      remainingToday: 20 - (countToday + 1),
+      remainingVideoToday: Math.max(0, 20 - (isInterstitial ? videoCountToday : videoCountToday + 1)),
+      remainingInterstitialToday: Math.max(0, 20 - (isInterstitial ? interstitialCountToday + 1 : interstitialCountToday)),
+      message: `Reward claimed! +${xpEarned} XP added to your balance.`,
+    };
+  });
 });
 
 /**
