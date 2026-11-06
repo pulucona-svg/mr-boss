@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -51,12 +52,21 @@ class NewsRepositoryImpl implements NewsRepository {
 
   @override
   Stream<List<TopStory>> watchTopStories() {
-    return _firestore
-        .collection('explore_news')
-        .limit(20)
-        .snapshots()
-        .map((snapshot) {
-      final articles = snapshot.docs
+    return _createTopStoriesStream();
+  }
+
+  Stream<List<TopStory>> _createTopStoriesStream() {
+    late final StreamController<List<TopStory>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? activeSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? companionSub;
+
+    Map<String, DocumentSnapshot<Map<String, dynamic>>> pubDocs = {};
+    Map<String, DocumentSnapshot<Map<String, dynamic>>> createdDocs = {};
+
+    void emitMerged() {
+      if (controller.isClosed) return;
+      final merged = {...pubDocs, ...createdDocs};
+      final articles = merged.values
           .map(_mapDocToNewsArticle)
           .where((a) => a.status == null || a.status!.isEmpty || a.status == 'published')
           .toList();
@@ -65,7 +75,7 @@ class NewsRepositoryImpl implements NewsRepository {
         final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return bTime.compareTo(aTime);
       });
-      return articles
+      final topStories = articles
           .map((art) => TopStory(
                 id: art.id,
                 title: art.title,
@@ -78,7 +88,66 @@ class NewsRepositoryImpl implements NewsRepository {
           .where((s) => s.imageUrl.isNotEmpty)
           .take(5)
           .toList();
-    }).handleError((_) => <TopStory>[]);
+      controller.add(topStories);
+    }
+
+    void startListening() {
+      final queryPub = _firestore
+          .collection('explore_news')
+          .orderBy('publishedAt', descending: true)
+          .limit(20);
+
+      // Companion query captures articles missing publishedAt but possessing createdAt
+      final queryCreated = _firestore
+          .collection('explore_news')
+          .orderBy('createdAt', descending: true)
+          .limit(10);
+
+      activeSub = queryPub.snapshots().listen(
+        (snapshot) {
+          pubDocs = {for (final d in snapshot.docs) d.id: d};
+          emitMerged();
+        },
+        onError: (err) {
+          if (kDebugMode) {
+            debugPrint('[NewsRepo] TopStories ordered query error ($err). Using fallback stream.');
+          }
+          activeSub?.cancel();
+          final fallback = _firestore.collection('explore_news').limit(40);
+          activeSub = fallback.snapshots().listen(
+            (snap) {
+              pubDocs = {for (final d in snap.docs) d.id: d};
+              emitMerged();
+            },
+            onError: (_) {
+              if (!controller.isClosed && pubDocs.isEmpty && createdDocs.isEmpty) {
+                controller.add(<TopStory>[]);
+              }
+            },
+          );
+        },
+      );
+
+      companionSub = queryCreated.snapshots().listen(
+        (snapshot) {
+          createdDocs = {for (final d in snapshot.docs) d.id: d};
+          emitMerged();
+        },
+        onError: (_) {
+          // Silent fallback if createdAt ordering isn't available
+        },
+      );
+    }
+
+    controller = StreamController<List<TopStory>>.broadcast(
+      onListen: startListening,
+      onCancel: () {
+        activeSub?.cancel();
+        companionSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   @override
@@ -108,33 +177,80 @@ class NewsRepositoryImpl implements NewsRepository {
       return watchLatestNews();
     }
 
-    // Query using single-field equality on categoryId to avoid Firestore multi-field composite index requirements
-    return _firestore
-        .collection('explore_news')
-        .where('categoryId', isEqualTo: categoryId)
-        .limit(30)
-        .snapshots()
-        .map((snapshot) {
-      if (kDebugMode) {
-        debugPrint('[NewsRepo] Snapshot received for category="$category" count=${snapshot.docs.length}${snapshot.docs.isNotEmpty ? " firstDocId=${snapshot.docs.first.id}" : ""}');
-      }
+    return _createCategoryNewsStream(categoryId, category);
+  }
+
+  Stream<List<NewsArticle>> _createCategoryNewsStream(String categoryId, String category) {
+    late final StreamController<List<NewsArticle>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? activeSub;
+
+    List<NewsArticle> parseSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
       final list = snapshot.docs
           .map(_mapDocToNewsArticle)
           .where((article) => article.status == null || article.status!.isEmpty || article.status == 'published')
           .toList();
-      // Sort in Dart memory by publishedAt descending
+      // Ensure newest articles first by publishedAt with createdAt fallback
       list.sort((a, b) {
         final aTime = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return bTime.compareTo(aTime);
       });
-      return list;
-    }).handleError((error) {
-      if (kDebugMode) {
-        debugPrint('[NewsRepo ERROR] watchCategoryNews category="$category" failed: $error');
-      }
-      return <NewsArticle>[];
-    });
+      return list.take(30).toList();
+    }
+
+    void startListening() {
+      // 1. Attempt server-side ordered query (requires composite index in production)
+      final indexedQuery = _firestore
+          .collection('explore_news')
+          .where('categoryId', isEqualTo: categoryId)
+          .orderBy('publishedAt', descending: true)
+          .limit(30);
+
+      activeSub = indexedQuery.snapshots().listen(
+        (snapshot) {
+          if (!controller.isClosed) {
+            controller.add(parseSnapshot(snapshot));
+          }
+        },
+        onError: (err) {
+          // If composite index is missing or query fails, fall back to equality query without arbitrary pre-sort limit
+          if (kDebugMode) {
+            debugPrint('[NewsRepo] Indexed query for category "$category" requires index or failed ($err). Using un-limited fallback query with in-memory sort.');
+          }
+          activeSub?.cancel();
+
+          // Fallback query scopes to categoryId without pre-sort truncation
+          final fallbackQuery = _firestore
+              .collection('explore_news')
+              .where('categoryId', isEqualTo: categoryId);
+
+          activeSub = fallbackQuery.snapshots().listen(
+            (fallbackSnap) {
+              if (!controller.isClosed) {
+                controller.add(parseSnapshot(fallbackSnap));
+              }
+            },
+            onError: (fallbackErr) {
+              if (kDebugMode) {
+                debugPrint('[NewsRepo ERROR] watchCategoryNews fallback failed: $fallbackErr');
+              }
+              if (!controller.isClosed) {
+                controller.add(<NewsArticle>[]);
+              }
+            },
+          );
+        },
+      );
+    }
+
+    controller = StreamController<List<NewsArticle>>.broadcast(
+      onListen: startListening,
+      onCancel: () {
+        activeSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   @override
@@ -146,32 +262,94 @@ class NewsRepositoryImpl implements NewsRepository {
       debugPrint('[NewsRepo] Starting watchLatestNews (Project: $projectId, AuthUID: $userUid)');
     }
 
-    // Query using collection limit to avoid Firestore composite index requirements
-    return _firestore
-        .collection('explore_news')
-        .limit(60)
-        .snapshots()
-        .map((snapshot) {
-      if (kDebugMode) {
-        debugPrint('[NewsRepo] Snapshot received for latest news count=${snapshot.docs.length}${snapshot.docs.isNotEmpty ? " firstDocId=${snapshot.docs.first.id}" : ""}');
-      }
-      final list = snapshot.docs
+    return _createLatestNewsStream();
+  }
+
+  Stream<List<NewsArticle>> _createLatestNewsStream() {
+    late final StreamController<List<NewsArticle>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? activeSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? companionSub;
+
+    Map<String, DocumentSnapshot<Map<String, dynamic>>> pubDocs = {};
+    Map<String, DocumentSnapshot<Map<String, dynamic>>> createdDocs = {};
+
+    void emitMerged() {
+      if (controller.isClosed) return;
+      final merged = {...pubDocs, ...createdDocs};
+      final list = merged.values
           .map(_mapDocToNewsArticle)
           .where((article) => article.status == null || article.status!.isEmpty || article.status == 'published')
           .toList();
-      // Sort in Dart memory by publishedAt descending
+      // In-memory sort newest first by publishedAt with createdAt fallback
       list.sort((a, b) {
         final aTime = a.publishedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return bTime.compareTo(aTime);
       });
-      return list;
-    }).handleError((error) {
-      if (kDebugMode) {
-        debugPrint('[NewsRepo ERROR] watchLatestNews failed: $error');
-      }
-      return <NewsArticle>[];
-    });
+      controller.add(list.take(60).toList());
+    }
+
+    void startListening() {
+      // Primary: server-side ordered query by publishedAt
+      final queryPub = _firestore
+          .collection('explore_news')
+          .orderBy('publishedAt', descending: true)
+          .limit(60);
+
+      // Companion: captures articles missing publishedAt but possessing createdAt
+      final queryCreated = _firestore
+          .collection('explore_news')
+          .orderBy('createdAt', descending: true)
+          .limit(30);
+
+      activeSub = queryPub.snapshots().listen(
+        (snapshot) {
+          pubDocs = {for (final d in snapshot.docs) d.id: d};
+          emitMerged();
+        },
+        onError: (err) {
+          if (kDebugMode) {
+            debugPrint('[NewsRepo] LatestNews ordered query error ($err). Using fallback stream with in-memory sort.');
+          }
+          activeSub?.cancel();
+          final fallback = _firestore.collection('explore_news').limit(100);
+          activeSub = fallback.snapshots().listen(
+            (snap) {
+              pubDocs = {for (final d in snap.docs) d.id: d};
+              emitMerged();
+            },
+            onError: (fallbackErr) {
+              if (kDebugMode) {
+                debugPrint('[NewsRepo ERROR] watchLatestNews fallback failed: $fallbackErr');
+              }
+              if (!controller.isClosed && pubDocs.isEmpty && createdDocs.isEmpty) {
+                controller.add(<NewsArticle>[]);
+              }
+            },
+          );
+        },
+      );
+
+      companionSub = queryCreated.snapshots().listen(
+        (snapshot) {
+          createdDocs = {for (final d in snapshot.docs) d.id: d};
+          emitMerged();
+        },
+        onError: (_) {
+          // Silent fallback if createdAt ordering isn't available
+        },
+      );
+    }
+
+    controller = StreamController<List<NewsArticle>>.broadcast(
+      onListen: startListening,
+      onCancel: () {
+        activeSub?.cancel();
+        companionSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   @override
@@ -540,6 +718,16 @@ class NewsRepositoryImpl implements NewsRepository {
     return '${diff.inDays}d ago';
   }
 
+  DateTime? _resolveEffectiveDate(dynamic publishedVal, dynamic createdVal, dynamic collectedVal) {
+    final pDate = _parseDateTime(publishedVal);
+    if (pDate != null) return pDate;
+    final cDate = _parseDateTime(createdVal);
+    if (cDate != null) return cDate;
+    final colDate = _parseDateTime(collectedVal);
+    if (colDate != null) return colDate;
+    return null;
+  }
+
   TopStory _mapDocToTopStory(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     final id = doc.id;
@@ -551,7 +739,8 @@ class NewsRepositoryImpl implements NewsRepository {
         '';
     final source = data['source'] as String? ?? '';
     final category = data['category'] as String? ?? 'General';
-    final timeAgo = _formatTimeAgo(data['publishedAt'] ?? data['collectedAt']);
+    final effectiveDate = _resolveEffectiveDate(data['publishedAt'], data['createdAt'], data['collectedAt']);
+    final timeAgo = _formatTimeAgo(effectiveDate);
 
     return TopStory(
       id: id,
@@ -587,11 +776,23 @@ class NewsRepositoryImpl implements NewsRepository {
       (data['details'] as Map).forEach((k, v) => detailsMap[k.toString()] = v.toString());
     }
 
+    List<Color> gradientColors = const [Color(0xFF6366F1), Color(0xFF8B5CF6)];
+    if (data['gradientColors'] is List && (data['gradientColors'] as List).isNotEmpty) {
+      try {
+        final parsed = (data['gradientColors'] as List).map((c) {
+          final str = c.toString().replaceAll('#', '').trim();
+          final hex = str.length == 6 ? 'FF$str' : str;
+          return Color(int.parse(hex, radix: 16));
+        }).toList();
+        if (parsed.length >= 2) gradientColors = parsed;
+      } catch (_) {}
+    }
+
     return TrendingTopic(
       id: id,
       title: title,
       icon: Icons.trending_up_rounded,
-      gradientColors: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+      gradientColors: gradientColors,
       imageUrls: imageUrls.isNotEmpty
           ? imageUrls
           : const [
@@ -622,8 +823,9 @@ class NewsRepositoryImpl implements NewsRepository {
     final source = (data['source'] is String && (data['source'] as String).trim().isNotEmpty)
         ? (data['source'] as String).trim()
         : 'Mirror News';
-    final publishedAt = _parseDateTime(data['publishedAt'] ?? data['createdAt']);
-    final timeAgo = _formatTimeAgo(publishedAt);
+    final effectiveDate = _resolveEffectiveDate(data['publishedAt'], data['createdAt'], data['collectedAt']);
+    final publishedAt = effectiveDate;
+    final timeAgo = _formatTimeAgo(effectiveDate);
 
     List<Map<String, dynamic>> imagesData = [];
     List<String> imageUrls = [];
@@ -671,7 +873,7 @@ class NewsRepositoryImpl implements NewsRepository {
       imagesData: imagesData,
       details: details,
       slug: data['slug'] as String?,
-      createdAt: _parseDateTime(data['collectedAt'] ?? data['createdAt']),
+      createdAt: _resolveEffectiveDate(data['createdAt'], data['collectedAt'], data['publishedAt']),
       expiresAt: _parseDateTime(data['expiresAt']),
       updatedAt: _parseDateTime(data['updatedAt']),
       viewerDocumentId: data['viewerDocumentId'] as String?,

@@ -1065,6 +1065,28 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
         _subscribeToNewsStreams();
         await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.pause_circle_outline_rounded, color: Color(0xFF20C8FF), size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'News updates are temporarily paused.',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF1E293B),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       },
       color: const Color(0xFF20C8FF),
       child: content,
