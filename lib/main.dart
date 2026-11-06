@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -37,6 +38,8 @@ import 'services/paystack_service.dart';
 import 'services/notification_service.dart';
 import 'services/manual_ad_view_tracker.dart';
 import 'services/chat_service.dart';
+import 'services/security_service.dart';
+import 'services/xp_service.dart';
 import 'providers/providers.dart';
 
 void main() async {
@@ -50,6 +53,7 @@ void main() async {
   );
 
   await PersistenceService().init();
+  unawaited(SecurityService().enableSecureScreen());
 
   // Initialize synchronous ad coordinators
   AppOpenAdManager().initialize();
@@ -93,6 +97,7 @@ Future<void> _initServices() async {
       ManualAdViewTracker().initialize(),
     ]);
 
+    XPService().initialize();
     InterstitialAdService().initialize();
     
     DownloadService().performRetentionCleanup();
@@ -370,6 +375,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   late final PageController _pageController;
   StreamSubscription<bool>? _sessionSubscription;
   late final String _deviceId;
+  DateTime? _lastBackPressTime;
+  Timer? _exitConfirmTimer;
 
   @override
   void initState() {
@@ -433,6 +440,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   }
 
   void _handleAutoLogout() async {
+    _exitConfirmTimer?.cancel();
     _sessionSubscription?.cancel();
     final authService = ref.read(authServiceProvider);
     await authService.signOut();
@@ -449,6 +457,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   @override
   void dispose() {
+    _exitConfirmTimer?.cancel();
     _sessionSubscription?.cancel();
     _pageController.dispose();
     ConnectivityService().dispose();
@@ -463,6 +472,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   ];
 
   void _onItemTapped(int index) {
+    _exitConfirmTimer?.cancel();
+    _lastBackPressTime = null;
     final currentIndex = ref.read(uiStateProvider).mainNavigationIndex;
     if (currentIndex != index) {
       InterstitialAdService().maybeShowOnTransition(
@@ -477,13 +488,46 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     );
   }
 
+  void _handleBackNavigation() {
+    final currentIndex = ref.read(uiStateProvider).mainNavigationIndex;
+    if (currentIndex != 0) {
+      _onItemTapped(0);
+      return;
+    }
+
+    final now = DateTime.now();
+    if (_lastBackPressTime != null &&
+        now.difference(_lastBackPressTime!) <= const Duration(seconds: 3)) {
+      _exitConfirmTimer?.cancel();
+      _lastBackPressTime = null;
+      SystemNavigator.pop();
+    } else {
+      _lastBackPressTime = now;
+      _exitConfirmTimer?.cancel();
+      _exitConfirmTimer = Timer(const Duration(seconds: 3), () {
+        _lastBackPressTime = null;
+      });
+      TopNotificationService().showNotification(
+        context,
+        'Tap back again to exit',
+        type: TopNotificationType.info,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uiState = ref.watch(uiStateProvider);
     final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBackNavigation();
+      },
+      child: Scaffold(
       backgroundColor: isDark ? const Color(0xFF070716) : Colors.white,
       body: PageView(
         controller: _pageController,
@@ -529,6 +573,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           ],
         ),
       ),
+    ),
     );
   }
 }
