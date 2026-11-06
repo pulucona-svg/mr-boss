@@ -664,6 +664,9 @@ export class ThumbnailSearchService {
     const combined = `${codeLower} ${titleLower} ${topicLower} ${descLower}`.trim();
     const seed = `${codeLower}_${titleLower}_${topicLower}`.trim();
 
+    const cleanTitle = (meta.title || "Academic Resource").trim();
+    const cleanCode = (meta.courseCode || "").trim();
+
     let visualSubject = "";
 
     if (isLab) {
@@ -887,7 +890,7 @@ export class ThumbnailSearchService {
           "Documentary photograph of supply chain analysts reviewing warehouse layout plans and distribution charts around a bright project table."
         ];
         visualSubject = variants[this.getDeterministicIndex(seed, variants.length)];
-      } else if (/econ|business|commerce|manage|entrepreneur|marketing|human resource|hr\b/i.test(combined)) {
+      } else if (/econ|business|commerce|manage|organization|organizational|entrepreneur|marketing|human resource|hr\b/i.test(combined)) {
         const variants = [
           "Authentic editorial photograph of a modern university business school conference room; leather armchairs around an oak table, paper agenda portfolios, water glasses, and a presentation display in realistic daylight.",
           "Realistic photograph of business students in smart-casual attire gathered around a project table reviewing marketing case studies and strategic planning documents, natural daylight through office windows.",
@@ -1000,7 +1003,7 @@ export class ThumbnailSearchService {
           "Documentary photograph of a behavioral science study room with psychological reference texts, testing cards, and research notes on a tidy oak desk under warm daylight."
         ];
         visualSubject = variants[this.getDeterministicIndex(seed, variants.length)];
-      } else if (/literature|poetry|drama|novel|creative writing/i.test(combined)) {
+      } else if (/literature|literary|criticism|poetry|drama|novel|creative writing/i.test(combined)) {
         const variants = [
           "Authentic editorial photograph of a university literature study room; stacks of classic books, an open hardcover volume on a wooden bookstand, reading spectacles, and a notepad on an antique oak library desk with warm sunlight through windows.",
           "Realistic photograph of a creative writing desk with a fountain pen, open leather journal, reference dictionary, and a ceramic mug on a weathered wooden table by a sunny window.",
@@ -1014,7 +1017,7 @@ export class ThumbnailSearchService {
           "Editorial photograph of an archaeology laboratory bench with ceramic pottery sherds, measurement calipers, field documentation notebooks, and magnifying loupes under natural daylight."
         ];
         visualSubject = variants[this.getDeterministicIndex(seed, variants.length)];
-      } else if (/language|linguist|french|german|kiswahili|spanish|translation/i.test(combined)) {
+      } else if (/language|linguist|english|grammar|syntax|phonetic|phonol|morphol|french|german|kiswahili|spanish|translation/i.test(combined)) {
         const variants = [
           "Authentic photograph of a university language learning lab; audio headsets, language learning workbooks, transcription notes, and desktop workstations in a well-lit academic setting.",
           "Realistic editorial photograph of a linguistics study desk with bilingual dictionaries, phonetic transcription charts, notebook, and pen under warm natural daylight.",
@@ -1063,9 +1066,20 @@ export class ThumbnailSearchService {
 
     const negativeConstraints = "MANDATORY REQUIREMENT: ABSOLUTELY ZERO TEXT. NO WRITTEN WORDS, NO LETTERS, NO NUMBERS, NO ALPHANUMERIC CHARACTERS, NO LABELS, NO HEADINGS, NO SUBTITLES, NO TITLES, NO CAPTIONS, NO TYPOGRAPHY, NO WRITTEN ANNOTATIONS, NO WATERMARKS, NO LOGOS, NO SYMBOLS WITH TEXT, NO FAKE BOOK COVERS, NO FAKE USER INTERFACES. THE ENTIRE IMAGE MUST BE 100% PURELY VISUAL WITH ZERO EMBEDDED TEXT. NO NEON LIGHTING, NO PURPLE OR CYAN GLOW, NO CYBERPUNK AESTHETICS, NO FLOATING CODE, NO HOLOGRAMS, NO 3D RENDERED CGI, NO DIGITAL ARTWORK, NO CARTOON, NO SURREAL SCI-FI EFFECTS.";
 
+    const semanticInterpretation = [
+      `Complete Academic Subject: ${cleanTitle}${cleanCode ? ` (${cleanCode})` : ""}.`,
+      `1. UNIFIED SUBJECT INTERPRETATION: Interpret the complete unit title (${cleanTitle}) as one cohesive, integrated academic subject. Never select an isolated keyword or ignore parts of the title.`,
+      `2. DISCIPLINE & CONTEXT IDENTIFICATION: Identify the authentic academic discipline and intended higher education curriculum context of the entire title.`,
+      `3. HOLISTIC WORD RELATIONSHIP REASONING: Reason about the semantic relationships among all meaningful words in the title to determine a visually appropriate representation of the complete subject.`,
+      `4. AVOID POLYSEMOUS MISINTERPRETATIONS: Prevent misleading interpretations caused by words with multiple meanings (for example, words such as 'structure', 'network', 'system', 'plant', 'cell', 'model', 'matrix', 'security', 'field', 'class', or 'theory' must be interpreted strictly within the professional academic domain of ${cleanTitle}, never as unrelated architectural construction, biological plants, or generic objects unless the complete subject explicitly requires it).`,
+      `5. COHESIVE VISUAL EMBODIMENT: Generate an academically relevant photographic illustration that represents the subject as a whole.`,
+      `6. PURELY CONCEPTUAL GUIDANCE: This academic title is provided strictly for conceptual reasoning and subject understanding—do NOT render, print, write, or paint any titles, words, letters, or course codes anywhere in the image.`
+    ].join(" ");
+
     const promptSections = [
+      `[ACADEMIC SUBJECT & SEMANTIC INTERPRETATION]: ${semanticInterpretation}`,
       `[VISUAL SCENE & OBJECTS]: ${visualSubject}`,
-      `[ACADEMIC RELEVANCE]: University educational context representing ${typeDesc}.`,
+      `[ACADEMIC RELEVANCE]: University educational context representing ${typeDesc} for ${cleanTitle}.`,
       `[COMPOSITION & LIGHTING]: ${composition}`,
       `[STYLE & RENDER QUALITY]: ${styleDescription}`,
       `[MANDATORY NEGATIVE CONSTRAINTS - STRICTLY NO TEXT]: ${negativeConstraints}`
