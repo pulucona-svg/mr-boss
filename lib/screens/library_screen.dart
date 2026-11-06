@@ -323,10 +323,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _resetAllFilters();
   }
 
+  Resource? _mapDownloadedResource(Map<String, String> map) {
+    final id = map['id'];
+    if (id != null && id.isNotEmpty) {
+      final res = ResourceService().findResourceById(id);
+      if (res != null) return res;
+    }
+    final byTitle = ResourceService().findResourceByTitle(map['title'] ?? '');
+    if (byTitle != null) return byTitle;
+    return Resource.fromMap(map, id ?? '');
+  }
+
   void _triggerOverlay(bool isDownloads) {
     final baseResources = isDownloads 
       ? DownloadService().downloadedResources
-          .map((map) => ResourceService().findResourceByTitle(map['title']!))
+          .map(_mapDownloadedResource)
           .whereType<Resource>()
           .toList()
       : ResourceService().userUploads;
@@ -728,7 +739,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 setState(() {
                   final baseResources = isDownloads 
                       ? DownloadService().downloadedResources
-                          .map((map) => ResourceService().findResourceByTitle(map['title']!))
+                          .map(_mapDownloadedResource)
                           .whereType<Resource>()
                           .toList()
                       : ResourceService().userUploads;
@@ -1139,7 +1150,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final userUploads = ResourceService().userUploads;
     final baseResources = isDownloads 
         ? DownloadService().downloadedResources
-            .map((map) => ResourceService().findResourceByTitle(map['title']!))
+            .map(_mapDownloadedResource)
             .whereType<Resource>()
             .toList()
         : userUploads;

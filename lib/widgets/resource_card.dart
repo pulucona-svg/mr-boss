@@ -58,6 +58,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     final String displayUploadedBy = isMe ? userProfile.username : widget.resource.uploadedBy;
 
     return {
+      'id': widget.resource.id,
       'title': widget.resource.title,
       'type': widget.resource.type,
       'thumbnail': widget.resource.thumbnailUrl,
@@ -108,6 +109,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
         context,
         MaterialPageRoute(
           builder: (context) => MaterialViewerScreen(
+            id: widget.resource.id,
             title: widget.resource.title, 
             fileUrl: widget.resource.fileUrl,
             unitName: widget.resource.unitName,
@@ -179,6 +181,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ResourceDetailsModal(
+        id: widget.resource.id,
         title: widget.resource.title,
         type: widget.resource.type,
         thumbnailUrl: widget.resource.thumbnailUrl,
@@ -338,8 +341,9 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     final viewService = ref.watch(viewServiceProvider);
 
     final isActive = resourceService.activeResourceId == widget.resource.id;
-    final isPinned = downloadService.isPinned(widget.resource.title);
-    final isDownloaded = downloadService.isDownloaded(widget.resource.title);
+    final resourceId = widget.resource.id.isNotEmpty ? widget.resource.id : widget.resource.title;
+    final isPinned = downloadService.isPinned(resourceId);
+    final isDownloaded = downloadService.isDownloaded(resourceId);
     
     final viewsCount = widget.resource.views.toString();
     final likesCount = widget.resource.likes.toString();
@@ -516,7 +520,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                               onTap: () {
                                 _setActiveResource(); // Just set active/views, NO auto-read
                                 if (isPinned) {
-                                  downloadService.unpin(widget.resource.title);
+                                  downloadService.unpin(resourceId);
                                   FeedbackUtils.showActionFeedback(
                                     context: context,
                                     type: FeedbackActionType.unpin,
@@ -524,7 +528,7 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                     isDownloads: true,
                                   );
                                 } else if (isDownloaded) {
-                                  downloadService.pin(widget.resource.title);
+                                  downloadService.pin(resourceId);
                                   FeedbackUtils.showActionFeedback(
                                     context: context,
                                     type: FeedbackActionType.pin,
@@ -539,12 +543,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                               child: Stack(
                                 alignment: Alignment.center,
                                 children: [
-                                  if (downloadService.isDownloading(widget.resource.title))
+                                  if (downloadService.isDownloading(resourceId))
                                     SizedBox(
                                       width: 32,
                                       height: 32,
                                       child: CircularProgressIndicator(
-                                        value: downloadService.getProgress(widget.resource.title),
+                                        value: downloadService.getProgress(resourceId),
                                         strokeWidth: 3,
                                         color: const Color(0xFF00A85A),
                                         backgroundColor: Colors.white10,
@@ -557,12 +561,12 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
                                           ? const Color(0xFFD9BD26) 
                                           : (isDownloaded ? const Color(0xFF00A85A) : Colors.black38),
                                       shape: BoxShape.circle,
-                                      border: (downloadService.isDownloading(widget.resource.title) || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
+                                      border: (downloadService.isDownloading(resourceId) || (isPinned && widget.showPin) || isDownloaded) ? null : Border.all(color: Colors.white24, width: 0.5),
                                     ),
                                     child: Icon(
                                       (isPinned && widget.showPin)
                                           ? Icons.push_pin_rounded 
-                                          : (downloadService.isDownloading(widget.resource.title) ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
+                                          : (downloadService.isDownloading(resourceId) ? Icons.download_for_offline : (isDownloaded ? Icons.check : Icons.download_rounded)),
                                       color: Colors.white,
                                       size: 16,
                                     ),

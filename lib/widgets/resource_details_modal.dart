@@ -11,6 +11,7 @@ import 'download_modal.dart';
 const String anonymousMaskAsset = 'assets/images/anonymous_mask.png';
 
 class ResourceDetailsModal extends ConsumerWidget {
+  final String id;
   final String title;
   final String type;
   final String thumbnailUrl;
@@ -52,6 +53,7 @@ class ResourceDetailsModal extends ConsumerWidget {
     required this.uploaderRole,
     this.uploaderId = 'admin',
     this.uploaderProfilePic,
+    this.id = '',
     required this.fileUrl,
     this.showDownload = true,
     this.isAnonymous = false,
@@ -69,6 +71,7 @@ class ResourceDetailsModal extends ConsumerWidget {
         : (isAnonymous ? baseUploader : '$baseUploader ($uploaderRole)');
 
     return {
+      'id': id,
       'title': title,
       'type': type,
       'thumbnail': thumbnailUrl,
@@ -114,6 +117,7 @@ class ResourceDetailsModal extends ConsumerWidget {
           context,
           MaterialPageRoute(
             builder: (context) => MaterialViewerScreen(
+              id: id,
               title: title, 
               fileUrl: fileUrl, 
               unitName: unitName,

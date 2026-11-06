@@ -137,7 +137,7 @@ class Resource {
     final status = (map['thumbnailStatus'] ?? (url.trim().isNotEmpty ? 'completed' : 'pending')).toString();
 
     return Resource(
-      id: docId,
+      id: docId.isNotEmpty ? docId : ((map['id'] != null && map['id'].toString().isNotEmpty) ? map['id'].toString() : '${map['title'] ?? ''}_${map['unitCode'] ?? ''}_${map['fileUrl'] ?? ''}'),
       title: map['title'] ?? '',
       fileName: map['fileName'] ?? '',
       type: map['type'] ?? '',
