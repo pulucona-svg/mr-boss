@@ -15,6 +15,7 @@ import '../services/progress_service.dart';
 import '../services/usage_service.dart';
 import '../services/file_service.dart';
 import '../services/resource_service.dart';
+import '../services/download_service.dart';
 import '../services/subscription_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/top_notification_service.dart';
@@ -83,6 +84,38 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
   late final ValueNotifier<int> _currentPageNotifier;
   late final ValueNotifier<List<int>> _bookmarksNotifier;
   final PdfViewerController _pdfController = PdfViewerController();
+
+  bool _hasError = false;
+  String? _errorMessage;
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  bool _showResumePopup = false;
+  int _savedResumePage = 1;
+  Timer? _resumeTimer;
+  bool _hasShownResumePopup = false;
+  bool _hasUserDeliberatelyProgressed = false;
+  late final AnimationController _resumePopupAnimController;
+  late final Animation<double> _resumePopupFadeAnimation;
+  late final Animation<Offset> _resumePopupSlideAnimation;
+
+  String get _docIdentifier => (widget.id != null && widget.id!.isNotEmpty) ? widget.id! : widget.title;
+
+  Future<bool> _verifyFileCompleteness(String path) async {
+    try {
+      final f = File(path);
+      if (!await f.exists()) return false;
+      final len = await f.length();
+      if (len < 10) return false;
+      if (_isPdf) {
+        final headerBytes = await f.openRead(0, 5).first;
+        final header = String.fromCharCodes(headerBytes);
+        if (!header.startsWith('%PDF-')) return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   // Intelligent tap-driven bottom study toolbar variables
   late final AnimationController _toolbarAnimController;
@@ -228,7 +261,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
   void initState() {
     super.initState();
     _loadAiLauncherMode();
-    final initialProgress = ProgressService().getProgress(widget.title);
+    final initialProgress = ProgressService().getProgress(_docIdentifier, fallbackTitle: widget.title);
     _progressNotifier = ValueNotifier<double>(initialProgress);
     _currentPageNotifier = ValueNotifier<int>(1);
 
@@ -257,15 +290,6 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
     _isPdf = !_isMultiImage && _fileService.isPdf(widget.fileUrl);
     _isImage = !_isMultiImage && _fileService.isImage(widget.fileUrl);
     _isHtml = !_isMultiImage && _fileService.isHtml(widget.fileUrl);
-    
-    // Continuously monitor scroll page changes from controller
-    _pdfController.addListener(_onControllerChanged);
-
-    // Start tracking reading time
-    UsageService().startMaterialTracking(widget.title);
-
-    _prepareFile();
-    _initTts();
 
     _toolbarAnimController = AnimationController(
       vsync: this,
@@ -281,6 +305,33 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         curve: Curves.easeInOut,
       ),
     );
+
+    _resumePopupAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _resumePopupFadeAnimation = CurvedAnimation(
+      parent: _resumePopupAnimController,
+      curve: Curves.easeOut,
+    );
+    _resumePopupSlideAnimation = Tween<Offset>(
+      begin: const Offset(0.0, -0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _resumePopupAnimController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    
+    // Continuously monitor scroll page changes from controller
+    _pdfController.addListener(_onControllerChanged);
+
+    // Start tracking reading time
+    UsageService().startMaterialTracking(widget.title);
+
+    _prepareFile();
+    _initTts();
 
     WidgetsBinding.instance.addObserver(this);
     SecurityService().enableSecureScreen();
@@ -305,6 +356,9 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
     final page = _pdfController.pageNumber;
     if (page != null && page != _currentPageNotifier.value) {
       _currentPageNotifier.value = page;
+      if (page > 1) {
+        _hasUserDeliberatelyProgressed = true;
+      }
     }
   }
 
@@ -312,28 +366,94 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
     debugPrint('MaterialViewerScreen: [DEBUG] Opening resource: ${widget.title}');
     debugPrint('MaterialViewerScreen: [DEBUG] fileUrl: ${widget.fileUrl}');
 
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+        _errorMessage = null;
+        _isDownloading = false;
+        _downloadProgress = 0.0;
+      });
+    }
+
     if (widget.fileUrl == 'test_doc.pdf') {
       if (mounted) {
         setState(() => _isLoading = false);
+      }
+      final savedPage = ProgressService().getSavedPage(_docIdentifier, fallbackTitle: widget.title);
+      if (savedPage > 1) {
+        _triggerResumePopup(savedPage);
       }
       return;
     }
 
     if (widget.fileUrl.isEmpty) {
       if (mounted) {
-        setState(() => _isLoading = false);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Error: Resource URL is empty.')),
-            );
-          }
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Resource URL is empty.';
         });
       }
       return;
     }
 
     try {
+      // 1. Direct local file resolution (e.g. external document or downloaded file)
+      final directLocalFile = File(widget.fileUrl);
+      if (directLocalFile.existsSync() && await directLocalFile.length() > 0) {
+        final isValid = await _verifyFileCompleteness(directLocalFile.path);
+        if (isValid) {
+          _localPath = directLocalFile.path;
+          if (_isHtml) {
+            _htmlContent = await directLocalFile.readAsString();
+          }
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+          return;
+        }
+      }
+
+      // 2. Active background download detection via DownloadService
+      final downloadService = DownloadService();
+      final isActivelyDownloading = downloadService.isDownloading(_docIdentifier) ||
+          downloadService.isDownloading(widget.title);
+
+      if (isActivelyDownloading) {
+        if (mounted) {
+          setState(() {
+            _isDownloading = true;
+            _downloadProgress = downloadService.getProgress(_docIdentifier);
+          });
+        }
+
+        final completer = Completer<void>();
+        void downloadListener() {
+          final stillDownloading = downloadService.isDownloading(_docIdentifier) ||
+              downloadService.isDownloading(widget.title);
+          final progress = downloadService.getProgress(_docIdentifier);
+          if (mounted) {
+            setState(() {
+              _downloadProgress = progress;
+            });
+          }
+          if (!stillDownloading) {
+            downloadService.removeListener(downloadListener);
+            if (!completer.isCompleted) completer.complete();
+          }
+        }
+
+        downloadService.addListener(downloadListener);
+        await completer.future.timeout(const Duration(seconds: 45), onTimeout: () {
+          downloadService.removeListener(downloadListener);
+        });
+
+        if (mounted) {
+          setState(() => _isDownloading = false);
+        }
+      }
+
       if (_isMultiImage) {
         final List<dynamic> urls = jsonDecode(widget.fileUrl);
         _multiImageUrls = List<String>.from(urls);
@@ -350,34 +470,40 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
               }
               localPaths.add(file.path);
             } catch (e) {
-              debugPrint('Failed to cache image URL in test/offline mode: $e');
+              debugPrint('Failed to cache image URL: $e');
             }
           }
         }
         _multiImageLocalPaths = localPaths;
-
-        // Restore progress
-        final initialProgress = _progressNotifier.value;
-        if (initialProgress > 0 && _multiImageUrls.isNotEmpty) {
-          final targetPage = (initialProgress * _multiImageUrls.length).round().clamp(1, _multiImageUrls.length);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _multiImageScrollController.hasClients) {
-              _goToMultiImagePage(targetPage);
-            }
-          });
+        final savedPage = ProgressService().getSavedPage(_docIdentifier, fallbackTitle: widget.title);
+        if (savedPage > 1) {
+          _triggerResumePopup(savedPage);
         }
       } else {
-        // 1. Check if the file is already cached (or downloaded)
+        // 3. Resolve file from CacheManager with completeness verification
         final fileInfo = await DefaultCacheManager().getFileFromCache(widget.fileUrl);
         File? file;
         if (fileInfo != null && await fileInfo.file.exists() && await fileInfo.file.length() > 0) {
-          file = fileInfo.file;
-          debugPrint('MaterialViewerScreen: Loaded valid cached/downloaded file from path: ${file.path}');
-        } else {
-          debugPrint('MaterialViewerScreen: File not cached. Fetching and storing in cache...');
-          // 2. Fetch and store in cache
+          final isValid = await _verifyFileCompleteness(fileInfo.file.path);
+          if (isValid) {
+            file = fileInfo.file;
+            debugPrint('MaterialViewerScreen: Loaded verified cached/downloaded file from path: ${file.path}');
+          } else {
+            debugPrint('MaterialViewerScreen: Cached file incomplete or corrupted. Purging and re-fetching...');
+            try {
+              await DefaultCacheManager().removeFile(widget.fileUrl);
+            } catch (_) {}
+          }
+        }
+
+        if (file == null) {
+          debugPrint('MaterialViewerScreen: Fetching and caching complete file from server...');
           file = await DefaultCacheManager().getSingleFile(widget.fileUrl);
-          debugPrint('MaterialViewerScreen: File fetched and cached at path: ${file.path}');
+          final isValid = await _verifyFileCompleteness(file.path);
+          if (!isValid) {
+            throw Exception('Downloaded file is incomplete or corrupted.');
+          }
+          debugPrint('MaterialViewerScreen: Complete file fetched and verified at path: ${file.path}');
         }
 
         _localPath = file.path;
@@ -394,9 +520,9 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         return;
       }
     } catch (e) {
-      debugPrint('MaterialViewerScreen: [ERROR] Caching failed: $e');
+      debugPrint('MaterialViewerScreen: [ERROR] Loading failed: $e');
 
-      // Fallback for non-PDF/Image/HTML if cache fails
+      // Fallback for non-PDF/Image/HTML
       if (!_isPdf && !_isImage && !_isHtml) {
         final fileName = '${widget.title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
         try {
@@ -409,16 +535,16 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         } catch (_) {}
       }
 
+      // In-place recoverable error state without abruptly closing the reader
       if (mounted) {
-        Navigator.pop(context);
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = ConnectivityService.isNetworkError(e)
+              ? 'Unable to load document due to network interruption. Check connection.'
+              : 'Unable to load document. Please tap Retry.';
+        });
       }
-      final message = ConnectivityService.isNetworkError(e)
-          ? 'Failed to load the material. Please check your internet connection.'
-          : 'Failed to load the material. Please try again.';
-      TopNotificationService().showNotification(
-        InterstitialAdService.navigatorKey.currentContext,
-        message,
-      );
       return;
     }
 
@@ -430,13 +556,225 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
   void _onPdfChanged(int? pageNumber) {
     if (pageNumber == null) return;
     _currentPageNotifier.value = pageNumber;
-    final totalPages = _pdfController.pageCount;
-    if (totalPages > 0) {
-      final newProgress = (pageNumber / totalPages).clamp(0.0, 1.0);
-      _progressNotifier.value = newProgress;
-      ProgressService().updateProgress(widget.title, newProgress);
+    // CRITICAL SAVED-PROGRESS RULE:
+    // Only update saved reading position when user deliberately navigates or progresses beyond page 1
+    if (pageNumber > 1 || _hasUserDeliberatelyProgressed) {
+      _hasUserDeliberatelyProgressed = true;
+      final totalPages = _pdfDocument?.pages.length ?? _totalPages;
+      if (totalPages > 0) {
+        final newProgress = (pageNumber / totalPages).clamp(0.0, 1.0);
+        _progressNotifier.value = newProgress;
+        ProgressService().updateProgress(
+          _docIdentifier,
+          newProgress,
+          pageNumber: pageNumber,
+          totalPages: totalPages,
+          title: widget.title,
+        );
+      }
     }
   }
+
+  Widget _buildLoadingView() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(color: Color(0xFF20C8FF)),
+          const SizedBox(height: 16),
+          Text(
+            _isDownloading
+                ? 'Downloading document... ${(_downloadProgress * 100).toInt()}%'
+                : 'Loading document...',
+            style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+          if (_isDownloading) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 180,
+              child: LinearProgressIndicator(
+                value: _downloadProgress > 0 ? _downloadProgress : null,
+                color: const Color(0xFF20C8FF),
+                backgroundColor: Colors.white12,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: Colors.amberAccent, size: 56),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage ?? 'Unable to load document.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                _prepareFile();
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF20C8FF),
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _triggerResumePopup(int savedPage) {
+    if (_hasShownResumePopup || savedPage <= 1) return;
+    _hasShownResumePopup = true;
+    _savedResumePage = savedPage;
+    if (mounted) {
+      setState(() {
+        _showResumePopup = true;
+      });
+      _resumePopupAnimController.forward(from: 0.0);
+      _resumeTimer?.cancel();
+      _resumeTimer = Timer(const Duration(seconds: 3), () {
+        _dismissResumePopup();
+      });
+    }
+  }
+
+  void _dismissResumePopup() {
+    _resumeTimer?.cancel();
+    if (!mounted || !_showResumePopup) return;
+    _resumePopupAnimController.reverse().then((_) {
+      if (mounted) {
+        setState(() => _showResumePopup = false);
+      }
+    });
+  }
+
+  Widget _buildResumePopup() {
+    return SlideTransition(
+      position: _resumePopupSlideAnimation,
+      child: FadeTransition(
+        opacity: _resumePopupFadeAnimation,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF141232),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFF20C8FF).withValues(alpha: 0.5),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF20C8FF).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.auto_stories_rounded,
+                    color: Color(0xFF20C8FF),
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Continue reading from page $_savedResumePage?',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  key: const ValueKey('resume_reading_button'),
+                  onPressed: () {
+                    _dismissResumePopup();
+                    _hasUserDeliberatelyProgressed = true;
+                    if (_isPdf) {
+                      if (_pdfController.isReady) {
+                        _pdfController.goToPage(pageNumber: _savedResumePage);
+                      }
+                    } else if (_isMultiImage && _multiImageScrollController.hasClients) {
+                      final targetIndex = (_savedResumePage - 1).clamp(0, _multiImageLocalPaths.length - 1);
+                      _multiImageScrollController.animateTo(
+                        targetIndex * 400.0,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF20C8FF),
+                    foregroundColor: const Color(0xFF070716),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Resume',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  key: const ValueKey('dismiss_resume_popup_button'),
+                  onTap: _dismissResumePopup,
+                  behavior: HitTestBehavior.translucent,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close_rounded, color: Colors.white60, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
 
   void _toggleBookmark() {
     final page = _pdfController.pageNumber ?? _currentPageNotifier.value;
@@ -616,26 +954,34 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
   @override
   void dispose() {
     _toolbarAnimController.dispose();
+    _resumePopupAnimController.dispose();
     _scrollTimer?.cancel();
     _highlightTimer?.cancel();
     _pdfController.removeListener(_onControllerChanged);
     UsageService().stopMaterialTracking();
     _flutterTts.stop();
-    if (_isPdf || _isMultiImage) {
+    _resumeTimer?.cancel();
+    if ((_isPdf || _isMultiImage) && _hasUserDeliberatelyProgressed) {
       try {
         final page = _currentPageNotifier.value;
         final totalPages = _totalPages;
         if (totalPages > 0) {
           final finalProgress = (page / totalPages).clamp(0.0, 1.0);
-          ProgressService().updateProgress(widget.title, finalProgress);
+          ProgressService().updateProgress(
+            _docIdentifier,
+            finalProgress,
+            pageNumber: page,
+            totalPages: totalPages,
+            title: widget.title,
+          );
         }
       } catch (e) {
         debugPrint('Error saving progress during dispose: $e');
       }
-      if (_isPdf && _textSearcher != null) {
-        _textSearcher!.removeListener(_onSearchUpdated);
-        _textSearcher!.dispose();
-      }
+    }
+    if (_isPdf && _textSearcher != null) {
+      _textSearcher!.removeListener(_onSearchUpdated);
+      _textSearcher!.dispose();
     }
     _pdfSearchDebounceTimer?.cancel();
     _searchController.dispose();
@@ -690,6 +1036,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         appBar: AppBar(
           backgroundColor: const Color(0xFF141232),
           elevation: 0,
+          titleSpacing: 8,
           automaticallyImplyLeading: !_isSearching,
           leading: _isSearching
               ? IconButton(
@@ -711,63 +1058,52 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF20C8FF),
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          if (subtitleLine.isNotEmpty)
-                            Flexible(
-                              child: Text(
-                                subtitleLine,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          if (_isPdf) ...[
-                            if (subtitleLine.isNotEmpty)
-                              const SizedBox(width: 16),
-                            GestureDetector(
-                              key: const ValueKey('pdf_search_button'),
-                              onTap: _startSearchMode,
-                              behavior: HitTestBehavior.translucent,
-                              child: const Icon(
-                                Icons.search,
-                                color: Colors.white70,
-                                size: 16,
-                              ),
-                            ),
-                            if (_isCompactAiLauncher) ...[
-                              const SizedBox(width: 10),
-                              AiCompactToolbarLauncher(
-                                onRestoreLargeLauncher: () =>
-                                    _setAiLauncherMode('large'),
-                              ),
-                            ],
-                          ] else if (_isCompactAiLauncher) ...[
-                            if (subtitleLine.isNotEmpty)
-                              const SizedBox(width: 10),
-                            AiCompactToolbarLauncher(
-                              onRestoreLargeLauncher: () =>
-                                  _setAiLauncherMode('large'),
-                            ),
-                          ],
-                        ],
-                      ),
+                      if (subtitleLine.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitleLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
           ),
           actions: [
             if (!_isSearching) ...[
+              if (_isPdf)
+                GestureDetector(
+                  key: const ValueKey('pdf_search_button'),
+                  onTap: _startSearchMode,
+                  behavior: HitTestBehavior.translucent,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                    child: Icon(
+                      Icons.search,
+                      color: Colors.white70,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              if (_isCompactAiLauncher)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: AiCompactToolbarLauncher(
+                    onRestoreLargeLauncher: () =>
+                        _setAiLauncherMode('large'),
+                  ),
+                ),
               Padding(
-                padding: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.only(left: 4, right: 10),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -779,11 +1115,13 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
                     ),
                     if (_isPdf) ...[
                       const SizedBox(height: 2),
-                      ValueListenableBuilder<double>(
-                        valueListenable: _progressNotifier,
-                        builder: (context, progress, child) {
+                      ValueListenableBuilder<int>(
+                        valueListenable: _currentPageNotifier,
+                        builder: (context, currentPage, child) {
+                          final total = _pdfDocument?.pages.length ?? _totalPages;
+                          if (total <= 0) return const SizedBox.shrink();
                           return Text(
-                            '${(progress * 100).toInt()}%',
+                            '$currentPage / $total',
                             style: const TextStyle(
                               color: Color(0xFF20C8FF), 
                               fontWeight: FontWeight.bold,
@@ -799,23 +1137,32 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
             ],
           ],
         ),
-        body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF20C8FF)))
-          : Stack(
-              children: [
-                Positioned.fill(
-                  child: Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: _onDocumentPointerDown,
-                    onPointerMove: _onDocumentPointerMove,
-                    onPointerUp: _onDocumentPointerUp,
-                    onPointerCancel: _onDocumentPointerCancel,
-                    child: ListenableBuilder(
-                      listenable: SubscriptionService(),
-                      builder: (context, child) => _buildViewer(),
-                    ),
-                  ),
-                ),
+        body: _hasError
+            ? _buildErrorView()
+            : _isLoading
+                ? _buildLoadingView()
+                : Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: _onDocumentPointerDown,
+                          onPointerMove: _onDocumentPointerMove,
+                          onPointerUp: _onDocumentPointerUp,
+                          onPointerCancel: _onDocumentPointerCancel,
+                          child: ListenableBuilder(
+                            listenable: SubscriptionService(),
+                            builder: (context, child) => _buildViewer(),
+                          ),
+                        ),
+                      ),
+                      if (_showResumePopup && _savedResumePage > 1)
+                        Positioned(
+                          top: 8,
+                          left: 14,
+                          right: 14,
+                          child: _buildResumePopup(),
+                        ),
                 if (_activeAnnotationType != AnnotationType.none) ...[
                   // Center-right page navigation scroll buttons
                   Positioned(
@@ -2165,9 +2512,11 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         },
         onViewerReady: (document, controller) {
           _pdfDocument = document;
-          if (initialProgress > 0) {
-            final targetPage = (initialProgress * document.pages.length).round().clamp(1, document.pages.length);
-            controller.goToPage(pageNumber: targetPage);
+          // Document always starts on page 1 initially.
+          // If a saved reading position > 1 exists, show 3-second resume popup without jumping automatically
+          final savedPage = ProgressService().getSavedPage(_docIdentifier, fallbackTitle: widget.title);
+          if (savedPage > 1 && savedPage <= document.pages.length && !_hasShownResumePopup) {
+            _triggerResumePopup(savedPage);
           }
         },
         onPageChanged: _onPdfChanged,

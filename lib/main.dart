@@ -39,6 +39,7 @@ import 'services/notification_service.dart';
 import 'services/manual_ad_view_tracker.dart';
 import 'services/chat_service.dart';
 import 'services/security_service.dart';
+import 'services/external_document_service.dart';
 import 'services/xp_service.dart';
 import 'providers/providers.dart';
 
@@ -98,6 +99,7 @@ Future<void> _initServices() async {
     ]);
 
     XPService().initialize();
+    ExternalDocumentService().initialize();
     InterstitialAdService().initialize();
     
     DownloadService().performRetentionCleanup();

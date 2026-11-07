@@ -84,18 +84,67 @@ class ConnectivityService extends ChangeNotifier {
   bool? _wasOffline;
   bool _isInitialized = false;
 
+  /// Optional reachability checker override for unit and integration testing.
+  Future<bool> Function()? reachabilityChecker;
+
   // Global key for showing snackbars without requiring BuildContext in async gaps
   final GlobalKey<ScaffoldMessengerState> messengerKey = GlobalKey<ScaffoldMessengerState>();
 
   bool _isOffline = false;
   bool get isOffline => _isOffline;
 
+  /// Performs an active network reachability check to ensure that a connected
+  /// adapter (Wi-Fi or Mobile) actually has functional internet access.
+  Future<bool> checkInternetReachability() async {
+    if (reachabilityChecker != null) {
+      return await reachabilityChecker!();
+    }
+
+    try {
+      final results = await _connectivity.checkConnectivity();
+      if (results.contains(ConnectivityResult.none)) {
+        return false;
+      }
+
+      final lookup = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 3));
+      if (lookup.isNotEmpty && lookup[0].rawAddress.isNotEmpty) {
+        return true;
+      }
+    } catch (_) {
+      try {
+        final socket = await Socket.connect('8.8.8.8', 53, timeout: const Duration(seconds: 3));
+        socket.destroy();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /// Triggers an immediate reachability check and synchronizes the offline state.
+  Future<bool> checkReachabilityAndUpdate() async {
+    final bool reachable = await checkInternetReachability();
+    final bool newOffline = !reachable;
+    if (_isOffline != newOffline) {
+      _isOffline = newOffline;
+      notifyListeners();
+    }
+    return reachable;
+  }
+
   void initialize() {
     if (_isInitialized) return;
     _isInitialized = true;
     _subscription?.cancel();
-    _connectivity.checkConnectivity().then((results) {
-      _isOffline = results.contains(ConnectivityResult.none);
+    _connectivity.checkConnectivity().then((results) async {
+      if (results.contains(ConnectivityResult.none)) {
+        _isOffline = true;
+      } else {
+        final reachable = await checkInternetReachability();
+        _isOffline = !reachable;
+      }
       notifyListeners();
     });
     _subscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
@@ -103,8 +152,13 @@ class ConnectivityService extends ChangeNotifier {
     });
   }
 
-  void _handleConnectivityChange(List<ConnectivityResult> results) {
-    _isOffline = results.contains(ConnectivityResult.none);
+  Future<void> _handleConnectivityChange(List<ConnectivityResult> results) async {
+    if (results.contains(ConnectivityResult.none)) {
+      _isOffline = true;
+    } else {
+      final reachable = await checkInternetReachability();
+      _isOffline = !reachable;
+    }
     notifyListeners();
     
     if (_isOffline) {
@@ -171,6 +225,7 @@ class ConnectivityService extends ChangeNotifier {
     _isInitialized = false;
     _isOffline = false;
     _wasOffline = null;
+    reachabilityChecker = null;
     _instance = null;
   }
 

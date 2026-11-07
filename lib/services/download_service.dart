@@ -88,8 +88,8 @@ class DownloadService extends ChangeNotifier {
 
   bool _matchItem(Map item, String idOrTitle) {
     final id = item['id'];
-    if (id != null && id.toString().isNotEmpty) {
-      return id == idOrTitle;
+    if (id != null && id.toString().isNotEmpty && id == idOrTitle) {
+      return true;
     }
     return item['title'] == idOrTitle;
   }

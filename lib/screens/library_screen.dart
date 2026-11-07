@@ -6,6 +6,7 @@ import '../widgets/resource_card.dart';
 import '../services/download_service.dart';
 import '../services/resource_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/offline_upload_queue_service.dart';
 import '../widgets/filter_modal.dart';
 import '../services/notification_service.dart';
 import '../widgets/notification_modal.dart';
@@ -404,6 +405,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // Real network refresh by re-attaching Firestore listeners
     final userId = ref.read(userProfileProvider).uid;
     await ResourceService().refresh(userId);
+    await OfflineUploadQueueService().reconcileAndRetry();
 
     if (mounted) {
       setState(() {});

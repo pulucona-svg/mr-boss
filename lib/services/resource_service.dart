@@ -189,7 +189,11 @@ class ResourceService extends ChangeNotifier {
     }
 
     try {
-      await _firestore.collection('resources').add(finalResource.toMap());
+      if (finalResource.id.isNotEmpty) {
+        await _firestore.collection('resources').doc(finalResource.id).set(finalResource.toMap(), SetOptions(merge: true));
+      } else {
+        await _firestore.collection('resources').add(finalResource.toMap());
+      }
     } catch (e) {
       debugPrint('ResourceService: [ERROR] Failed to add resource: $e');
       rethrow;

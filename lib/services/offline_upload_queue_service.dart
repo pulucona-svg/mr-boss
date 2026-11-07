@@ -11,6 +11,7 @@ import '../models/material_model.dart';
 
 enum QueuedUploadStatus {
   queued,
+  // ignore: constant_identifier_names
   waiting_internet,
   uploading,
   paused,
@@ -33,6 +34,15 @@ class QueuedUploadItem {
   String? lastError;
   final DateTime createdAt;
 
+  // Idempotency and duplicate prevention fields
+  String? uploadedFileUrl;
+  String? uploadedFileId;
+  String? uploadedFileName;
+  String? uploadedThumbnailUrl;
+  String? uploadedThumbnailId;
+  String? uploadedThumbnailStatus;
+  String? firestoreDocId;
+
   QueuedUploadItem({
     required this.id,
     this.filePath,
@@ -46,24 +56,34 @@ class QueuedUploadItem {
     this.nextRetryTime,
     this.lastError,
     DateTime? createdAt,
+    this.uploadedFileUrl,
+    this.uploadedFileId,
+    this.uploadedFileName,
+    this.uploadedThumbnailUrl,
+    this.uploadedThumbnailId,
+    this.uploadedThumbnailStatus,
+    this.firestoreDocId,
   }) : createdAt = createdAt ?? DateTime.now();
 
   String get statusDisplay {
     switch (status) {
       case QueuedUploadStatus.queued:
-        return 'Queued';
+        return 'Upload queued';
       case QueuedUploadStatus.waiting_internet:
-        return 'Waiting for Internet';
+        return 'Waiting for internet';
       case QueuedUploadStatus.uploading:
-        return 'Uploading';
+        final pct = (progress * 100).toInt();
+        return pct > 0 ? 'Uploading ($pct%)' : 'Uploading';
       case QueuedUploadStatus.paused:
-        return 'Paused';
+        return 'Upload paused due to connection loss';
       case QueuedUploadStatus.retrying:
         return 'Retrying';
       case QueuedUploadStatus.completed:
-        return 'Completed';
+        return 'Upload completed';
       case QueuedUploadStatus.failed:
-        return 'Failed';
+        return lastError != null && lastError!.isNotEmpty
+            ? 'Failed: $lastError'
+            : 'Permanent failure requiring user action';
     }
   }
 
@@ -80,6 +100,13 @@ class QueuedUploadItem {
         'nextRetryTime': nextRetryTime?.toIso8601String(),
         'lastError': lastError,
         'createdAt': createdAt.toIso8601String(),
+        'uploadedFileUrl': uploadedFileUrl,
+        'uploadedFileId': uploadedFileId,
+        'uploadedFileName': uploadedFileName,
+        'uploadedThumbnailUrl': uploadedThumbnailUrl,
+        'uploadedThumbnailId': uploadedThumbnailId,
+        'uploadedThumbnailStatus': uploadedThumbnailStatus,
+        'firestoreDocId': firestoreDocId,
       };
 
   factory QueuedUploadItem.fromJson(Map<String, dynamic> json) => QueuedUploadItem(
@@ -98,6 +125,13 @@ class QueuedUploadItem {
         nextRetryTime: json['nextRetryTime'] != null ? DateTime.tryParse(json['nextRetryTime']) : null,
         lastError: json['lastError'],
         createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt']) : DateTime.now(),
+        uploadedFileUrl: json['uploadedFileUrl'],
+        uploadedFileId: json['uploadedFileId'],
+        uploadedFileName: json['uploadedFileName'],
+        uploadedThumbnailUrl: json['uploadedThumbnailUrl'],
+        uploadedThumbnailId: json['uploadedThumbnailId'],
+        uploadedThumbnailStatus: json['uploadedThumbnailStatus'],
+        firestoreDocId: json['firestoreDocId'],
       );
 }
 
@@ -114,7 +148,9 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
   Timer? _retryTimer;
 
   List<QueuedUploadItem> get queue => List.unmodifiable(_queue);
-  int get pendingCount => _queue.where((item) => item.status != QueuedUploadStatus.completed && item.status != QueuedUploadStatus.failed).length;
+  int get pendingCount => _queue.where((item) =>
+      item.status != QueuedUploadStatus.completed &&
+      item.status != QueuedUploadStatus.failed).length;
 
   /// Returns queued offline items formatted as Resource cards for display on Uploads page
   List<Resource> get queuedResources {
@@ -136,7 +172,7 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         type: mat.materialType,
         thumbnailUrl: item.thumbnailPath ?? '',
         thumbnailId: '',
-        thumbnailStatus: item.statusDisplay, // "Waiting for Internet", "Uploading", "Retrying", "Paused"
+        thumbnailStatus: item.statusDisplay,
         fileUrl: item.filePath ?? '',
         fileId: '',
         unitName: mat.unitName,
@@ -151,7 +187,7 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         uploaderRole: 'Student',
         uploaderId: mat.uploaderId,
         uploadDate: item.createdAt,
-        status: 'approved',
+        status: item.status.name, // e.g. 'waiting_internet', 'queued', 'uploading', 'paused', 'retrying', 'failed'
         visibility: 'public',
         targetPrograms: mat.programs,
         programCodes: mat.programCodes,
@@ -172,9 +208,25 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
     // Listen to network changes
     ConnectivityService().addListener(_onConnectivityChanged);
 
-    // Initial check on app startup
-    if (!ConnectivityService().isOffline && pendingCount > 0) {
+    // Initial check on app startup: verify reachability and process pending items
+    _checkAndProcessStartup();
+  }
+
+  Future<void> _checkAndProcessStartup() async {
+    if (pendingCount == 0) return;
+    final reachable = await ConnectivityService().checkInternetReachability();
+    if (reachable) {
+      resetRetryDelays();
       _processQueue();
+    } else {
+      // Mark active items as waiting for internet
+      for (var item in _queue) {
+        if (item.status == QueuedUploadStatus.uploading || item.status == QueuedUploadStatus.queued) {
+          item.status = QueuedUploadStatus.waiting_internet;
+        }
+      }
+      await _saveQueue();
+      _notifyUI();
     }
   }
 
@@ -182,10 +234,47 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       debugPrint('OfflineUploadQueueService: App resumed to foreground. Checking connectivity and pending upload queue...');
-      if (!ConnectivityService().isOffline && pendingCount > 0) {
-        _processQueue();
+      reconcileAndRetry();
+    }
+  }
+
+  /// Safe queue reconciliation and retry-eligibility check.
+  /// Called upon app foregrounding, pull-to-refresh, or restored network.
+  Future<void> reconcileAndRetry() async {
+    final bool reachable = await ConnectivityService().checkReachabilityAndUpdate();
+    if (reachable) {
+      debugPrint('OfflineUploadQueueService: Network reachable. Resetting retry timers for pending items...');
+      resetRetryDelays();
+      _processQueue();
+    } else {
+      debugPrint('OfflineUploadQueueService: Reconcile check confirmed offline.');
+      for (var item in _queue) {
+        if (item.status == QueuedUploadStatus.uploading || item.status == QueuedUploadStatus.queued) {
+          item.status = QueuedUploadStatus.waiting_internet;
+        }
+      }
+      await _saveQueue();
+      _notifyUI();
+    }
+  }
+
+  /// Resets backoff retry timers to allow immediate processing upon restored connectivity.
+  void resetRetryDelays() {
+    for (var item in _queue) {
+      if (item.status == QueuedUploadStatus.waiting_internet ||
+          item.status == QueuedUploadStatus.paused ||
+          item.status == QueuedUploadStatus.retrying ||
+          item.status == QueuedUploadStatus.queued) {
+        item.nextRetryTime = null;
+        if (item.status == QueuedUploadStatus.paused || item.status == QueuedUploadStatus.waiting_internet || item.status == QueuedUploadStatus.retrying) {
+          item.status = QueuedUploadStatus.queued;
+        }
       }
     }
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _saveQueue();
+    _notifyUI();
   }
 
   void _onConnectivityChanged() {
@@ -194,15 +283,16 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
       _wasOffline = true;
       debugPrint('OfflineUploadQueueService: Internet disconnected. Pausing active queue...');
       for (var item in _queue) {
-        if (item.status == QueuedUploadStatus.uploading || item.status == QueuedUploadStatus.queued) {
+        if (item.status == QueuedUploadStatus.uploading) {
+          item.status = QueuedUploadStatus.paused;
+        } else if (item.status == QueuedUploadStatus.queued) {
           item.status = QueuedUploadStatus.waiting_internet;
         }
       }
       _saveQueue();
       _notifyUI();
     } else {
-      debugPrint('OfflineUploadQueueService: Internet connected. Processing FIFO queue (${_queue.length} items)...');
-      
+      debugPrint('OfflineUploadQueueService: Connectivity event online. Triggering reachability and queue check...');
       final pendingWork = _queue.where((item) =>
           item.status == QueuedUploadStatus.waiting_internet ||
           item.status == QueuedUploadStatus.paused ||
@@ -242,9 +332,8 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         _wasOffline = false;
       }
 
-      if (pendingWork.isNotEmpty) {
-        _processQueue();
-      }
+      resetRetryDelays();
+      _processQueue();
     }
   }
 
@@ -316,6 +405,7 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
           ? QueuedUploadStatus.waiting_internet
           : QueuedUploadStatus.queued,
       createdAt: DateTime.now(),
+      firestoreDocId: 'res_$itemId',
     );
 
     _queue.add(queuedItem); // Append in FIFO order
@@ -338,59 +428,81 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
     _isProcessing = true;
 
     try {
-      // Process items in FIFO order
       while (_queue.isNotEmpty) {
         if (ConnectivityService().isOffline) {
           debugPrint('OfflineUploadQueueService: Network lost during queue processing.');
           break;
         }
 
-        // Find first item ready to process
-        final index = _queue.indexWhere((item) => item.status != QueuedUploadStatus.completed && item.status != QueuedUploadStatus.failed);
+        // Find first item eligible for processing
+        final index = _queue.indexWhere((item) =>
+            item.status != QueuedUploadStatus.completed &&
+            item.status != QueuedUploadStatus.failed);
         if (index == -1) break;
 
         final item = _queue[index];
 
-        // Check retry timer if scheduled
+        // Check retry timer if scheduled and still in the future
         if (item.nextRetryTime != null && item.nextRetryTime!.isAfter(DateTime.now())) {
           debugPrint('OfflineUploadQueueService: Item ${item.id} waiting for next retry at ${item.nextRetryTime}');
+          final remainingSec = item.nextRetryTime!.difference(DateTime.now()).inSeconds;
+          _scheduleRetryTimer(Duration(seconds: remainingSec.clamp(1, 600)));
           break;
         }
 
         item.status = QueuedUploadStatus.uploading;
-        item.progress = 0.1;
-        _saveQueue();
+        item.progress = item.progress > 0.1 ? item.progress : 0.1;
+        await _saveQueue();
         _notifyUI();
 
         final success = await _uploadSingleItem(item);
         if (success) {
           item.status = QueuedUploadStatus.completed;
           item.progress = 1.0;
-          _queue.removeWhere((i) => i.id == item.id || i.status == QueuedUploadStatus.completed); // Purge completed from queue
+          _queue.removeWhere((i) => i.id == item.id || i.status == QueuedUploadStatus.completed);
           await _saveQueue();
           _notifyUI();
           debugPrint('OfflineUploadQueueService: Upload ${item.id} completed successfully and purged from queue.');
         } else {
-          // Check if network error or unrecoverable error
-          if (ConnectivityService().isOffline) {
-            item.status = QueuedUploadStatus.waiting_internet;
-            _saveQueue();
+          // If failure is permanent (e.g. file missing, marked failed already)
+          if (item.status == QueuedUploadStatus.failed) {
+            await _saveQueue();
             _notifyUI();
-            break;
+            debugPrint('OfflineUploadQueueService: Permanent failure for item ${item.id}: ${item.lastError}');
+            // Move on to next item without retrying this permanent failure forever
+            continue;
+          }
+
+          // Distinguish network failures from permanent failures
+          final bool isNetErr = ConnectivityService.isNetworkError(item.lastError) ||
+              ConnectivityService().isOffline;
+
+          if (isNetErr) {
+            if (ConnectivityService().isOffline) {
+              item.status = QueuedUploadStatus.waiting_internet;
+              await _saveQueue();
+              _notifyUI();
+              break;
+            } else {
+              item.retryCount += 1;
+              final delaySec = _getRetryDelaySeconds(item.retryCount);
+              item.nextRetryTime = DateTime.now().add(Duration(seconds: delaySec));
+              item.status = QueuedUploadStatus.retrying;
+              await _saveQueue();
+              _notifyUI();
+
+              debugPrint('OfflineUploadQueueService: Upload ${item.id} network failure. Retrying in ${delaySec}s (Attempt ${item.retryCount})');
+              _scheduleRetryTimer(Duration(seconds: delaySec));
+              break;
+            }
           } else {
-            // Schedule retry with exponential backoff
-            item.retryCount += 1;
-            final delaySec = _getRetryDelaySeconds(item.retryCount);
-            item.nextRetryTime = DateTime.now().add(Duration(seconds: delaySec));
-            item.status = QueuedUploadStatus.retrying;
-            _saveQueue();
+            // Non-network failure (e.g. format error, server reject, permission error)
+            item.status = QueuedUploadStatus.failed;
+            item.nextRetryTime = null;
+            await _saveQueue();
             _notifyUI();
-
-            debugPrint('OfflineUploadQueueService: Upload ${item.id} failed. Retrying in ${delaySec}s (Attempt ${item.retryCount})');
-
-            // Schedule timer for next attempt
-            _scheduleRetryTimer(Duration(seconds: delaySec));
-            break;
+            debugPrint('OfflineUploadQueueService: Non-network failure for item ${item.id}. Will not retry automatically.');
+            continue;
           }
         }
       }
@@ -400,13 +512,12 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
   }
 
   int _getRetryDelaySeconds(int count) {
-    if (count <= 1) return 30;
-    if (count == 2) return 60;
-    if (count == 3) return 120;
-    if (count == 4) return 300;
-    if (count == 5) return 600;
-    if (count == 6) return 1800;
-    return 3600; // Cap at 1 hour
+    if (count <= 1) return 15;
+    if (count == 2) return 30;
+    if (count == 3) return 60;
+    if (count == 4) return 120;
+    if (count == 5) return 300;
+    return 600; // Cap at 10 minutes
   }
 
   void _scheduleRetryTimer(Duration duration) {
@@ -422,12 +533,12 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
     try {
       final materialModel = UploadMaterialModel.fromMap(item.materialData);
 
-      // Reconstruct file instances
+      // Reconstruct file instances and verify local file integrity
       File? primaryFile;
       if (item.filePath != null && item.filePath!.isNotEmpty) {
         primaryFile = File(item.filePath!);
         if (!primaryFile.existsSync()) {
-          item.lastError = 'Local file not found on device';
+          item.lastError = 'Original file no longer found on device';
           item.status = QueuedUploadStatus.failed;
           return false;
         }
@@ -436,7 +547,13 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
       List<File> fileList = [];
       for (var path in item.filePaths) {
         final f = File(path);
-        if (f.existsSync()) fileList.add(f);
+        if (f.existsSync()) {
+          fileList.add(f);
+        } else {
+          item.lastError = 'One or more local images are missing from device';
+          item.status = QueuedUploadStatus.failed;
+          return false;
+        }
       }
 
       File? thumbFile;
@@ -450,33 +567,56 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         thumbnail: thumbFile,
       );
 
-      // Perform Upload via dedicated pipeline
-      Map<String, dynamic> uploadResult;
-      if (item.uploadMode == 'timetable') {
-        uploadResult = await TimetableUploadService().uploadTimetable(
-          fullMaterial,
-          (p) {
-            item.progress = p;
-            _notifyUI();
-          },
-        );
-      } else {
-        uploadResult = await UploadService().uploadMaterial(
-          fullMaterial,
-          (p) {
-            item.progress = p;
-            _notifyUI();
-          },
-        );
+      // DUPLICATE PREVENTION:
+      // If the file was already uploaded to storage/ImageKit in a previous interrupted attempt,
+      // reuse the existing storage identifiers and skip re-uploading!
+      String finalFileUrl = item.uploadedFileUrl ?? '';
+      String finalFileId = item.uploadedFileId ?? '';
+      String finalFileName = item.uploadedFileName ?? '';
+      String finalThumbUrl = item.uploadedThumbnailUrl ?? '';
+      String finalThumbId = item.uploadedThumbnailId ?? '';
+      String finalThumbStatus = item.uploadedThumbnailStatus ?? '';
+
+      if (finalFileUrl.isEmpty) {
+        Map<String, dynamic> uploadResult;
+        if (item.uploadMode == 'timetable') {
+          uploadResult = await TimetableUploadService().uploadTimetable(
+            fullMaterial,
+            (p) {
+              item.progress = p;
+              _notifyUI();
+            },
+          );
+        } else {
+          uploadResult = await UploadService().uploadMaterial(
+            fullMaterial,
+            (p) {
+              item.progress = p;
+              _notifyUI();
+            },
+          );
+        }
+
+        finalFileUrl = uploadResult['fileUrl'] ?? '';
+        finalFileId = uploadResult['fileId'] ?? '';
+        finalFileName = uploadResult['fileName'] ?? '';
+        finalThumbUrl = uploadResult['thumbnailUrl'] ?? '';
+        finalThumbId = uploadResult['thumbnailId'] ?? '';
+        finalThumbStatus = uploadResult['thumbnailStatus'] ?? (item.uploadMode == 'timetable' ? 'completed' : 'pending');
+
+        // Persist intermediate storage references immediately for idempotency
+        item.uploadedFileUrl = finalFileUrl;
+        item.uploadedFileId = finalFileId;
+        item.uploadedFileName = finalFileName;
+        item.uploadedThumbnailUrl = finalThumbUrl;
+        item.uploadedThumbnailId = finalThumbId;
+        item.uploadedThumbnailStatus = finalThumbStatus;
+        await _saveQueue();
       }
 
-      final String finalFileUrl = uploadResult['fileUrl'] ?? '';
-      final String finalFileId = uploadResult['fileId'] ?? '';
-      final String finalFileName = uploadResult['fileName'] ?? '';
-      final String finalThumbUrl = uploadResult['thumbnailUrl'] ?? '';
-      final String finalThumbId = uploadResult['thumbnailId'] ?? '';
-      final String finalThumbStatus = uploadResult['thumbnailStatus'] ?? (item.uploadMode == 'timetable' ? 'completed' : 'pending');
-
+      if (finalThumbStatus.isEmpty) {
+        finalThumbStatus = item.uploadMode == 'timetable' ? 'completed' : 'pending';
+      }
 
       String resourceTitle;
       if (item.uploadMode == 'timetable') {
@@ -487,9 +627,17 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         resourceTitle = fullMaterial.unitName;
       }
 
+      // DUPLICATE FIRESTORE PREVENTION:
+      // Use deterministic doc ID so that retrying never creates duplicate Firestore documents
+      final String docId = item.firestoreDocId ?? 'res_${item.id}';
+      item.firestoreDocId = docId;
+
       final resource = Resource(
+        id: docId,
         title: resourceTitle,
-        fileName: finalFileName,
+        fileName: finalFileName.isNotEmpty
+            ? finalFileName
+            : (item.filePath?.split(RegExp(r'[/\\]')).last ?? 'material.pdf'),
         type: fullMaterial.materialType,
         thumbnailUrl: finalThumbUrl,
         fileUrl: finalFileUrl,
@@ -507,7 +655,7 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         uploadedBy: fullMaterial.uploadedBy,
         uploaderRole: 'Student',
         uploaderId: fullMaterial.uploaderId,
-        uploadDate: DateTime.now(),
+        uploadDate: item.createdAt,
         status: 'approved',
         visibility: 'public',
         targetPrograms: fullMaterial.programs,
@@ -516,7 +664,7 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
         isAnonymous: item.uploadMode == 'timetable' ? false : fullMaterial.isAnonymous,
       );
 
-      // Publish to Firestore
+      // Publish to Firestore with idempotent set/merge
       await ResourceService().addUpload(resource, CourseService());
       await ResourceService().fetchUserUploadsOnce(fullMaterial.uploaderId);
 
@@ -534,6 +682,16 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
     _notifyUI();
   }
 
+  @visibleForTesting
+  void resetForTesting() {
+    _queue.clear();
+    _isProcessing = false;
+    _isInitialized = false;
+    _wasOffline = false;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+  }
+
   void clearCompleted() {
     _queue.removeWhere((item) => item.status == QueuedUploadStatus.completed);
     _saveQueue();
@@ -542,7 +700,10 @@ class OfflineUploadQueueService extends ChangeNotifier with WidgetsBindingObserv
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
     WidgetsBinding.instance.removeObserver(this);
+    ConnectivityService().removeListener(_onConnectivityChanged);
     super.dispose();
   }
 }

@@ -262,7 +262,31 @@ class _ResourceCardState extends ConsumerState<ResourceCard> {
     String label;
     IconData icon;
 
-    if (rawStatus == 'pending' || rawStatus == 'waiting') {
+    if (rawStatus == 'waiting_internet' || rawStatus == 'waiting for internet') {
+      tagColor = const Color(0xFFFFB300);
+      label = 'Waiting for internet';
+      icon = Icons.wifi_off_rounded;
+    } else if (rawStatus == 'queued' || rawStatus == 'upload queued') {
+      tagColor = const Color(0xFF20C8FF);
+      label = 'Upload queued';
+      icon = Icons.queue_rounded;
+    } else if (rawStatus == 'uploading') {
+      tagColor = const Color(0xFF20C8FF);
+      label = widget.resource.thumbnailStatus.startsWith('Uploading') ? widget.resource.thumbnailStatus : 'Uploading';
+      icon = Icons.cloud_upload_rounded;
+    } else if (rawStatus == 'paused' || rawStatus.contains('paused')) {
+      tagColor = const Color(0xFFFF9800);
+      label = 'Upload paused due to connection loss';
+      icon = Icons.pause_circle_outline_rounded;
+    } else if (rawStatus == 'retrying') {
+      tagColor = const Color(0xFFFFB300);
+      label = 'Retrying';
+      icon = Icons.sync_rounded;
+    } else if (rawStatus == 'failed') {
+      tagColor = const Color(0xFFFF5252);
+      label = widget.resource.thumbnailStatus.startsWith('Failed') ? widget.resource.thumbnailStatus : 'Permanent failure';
+      icon = Icons.error_outline_rounded;
+    } else if (rawStatus == 'pending' || rawStatus == 'waiting') {
       tagColor = const Color(0xFFFFB300);
       label = 'Pending Admin Approval';
       icon = Icons.access_time_rounded;
