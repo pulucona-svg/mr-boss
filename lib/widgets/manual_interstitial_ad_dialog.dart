@@ -378,8 +378,12 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
     }
 
     // 1. Pop dialog route first so that it is cleanly removed from the Navigator stack
-    if (mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    try {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    } catch (e) {
+      debugPrint('ManualInterstitialAdDialog: Error popping dialog route: $e');
     }
 
     // 2. Complete dismissal callback
@@ -752,11 +756,14 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                               key: _isXState
                                   ? const ValueKey('launch_x_button')
                                   : const ValueKey('launch_countdown_badge'),
+                              behavior: HitTestBehavior.opaque,
                               onTap: _isXState ? _onXTapped : null,
                               child: Container(
                                 key: _isXState
                                     ? const ValueKey('launch_x_badge')
                                     : const ValueKey('launch_counter_control'),
+                                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                                alignment: Alignment.center,
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
                                   color: Colors.black.withValues(alpha: 0.65),
@@ -771,7 +778,7 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                                   _isXState ? 'X' : '$_countdownSeconds',
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -840,14 +847,16 @@ class _ManualInterstitialAdDialogState extends State<ManualInterstitialAdDialog>
                               key: const ValueKey('normal_interstitial_close_button'),
                               tooltip: 'Close Ad',
                               onPressed: _dismiss,
+                              padding: const EdgeInsets.all(8),
+                              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                               icon: Container(
-                                padding: const EdgeInsets.all(7),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: Colors.black.withValues(alpha: 0.5),
                                   border: Border.all(color: Colors.white24),
                                 ),
-                                child: const Icon(Icons.close_rounded, size: 20, color: Colors.white),
+                                child: const Icon(Icons.close_rounded, size: 22, color: Colors.white),
                               ),
                             ),
                           ],

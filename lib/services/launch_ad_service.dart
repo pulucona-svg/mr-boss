@@ -541,6 +541,7 @@ class LaunchAdService with WidgetsBindingObserver {
       await showGeneralDialog(
         context: context,
         barrierDismissible: false,
+        useRootNavigator: true,
         barrierColor: Colors.black.withValues(alpha: 0.90),
         transitionDuration: const Duration(milliseconds: 300),
         pageBuilder: (dialogContext, anim1, anim2) {

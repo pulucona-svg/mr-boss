@@ -90,6 +90,10 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
   @visibleForTesting
   Future<bool> Function()? offlineManualAdPresenterForTesting;
 
+  /// Hook to intercept online AdMob presentation in unit tests.
+  @visibleForTesting
+  Future<bool> Function({required String trigger})? admobPresenterForTesting;
+
   /// Hook to supply cached server ads directly in unit tests without disk IO.
   @visibleForTesting
   void setCachedServerAdsForTesting(List<ManualAd> ads) {
@@ -119,6 +123,14 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
   ManualAd? get currentManualAd => _currentManualAd;
   ManualAd? get previousManualAd => _previousManualAd;
   int currentManualIdleStage = 0;
+
+  /// Tracks whether an offline/manual advertisement dialog is actively showing
+  bool _isManualAdShowing = false;
+  bool get isManualAdShowing => _isManualAdShowing;
+
+  /// Tracks whether an online native Google AdMob interstitial ad currently occupies the native fullscreen window
+  bool _isAdMobFullscreenActive = false;
+  bool get isAdMobFullscreenActive => _isAdMobFullscreenActive;
 
   /// Online AdMob idle auto-advance state
   InterstitialAd? _nextInterstitialAd;
@@ -619,7 +631,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  /// Preloads the next AdMob interstitial ad for online idle auto-advance.
+  /// Preloads the next AdMob interstitial ad for the online idle auto-advance chain.
   void _loadNextAdMobInterstitial() {
     if (skipAdLoadingForTesting) return;
     if (_isLoadingNextAd || _nextInterstitialAd != null) return;
@@ -637,7 +649,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
         onAdFailedToLoad: (error) {
           _nextInterstitialAd = null;
           _isLoadingNextAd = false;
-          debugPrint('InterstitialAdService: [NEXT_ADMOB_LOAD_FAILED] Failed to preload next AdMob ad: ${error.message}. Online idle chain will stop gracefully if reached.');
+          debugPrint('InterstitialAdService: [NEXT_ADMOB_LOAD_FAILED] Failed to preload next AdMob ad: ${error.message}.');
         },
       ),
     );
@@ -688,14 +700,26 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    // 3. AdMob SDK / availability check: respect SDK state, do not hammer SDK
-    if (_nextInterstitialAd == null) {
-      debugPrint('InterstitialAdService: [ONLINE_IDLE_STOP] Next AdMob ad is not ready / loaded. Respecting AdMob SDK state, stopping online idle chain safely.');
-      _cancelOnlineIdleTimer();
+    // 3. Technical Constraint:
+    // If an AdMob native fullscreen ad is currently active on screen,
+    // Google Mobile Ads MUST NOT receive another show() call!
+    // Overlapping presentations corrupt SDK window focus and cause unresponsive touch on the close button.
+    if (_isAdMobFullscreenActive) {
+      _onlineIdleStage++;
+      debugPrint('InterstitialAdService: [ONLINE_IDLE_STAGE_REACHED] Online idle stage $_onlineIdleStage reached while AdMob ad is active. Native close button remains fully responsive and under native SDK control. Preloading next ad.');
+      _scheduleNextOnlineIdleTimer();
+      _loadNextAdMobInterstitial();
       return;
     }
 
-    // 4. Advance to next online ad
+    // 4. Advance to next online ad if previous presentation completed
+    if (_nextInterstitialAd == null) {
+      debugPrint('InterstitialAdService: [ONLINE_IDLE_WAIT] Next AdMob ad is not ready yet. Preloading and retrying...');
+      _loadNextAdMobInterstitial();
+      _scheduleNextOnlineIdleTimer();
+      return;
+    }
+
     _onlineIdleStage++;
     final nextAd = _nextInterstitialAd!;
     _nextInterstitialAd = null;
@@ -770,6 +794,9 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
 
     // If online: display AdMob interstitial if loaded
     if (_interstitialAd != null) {
+      if (admobPresenterForTesting != null) {
+        return await admobPresenterForTesting!(trigger: trigger);
+      }
       return await _showAdMobInterstitial(trigger: trigger);
     }
 
@@ -790,25 +817,36 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> _showAdMobInterstitial({required String trigger}) async {
     final adToShow = _interstitialAd!;
     _interstitialAd = null;
-    return _showAdMobInterstitialInstance(adToShow, trigger: trigger, isInitial: true);
+    return _showAdMobInterstitialInstance(adToShow, trigger: trigger);
   }
 
-  Future<bool> _showAdMobInterstitialInstance(InterstitialAd adToShow, {required String trigger, bool isInitial = false}) async {
+  Future<bool> _showAdMobInterstitialInstance(InterstitialAd adToShow, {required String trigger}) async {
     isFullScreenAdShowing = true;
+    _isAdMobFullscreenActive = true;
     final Completer<bool> completer = Completer<bool>();
+    bool isCallbackHandled = false;
 
-    if (isInitial) {
-      _startOnlineIdleChain();
-    }
+    // Start the online idle auto-advance chain
+    _startOnlineIdleChain();
 
     adToShow.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {
+        _isAdMobFullscreenActive = true;
         debugPrint('InterstitialAdService: [INTERSTITIAL_SHOWN] Displayed Google AdMob interstitial ad (trigger: "$trigger").');
       },
       onAdDismissedFullScreenContent: (ad) {
+        if (isCallbackHandled) {
+          debugPrint('InterstitialAdService: [INTERSTITIAL_DISMISSED_DUPLICATE] Ignored duplicate dismissal callback.');
+          return;
+        }
+        isCallbackHandled = true;
+
         debugPrint('InterstitialAdService: [INTERSTITIAL_DISMISSED] Google AdMob interstitial ad dismissed by user.');
-        ad.dispose();
+        try {
+          ad.dispose();
+        } catch (_) {}
         _cancelOnlineIdleTimer();
+        _isAdMobFullscreenActive = false;
         isFullScreenAdShowing = false;
 
         // Reset interval and timer for the next 5-minute active session interval
@@ -822,12 +860,22 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
         if (!completer.isCompleted) completer.complete(true);
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        if (isCallbackHandled) return;
+        isCallbackHandled = true;
+
         debugPrint('InterstitialAdService: [INTERSTITIAL_SHOW_FAILED] Failed to show AdMob interstitial: ${error.message} (code: ${error.code})');
-        ad.dispose();
+        try {
+          ad.dispose();
+        } catch (_) {}
         _cancelOnlineIdleTimer();
+        _isAdMobFullscreenActive = false;
         isFullScreenAdShowing = false;
 
-        // Retain eligibility and reload so it can try again
+        // Reset eligibility and session interval on failure to prevent infinite re-trigger loops
+        _isEligible = false;
+        _activeSecondsInCurrentInterval = 0;
+
+        // Safely preload next ad for future eligibility
         _loadInterstitialAd();
 
         if (!completer.isCompleted) completer.complete(false);
@@ -840,7 +888,10 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('InterstitialAdService: [INTERSTITIAL_EXCEPTION] Error showing AdMob interstitial: $e');
       _cancelOnlineIdleTimer();
+      _isAdMobFullscreenActive = false;
       isFullScreenAdShowing = false;
+      _isEligible = false;
+      _activeSecondsInCurrentInterval = 0;
       _loadInterstitialAd();
       return false;
     }
@@ -855,9 +906,11 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     isFullScreenAdShowing = true;
+    _isManualAdShowing = true;
     debugPrint('InterstitialAdService: [OFFLINE_AD_SHOWN] Displaying offline/manual full-screen ad (trigger: "$trigger").');
 
     final Completer<bool> completer = Completer<bool>();
+    bool isDismissed = false;
 
     try {
       final selectedAd = getNextManualAd();
@@ -866,13 +919,18 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
       await showGeneralDialog(
         context: context,
         barrierDismissible: false,
+        useRootNavigator: true,
         barrierColor: Colors.black.withValues(alpha: 0.90),
         transitionDuration: const Duration(milliseconds: 300),
         pageBuilder: (dialogContext, anim1, anim2) {
           return ManualInterstitialAdDialog(
             adData: selectedAd.toDialogData(),
             onDismissed: () {
+              if (isDismissed) return;
+              isDismissed = true;
+
               debugPrint('InterstitialAdService: [OFFLINE_AD_DISMISSED] Offline manual interstitial dismissed by user.');
+              _isManualAdShowing = false;
               isFullScreenAdShowing = false;
               currentManualIdleStage = 0;
               _activeSecondsInCurrentInterval = 0;
@@ -887,11 +945,26 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
           );
         },
       );
+
+      if (!isDismissed) {
+        isDismissed = true;
+        _isManualAdShowing = false;
+        isFullScreenAdShowing = false;
+        currentManualIdleStage = 0;
+        _activeSecondsInCurrentInterval = 0;
+        _isEligible = false;
+        _loadInterstitialAd();
+        if (!completer.isCompleted) completer.complete(true);
+      }
+
       return await completer.future;
     } catch (e) {
       debugPrint('InterstitialAdService: [OFFLINE_AD_EXCEPTION] Error showing manual interstitial dialog: $e');
+      _isManualAdShowing = false;
       isFullScreenAdShowing = false;
       currentManualIdleStage = 0;
+      _activeSecondsInCurrentInterval = 0;
+      _isEligible = false;
       return false;
     }
   }
@@ -906,6 +979,8 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     _isEligible = false;
     _isLoading = false;
     _isLoadingNextAd = false;
+    _isAdMobFullscreenActive = false;
+    _isManualAdShowing = false;
     _hasSyncedServerAds = false;
     _cachedServerAds = [];
     _rebuildRuntimePool();
@@ -930,6 +1005,7 @@ class InterstitialAdService extends ChangeNotifier with WidgetsBindingObserver {
     manualIdleDelayOverrideForTesting = null;
     onlineIdleDelayOverrideForTesting = null;
     offlineManualAdPresenterForTesting = null;
+    admobPresenterForTesting = null;
     _adUnitId = productionAdUnitId;
   }
 }

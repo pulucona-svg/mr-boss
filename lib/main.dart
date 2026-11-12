@@ -18,6 +18,7 @@ import 'screens/signup_screen.dart';
 import 'screens/terms_and_conditions_screen.dart';
 import 'screens/privacy_policy_screen.dart';
 import 'screens/account_restore_screen.dart';
+import 'screens/external_document_launch_screen.dart';
 
 import 'services/connectivity_service.dart';
 import 'services/course_service.dart';
@@ -76,11 +77,17 @@ void main() async {
 
   _initServices();
 
+  // Check for cold-start incoming document
+  final initialExternalDocument = await ExternalDocumentService().getInitialDocument();
+
   final bool isLoggedIn = PersistenceService().getSessionUserId() != null;
 
   runApp(
     ProviderScope(
-      child: MirrorApp(isLoggedIn: isLoggedIn),
+      child: MirrorApp(
+        isLoggedIn: isLoggedIn,
+        initialExternalDocument: initialExternalDocument,
+      ),
     ),
   );
 }
@@ -112,7 +119,8 @@ Future<void> _initServices() async {
 
 class MirrorApp extends ConsumerStatefulWidget {
   final bool isLoggedIn;
-  const MirrorApp({super.key, required this.isLoggedIn});
+  final Map<String, dynamic>? initialExternalDocument;
+  const MirrorApp({super.key, required this.isLoggedIn, this.initialExternalDocument});
 
   @override
   ConsumerState<MirrorApp> createState() => _MirrorAppState();
@@ -120,6 +128,9 @@ class MirrorApp extends ConsumerStatefulWidget {
 
 class _MirrorAppState extends ConsumerState<MirrorApp> {
   Widget _getInitialScreen() {
+    if (widget.initialExternalDocument != null) {
+      return ExternalDocumentLaunchScreen(docData: widget.initialExternalDocument!);
+    }
     if (!widget.isLoggedIn) {
       try {
         FlutterNativeSplash.remove();
@@ -278,6 +289,7 @@ class _InitialSessionCheckState extends ConsumerState<InitialSessionCheck> {
           debugPrint('InitialSessionCheck: [GUARD] Full check: Account permanently deleted. Signing out.');
           await FirebaseAuth.instance.signOut();
           await PersistenceService().clearAll();
+          if (!mounted) return;
           try {
             FlutterNativeSplash.remove();
           } catch (_) {}

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -89,6 +90,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
   String? _errorMessage;
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
+  bool _isViewerReady = false;
   bool _showResumePopup = false;
   int _savedResumePage = 1;
   Timer? _resumeTimer;
@@ -378,7 +380,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
 
     if (widget.fileUrl == 'test_doc.pdf') {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isViewerReady = true;
+        });
       }
       final savedPage = ProgressService().getSavedPage(_docIdentifier, fallbackTitle: widget.title);
       if (savedPage > 1) {
@@ -409,7 +414,17 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
             _htmlContent = await directLocalFile.readAsString();
           }
           if (mounted) {
-            setState(() => _isLoading = false);
+            setState(() {
+              _isLoading = false;
+              if (!_isPdf) {
+                _isViewerReady = true;
+              }
+            });
+          }
+          if (!_isPdf) {
+            try {
+              FlutterNativeSplash.remove();
+            } catch (_) {}
           }
           return;
         }
@@ -539,17 +554,31 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isViewerReady = false;
           _hasError = true;
           _errorMessage = ConnectivityService.isNetworkError(e)
               ? 'Unable to load document due to network interruption. Check connection.'
               : 'Unable to load document. Please tap Retry.';
         });
       }
+      try {
+        FlutterNativeSplash.remove();
+      } catch (_) {}
       return;
     }
 
     if (mounted) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        if (!_isPdf) {
+          _isViewerReady = true;
+        }
+      });
+    }
+    if (!_isPdf) {
+      try {
+        FlutterNativeSplash.remove();
+      } catch (_) {}
     }
   }
 
@@ -573,6 +602,74 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         );
       }
     }
+  }
+
+  Widget _buildBrandedSplashView() {
+    return Container(
+      color: Colors.white,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/splash_logo.png',
+                  width: 160,
+                  height: 160,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const CircularProgressIndicator(color: Color(0xFF20C8FF)),
+                ),
+                const SizedBox(height: 24),
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Color(0xFF20C8FF),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _isDownloading
+                      ? 'Downloading document... ${(_downloadProgress * 100).toInt()}%'
+                      : 'Opening document...',
+                  style: const TextStyle(
+                    color: Color(0xFF141232),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                if (_isDownloading) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: 160,
+                    child: LinearProgressIndicator(
+                      value: _downloadProgress > 0 ? _downloadProgress : null,
+                      color: const Color(0xFF20C8FF),
+                      backgroundColor: Colors.black12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 32,
+            child: Image.asset(
+              'assets/splash_branding.png',
+              height: 38,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildLoadingView() {
@@ -1140,7 +1237,7 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         body: _hasError
             ? _buildErrorView()
             : _isLoading
-                ? _buildLoadingView()
+                ? _buildBrandedSplashView()
                 : Stack(
                     children: [
                       Positioned.fill(
@@ -1156,6 +1253,10 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
                           ),
                         ),
                       ),
+                      if (!_isViewerReady)
+                        Positioned.fill(
+                          child: _buildBrandedSplashView(),
+                        ),
                       if (_showResumePopup && _savedResumePage > 1)
                         Positioned(
                           top: 8,
@@ -2400,7 +2501,6 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
       );
     }
     if (_isPdf) {
-      final initialProgress = _progressNotifier.value;
       final physics = _activeAnnotationType != AnnotationType.none
           ? const NeverScrollableScrollPhysics()
           : const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
@@ -2512,6 +2612,16 @@ class _MaterialViewerScreenState extends State<MaterialViewerScreen>
         },
         onViewerReady: (document, controller) {
           _pdfDocument = document;
+          if (mounted) {
+            setState(() {
+              _isViewerReady = true;
+            });
+          }
+          // Only remove native splash screen once the first page is genuinely rendered
+          try {
+            FlutterNativeSplash.remove();
+          } catch (_) {}
+
           // Document always starts on page 1 initially.
           // If a saved reading position > 1 exists, show 3-second resume popup without jumping automatically
           final savedPage = ProgressService().getSavedPage(_docIdentifier, fallbackTitle: widget.title);
