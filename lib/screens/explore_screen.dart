@@ -40,9 +40,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   StreamSubscription<List<TopStory>>? _topStoriesSub;
   StreamSubscription<List<TrendingTopic>>? _trendingTopicsSub;
   StreamSubscription<List<NewsArticle>>? _latestNewsSub;
-  StreamSubscription<List<NewsArticle>>? _allMixedNewsSub;
   StreamSubscription<List<String>>? _categoriesSub;
-  final Map<String, StreamSubscription<List<NewsArticle>>> _categorySubs = {};
+  StreamSubscription<List<NewsArticle>>? _activeCategorySub;
+  String? _activeCategoryName;
+  int _categorySubscriptionToken = 0;
 
   List<String> _categories = [];
 
@@ -384,12 +385,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _topStoriesSub?.cancel();
     _trendingTopicsSub?.cancel();
     _latestNewsSub?.cancel();
-    _allMixedNewsSub?.cancel();
     _categoriesSub?.cancel();
-    for (var sub in _categorySubs.values) {
-      sub.cancel();
-    }
-    _categorySubs.clear();
+    _categorySubscriptionToken++;
+    _activeCategorySub?.cancel();
+    _activeCategorySub = null;
+    _activeCategoryName = null;
   }
 
   void _scrollToCategory(int index) {
@@ -429,11 +429,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             });
             if (categories.isNotEmpty) {
               final uiState = ref.read(uiStateProvider);
+              final targetCat = (uiState.exploreCategory.isNotEmpty && categories.contains(uiState.exploreCategory))
+                  ? uiState.exploreCategory
+                  : categories.first;
               if (uiState.exploreCategory.isEmpty || !categories.contains(uiState.exploreCategory)) {
-                ref.read(uiStateProvider.notifier).setExploreCategory(categories.first);
+                ref.read(uiStateProvider.notifier).setExploreCategory(targetCat);
               }
+              _ensureCategorySubscribed(targetCat);
             }
-            _subscribeCategoryNewsStreams(categories, repository);
           }
         },
         onError: (_) {},
@@ -480,30 +483,31 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     try {
       _latestNewsSub = repository.watchLatestNews().listen(
         (news) {
-          if (mounted) setState(() => _latestNews = news);
+          if (mounted) {
+            setState(() {
+              _latestNews = news;
+              _allMixedNews = repository.interleaveByCategory(news);
+            });
+          }
         },
         onError: (_) {
-          if (mounted) setState(() => _latestNews = []);
+          if (mounted) {
+            setState(() {
+              _latestNews = [];
+              _allMixedNews = [];
+            });
+          }
         },
       );
     } catch (_) {
       _latestNews = [];
-    }
-
-    try {
-      _allMixedNewsSub = repository.watchAllMixedNews().listen(
-        (news) {
-          if (mounted) setState(() => _allMixedNews = news);
-        },
-        onError: (_) {
-          if (mounted) setState(() => _allMixedNews = []);
-        },
-      );
-    } catch (_) {
       _allMixedNews = [];
     }
 
-    _subscribeCategoryNewsStreams(_categories, repository);
+    final currentCat = ref.read(uiStateProvider).exploreCategory;
+    if (currentCat.isNotEmpty) {
+      _ensureCategorySubscribed(currentCat);
+    }
 
     if (mounted) {
       setState(() {
@@ -512,28 +516,46 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
   }
 
-  void _subscribeCategoryNewsStreams(List<String> categories, NewsRepository repository) {
-    for (final cat in categories) {
-      if (cat == 'For You' || cat == 'Trending' || cat == 'Latest') continue;
-      if (_categorySubs.containsKey(cat)) continue;
-      try {
-        _categorySubs[cat] = repository.watchCategoryNews(cat).listen(
-          (articles) {
-            if (mounted) {
-              setState(() {
-                _categoryNewsMap[cat] = articles;
-              });
-            }
-          },
-          onError: (_) {
-            if (mounted) {
-              setState(() {
-                _categoryNewsMap[cat] = [];
-              });
-            }
-          },
-        );
-      } catch (_) {
+  void _ensureCategorySubscribed(String cat) {
+    if (!mounted) return;
+    if (cat == 'For You' || cat == 'Trending' || cat == 'Latest') {
+      if (_activeCategorySub != null) {
+        _categorySubscriptionToken++;
+        _activeCategorySub?.cancel();
+        _activeCategorySub = null;
+        _activeCategoryName = null;
+      }
+      return;
+    }
+
+    if (_activeCategoryName == cat && _activeCategorySub != null) return;
+
+    _categorySubscriptionToken++;
+    final currentToken = _categorySubscriptionToken;
+    _activeCategorySub?.cancel();
+    _activeCategorySub = null;
+    _activeCategoryName = cat;
+
+    final repository = ref.read(newsRepositoryProvider);
+    try {
+      _activeCategorySub = repository.watchCategoryNews(cat).listen(
+        (articles) {
+          if (!mounted || _categorySubscriptionToken != currentToken) return;
+          setState(() {
+            _categoryNewsMap[cat] = articles;
+          });
+        },
+        onError: (_) {
+          if (!mounted || _categorySubscriptionToken != currentToken) return;
+          if (!_categoryNewsMap.containsKey(cat)) {
+            setState(() {
+              _categoryNewsMap[cat] = [];
+            });
+          }
+        },
+      );
+    } catch (_) {
+      if (!_categoryNewsMap.containsKey(cat)) {
         _categoryNewsMap[cat] = [];
       }
     }
@@ -616,6 +638,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
+    _ensureCategorySubscribed(category);
   }
 
   @override
@@ -704,6 +727,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                             final cat = _categories[index];
                             ref.read(uiStateProvider.notifier).setExploreCategory(cat);
                             _scrollToCategory(index);
+                            _ensureCategorySubscribed(cat);
                           },
                           itemBuilder: (context, index) {
                             final category = _categories[index];

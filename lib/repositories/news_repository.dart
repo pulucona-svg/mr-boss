@@ -23,6 +23,9 @@ abstract class NewsRepository {
   /// Watches mixed news articles for the general feed in real-time
   Stream<List<NewsArticle>> watchAllMixedNews();
 
+  /// Interleaves news articles across categories in memory
+  List<NewsArticle> interleaveByCategory(List<NewsArticle> articles);
+
   /// Watches news categories list in real-time
   Stream<List<String>> watchCategories();
 
@@ -58,15 +61,9 @@ class NewsRepositoryImpl implements NewsRepository {
   Stream<List<TopStory>> _createTopStoriesStream() {
     late final StreamController<List<TopStory>> controller;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? activeSub;
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? companionSub;
 
-    Map<String, DocumentSnapshot<Map<String, dynamic>>> pubDocs = {};
-    Map<String, DocumentSnapshot<Map<String, dynamic>>> createdDocs = {};
-
-    void emitMerged() {
-      if (controller.isClosed) return;
-      final merged = {...pubDocs, ...createdDocs};
-      final articles = merged.values
+    List<TopStory> parseSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+      final articles = snapshot.docs
           .map(_mapDocToNewsArticle)
           .where((a) => a.status == null || a.status!.isEmpty || a.status == 'published')
           .toList();
@@ -75,7 +72,7 @@ class NewsRepositoryImpl implements NewsRepository {
         final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return bTime.compareTo(aTime);
       });
-      final topStories = articles
+      return articles
           .map((art) => TopStory(
                 id: art.id,
                 title: art.title,
@@ -88,7 +85,6 @@ class NewsRepositoryImpl implements NewsRepository {
           .where((s) => s.imageUrl.isNotEmpty)
           .take(5)
           .toList();
-      controller.add(topStories);
     }
 
     void startListening() {
@@ -97,16 +93,11 @@ class NewsRepositoryImpl implements NewsRepository {
           .orderBy('publishedAt', descending: true)
           .limit(20);
 
-      // Companion query captures articles missing publishedAt but possessing createdAt
-      final queryCreated = _firestore
-          .collection('explore_news')
-          .orderBy('createdAt', descending: true)
-          .limit(10);
-
       activeSub = queryPub.snapshots().listen(
         (snapshot) {
-          pubDocs = {for (final d in snapshot.docs) d.id: d};
-          emitMerged();
+          if (!controller.isClosed) {
+            controller.add(parseSnapshot(snapshot));
+          }
         },
         onError: (err) {
           if (kDebugMode) {
@@ -116,25 +107,16 @@ class NewsRepositoryImpl implements NewsRepository {
           final fallback = _firestore.collection('explore_news').limit(40);
           activeSub = fallback.snapshots().listen(
             (snap) {
-              pubDocs = {for (final d in snap.docs) d.id: d};
-              emitMerged();
+              if (!controller.isClosed) {
+                controller.add(parseSnapshot(snap));
+              }
             },
             onError: (_) {
-              if (!controller.isClosed && pubDocs.isEmpty && createdDocs.isEmpty) {
+              if (!controller.isClosed) {
                 controller.add(<TopStory>[]);
               }
             },
           );
-        },
-      );
-
-      companionSub = queryCreated.snapshots().listen(
-        (snapshot) {
-          createdDocs = {for (final d in snapshot.docs) d.id: d};
-          emitMerged();
-        },
-        onError: (_) {
-          // Silent fallback if createdAt ordering isn't available
         },
       );
     }
@@ -143,7 +125,6 @@ class NewsRepositoryImpl implements NewsRepository {
       onListen: startListening,
       onCancel: () {
         activeSub?.cancel();
-        companionSub?.cancel();
       },
     );
 
@@ -213,16 +194,17 @@ class NewsRepositoryImpl implements NewsRepository {
           }
         },
         onError: (err) {
-          // If composite index is missing or query fails, fall back to equality query without arbitrary pre-sort limit
+          // If composite index is missing or query fails, fall back to equality query with safety limit to avoid runaway reads
           if (kDebugMode) {
-            debugPrint('[NewsRepo] Indexed query for category "$category" requires index or failed ($err). Using un-limited fallback query with in-memory sort.');
+            debugPrint('[NewsRepo] Indexed query for category "$category" requires index or failed ($err). Using bounded fallback query with in-memory sort.');
           }
           activeSub?.cancel();
 
-          // Fallback query scopes to categoryId without pre-sort truncation
+          // Fallback query scopes to categoryId with a 50-doc safety limit (exceeds 30-doc retention limit)
           final fallbackQuery = _firestore
               .collection('explore_news')
-              .where('categoryId', isEqualTo: categoryId);
+              .where('categoryId', isEqualTo: categoryId)
+              .limit(50);
 
           activeSub = fallbackQuery.snapshots().listen(
             (fallbackSnap) {
@@ -268,15 +250,9 @@ class NewsRepositoryImpl implements NewsRepository {
   Stream<List<NewsArticle>> _createLatestNewsStream() {
     late final StreamController<List<NewsArticle>> controller;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? activeSub;
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? companionSub;
 
-    Map<String, DocumentSnapshot<Map<String, dynamic>>> pubDocs = {};
-    Map<String, DocumentSnapshot<Map<String, dynamic>>> createdDocs = {};
-
-    void emitMerged() {
-      if (controller.isClosed) return;
-      final merged = {...pubDocs, ...createdDocs};
-      final list = merged.values
+    List<NewsArticle> parseSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+      final list = snapshot.docs
           .map(_mapDocToNewsArticle)
           .where((article) => article.status == null || article.status!.isEmpty || article.status == 'published')
           .toList();
@@ -286,7 +262,7 @@ class NewsRepositoryImpl implements NewsRepository {
         final bTime = b.publishedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return bTime.compareTo(aTime);
       });
-      controller.add(list.take(60).toList());
+      return list.take(60).toList();
     }
 
     void startListening() {
@@ -296,16 +272,11 @@ class NewsRepositoryImpl implements NewsRepository {
           .orderBy('publishedAt', descending: true)
           .limit(60);
 
-      // Companion: captures articles missing publishedAt but possessing createdAt
-      final queryCreated = _firestore
-          .collection('explore_news')
-          .orderBy('createdAt', descending: true)
-          .limit(30);
-
       activeSub = queryPub.snapshots().listen(
         (snapshot) {
-          pubDocs = {for (final d in snapshot.docs) d.id: d};
-          emitMerged();
+          if (!controller.isClosed) {
+            controller.add(parseSnapshot(snapshot));
+          }
         },
         onError: (err) {
           if (kDebugMode) {
@@ -315,28 +286,19 @@ class NewsRepositoryImpl implements NewsRepository {
           final fallback = _firestore.collection('explore_news').limit(100);
           activeSub = fallback.snapshots().listen(
             (snap) {
-              pubDocs = {for (final d in snap.docs) d.id: d};
-              emitMerged();
+              if (!controller.isClosed) {
+                controller.add(parseSnapshot(snap));
+              }
             },
             onError: (fallbackErr) {
               if (kDebugMode) {
                 debugPrint('[NewsRepo ERROR] watchLatestNews fallback failed: $fallbackErr');
               }
-              if (!controller.isClosed && pubDocs.isEmpty && createdDocs.isEmpty) {
+              if (!controller.isClosed) {
                 controller.add(<NewsArticle>[]);
               }
             },
           );
-        },
-      );
-
-      companionSub = queryCreated.snapshots().listen(
-        (snapshot) {
-          createdDocs = {for (final d in snapshot.docs) d.id: d};
-          emitMerged();
-        },
-        onError: (_) {
-          // Silent fallback if createdAt ordering isn't available
         },
       );
     }
@@ -345,7 +307,6 @@ class NewsRepositoryImpl implements NewsRepository {
       onListen: startListening,
       onCancel: () {
         activeSub?.cancel();
-        companionSub?.cancel();
       },
     );
 
@@ -355,6 +316,11 @@ class NewsRepositoryImpl implements NewsRepository {
   @override
   Stream<List<NewsArticle>> watchAllMixedNews() {
     return watchLatestNews().map(_interleaveByCategory);
+  }
+
+  @override
+  List<NewsArticle> interleaveByCategory(List<NewsArticle> articles) {
+    return _interleaveByCategory(articles);
   }
 
   List<NewsArticle> _interleaveByCategory(List<NewsArticle> articles) {
